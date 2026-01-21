@@ -12,49 +12,6 @@ const initSupabase = () => {
   }
 };
 
-const crewMembers = [
-  { id: 1, name: "Alex Chen", avatar: "AC", online: true },
-  { id: 2, name: "Jordan Smith", avatar: "JS", online: true },
-  { id: 3, name: "Sam Rivera", avatar: "SR", online: false },
-  { id: 4, name: "Casey Morgan", avatar: "CM", online: true }
-];
-
-const squads = [
-  {
-    id: 1,
-    name: "Deep Ellum Crew",
-    members: [crewMembers[0], crewMembers[1], crewMembers[2]],
-    memberCount: 8,
-    nextEvent: "Live Jazz Night",
-    eventDate: "2026-01-25",
-    eventTime: "20:00",
-    venue: "The Rustic",
-    description: "We hit up the best bars and live music in Deep Ellum"
-  },
-  {
-    id: 2,
-    name: "Uptown Squad",
-    members: [crewMembers[1], crewMembers[3]],
-    memberCount: 6,
-    nextEvent: "Rooftop Happy Hour",
-    eventDate: "2026-01-23",
-    eventTime: "18:00",
-    venue: "Happiest Hour",
-    description: "Cocktails with a view every Thursday"
-  },
-  {
-    id: 3,
-    name: "EDM Fam",
-    members: [crewMembers[0], crewMembers[1]],
-    memberCount: 12,
-    nextEvent: "DJ Night",
-    eventDate: "2026-01-24",
-    eventTime: "22:00",
-    venue: "The Bomb Factory",
-    description: "Electronic music lovers unite"
-  }
-];
-
 function EventCard({ event, onSwipe, style }) {
   const [dragStart, setDragStart] = useState(0);
   const [dragOffset, setDragOffset] = useState(0);
@@ -105,7 +62,7 @@ function EventCard({ event, onSwipe, style }) {
           <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-transparent" />
           
           <div className="absolute top-4 left-4 bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase">
-            {event.category.replace('-', ' ')}
+            {event.category?.replace('-', ' ') || 'Event'}
           </div>
 
           {dragOffset < -50 && (
@@ -155,13 +112,35 @@ function EventCard({ event, onSwipe, style }) {
   );
 }
 
-function ShareModal({ event, onClose }) {
+function ShareModal({ event, onClose, crewMembers }) {
   const [selected, setSelected] = useState([]);
 
   const toggleMember = (id) => {
     setSelected(prev => 
       prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
     );
+  };
+
+  const handleNativeShare = async () => {
+    const shareData = {
+      title: event.name,
+      text: `Check out ${event.name} at ${event.venue}! Join me on CrewQ 🎉`,
+      url: `https://crewq.app/events/${event.id}`
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        const shareText = `${shareData.text}\n${shareData.url}`;
+        await navigator.clipboard.writeText(shareText);
+        alert('Link copied to clipboard! Share it with your friends via text or any app.');
+      }
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        console.error('Error sharing:', err);
+      }
+    }
   };
 
   return (
@@ -180,42 +159,59 @@ function ShareModal({ event, onClose }) {
             <p className="text-zinc-400 text-sm">{event.venue}</p>
           </div>
 
-          <div className="space-y-2">
-            {crewMembers.map(member => (
-              <button
-                key={member.id}
-                onClick={() => toggleMember(member.id)}
-                className={`w-full flex items-center gap-3 p-3 rounded-xl transition ${
-                  selected.includes(member.id) 
-                    ? 'bg-orange-500 bg-opacity-20 border-2 border-orange-500' 
-                    : 'bg-zinc-800 border-2 border-transparent'
-                }`}
-              >
-                <div className="w-10 h-10 rounded-full bg-zinc-700 flex items-center justify-center text-white font-semibold">
-                  {member.avatar}
-                </div>
-                <div className="flex-1 text-left">
-                  <p className="text-white font-medium">{member.name}</p>
-                  <p className="text-xs text-zinc-400">{member.online ? '🟢 Online' : '⚪ Offline'}</p>
-                </div>
-                {selected.includes(member.id) && (
-                  <Check className="w-5 h-5 text-orange-500" />
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
+          {crewMembers.length > 0 ? (
+            <div className="space-y-2 mb-4">
+              {crewMembers.map(member => (
+                <button
+                  key={member.id}
+                  onClick={() => toggleMember(member.id)}
+                  className={`w-full flex items-center gap-3 p-3 rounded-xl transition ${
+                    selected.includes(member.id) 
+                      ? 'bg-orange-500 bg-opacity-20 border-2 border-orange-500' 
+                      : 'bg-zinc-800 border-2 border-transparent'
+                  }`}
+                >
+                  <div className="w-10 h-10 rounded-full bg-zinc-700 flex items-center justify-center text-white font-semibold">
+                    {member.name?.charAt(0).toUpperCase() || '?'}
+                  </div>
+                  <div className="flex-1 text-left">
+                    <p className="text-white font-medium">{member.name}</p>
+                    <p className="text-xs text-zinc-400">{member.online ? '🟢 Online' : '⚪ Offline'}</p>
+                  </div>
+                  {selected.includes(member.id) && (
+                    <Check className="w-5 h-5 text-orange-500" />
+                  )}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-6 mb-4">
+              <Users className="w-12 h-12 text-zinc-700 mx-auto mb-2" />
+              <p className="text-zinc-400 text-sm">No crew members yet</p>
+            </div>
+          )}
 
-        <button
-          disabled={selected.length === 0}
-          onClick={() => {
-            alert(`Shared with ${selected.length} ${selected.length === 1 ? 'person' : 'people'}!`);
-            onClose();
-          }}
-          className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Send to {selected.length} {selected.length === 1 ? 'Person' : 'People'}
-        </button>
+          <button
+            onClick={handleNativeShare}
+            className="w-full bg-zinc-800 text-white py-3 rounded-xl font-semibold mb-3 hover:bg-zinc-700 transition flex items-center justify-center gap-2"
+          >
+            <Share2 className="w-5 h-5" />
+            Share via Text/Social
+          </button>
+
+          {crewMembers.length > 0 && (
+            <button
+              disabled={selected.length === 0}
+              onClick={() => {
+                alert(`Shared with ${selected.length} ${selected.length === 1 ? 'person' : 'people'}!`);
+                onClose();
+              }}
+              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {selected.length > 0 ? `Send to ${selected.length} ${selected.length === 1 ? 'Person' : 'People'}` : 'Select Crew Members'}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -445,64 +441,77 @@ function CalendarView({ likedEvents }) {
   );
 }
 
-function CrewTab() {
+function CrewTab({ squads, onCreateSquad }) {
   return (
     <div className="p-4">
       <h2 className="text-2xl font-bold text-white mb-6">Your Squads</h2>
       
-      <div className="space-y-4">
-        {squads.map(squad => (
-          <div key={squad.id} className="bg-zinc-900 rounded-2xl p-5">
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex-1">
-                <h3 className="text-xl font-bold text-white mb-1">{squad.name}</h3>
-                <p className="text-zinc-400 text-sm mb-3">{squad.description}</p>
-                <div className="flex items-center gap-2 text-zinc-500 text-sm">
-                  <Users className="w-4 h-4" />
-                  <span>{squad.memberCount} members</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 mb-4 overflow-x-auto">
-              {squad.members.map(member => (
-                <div key={member.id} className="flex-shrink-0">
-                  <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-white text-sm font-semibold">
-                    {member.avatar}
+      {squads.length > 0 ? (
+        <div className="space-y-4">
+          {squads.map(squad => (
+            <div key={squad.id} className="bg-zinc-900 rounded-2xl p-5">
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex-1">
+                  <h3 className="text-xl font-bold text-white mb-1">{squad.name}</h3>
+                  <p className="text-zinc-400 text-sm mb-3">{squad.description}</p>
+                  <div className="flex items-center gap-2 text-zinc-500 text-sm">
+                    <Users className="w-4 h-4" />
+                    <span>{squad.member_count || 0} members</span>
                   </div>
                 </div>
-              ))}
-              <button className="flex-shrink-0 w-10 h-10 rounded-full border-2 border-dashed border-zinc-700 flex items-center justify-center text-zinc-500 hover:border-orange-500 hover:text-orange-500 transition">
-                <UserPlus className="w-5 h-5" />
-              </button>
-            </div>
+              </div>
 
-            {squad.nextEvent && (
-              <div className="bg-zinc-800 rounded-xl p-4 border border-zinc-700">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <p className="text-orange-500 text-xs font-semibold uppercase mb-1">Next Event</p>
-                    <h4 className="text-white font-semibold mb-1">{squad.nextEvent}</h4>
-                    <p className="text-zinc-400 text-sm mb-2">{squad.venue}</p>
-                    <div className="flex items-center gap-3 text-xs text-zinc-500">
-                      <div className="flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
-                        <span>{squad.eventDate}</span>
+              {squad.members && squad.members.length > 0 && (
+                <div className="flex items-center gap-2 mb-4 overflow-x-auto">
+                  {squad.members.slice(0, 5).map(member => (
+                    <div key={member.id} className="flex-shrink-0">
+                      <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-white text-sm font-semibold">
+                        {member.name?.charAt(0).toUpperCase() || '?'}
                       </div>
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        <span>{squad.eventTime}</span>
+                    </div>
+                  ))}
+                  <button className="flex-shrink-0 w-10 h-10 rounded-full border-2 border-dashed border-zinc-700 flex items-center justify-center text-zinc-500 hover:border-orange-500 hover:text-orange-500 transition">
+                    <UserPlus className="w-5 h-5" />
+                  </button>
+                </div>
+              )}
+
+              {squad.next_event && (
+                <div className="bg-zinc-800 rounded-xl p-4 border border-zinc-700">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <p className="text-orange-500 text-xs font-semibold uppercase mb-1">Next Event</p>
+                      <h4 className="text-white font-semibold mb-1">{squad.next_event.name}</h4>
+                      <p className="text-zinc-400 text-sm mb-2">{squad.next_event.venue}</p>
+                      <div className="flex items-center gap-3 text-xs text-zinc-500">
+                        <div className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          <span>{squad.next_event.date}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          <span>{squad.next_event.time}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-12">
+          <Users className="w-16 h-16 text-zinc-700 mx-auto mb-4" />
+          <p className="text-zinc-400">No squads yet</p>
+          <p className="text-zinc-600 text-sm mt-2">Create a squad to connect with friends</p>
+        </div>
+      )}
 
-      <button className="w-full mt-6 bg-zinc-900 border-2 border-dashed border-zinc-700 rounded-2xl p-6 text-zinc-400 hover:border-orange-500 hover:text-orange-500 transition flex items-center justify-center gap-2">
+      <button 
+        onClick={onCreateSquad}
+        className="w-full mt-6 bg-zinc-900 border-2 border-dashed border-zinc-700 rounded-2xl p-6 text-zinc-400 hover:border-orange-500 hover:text-orange-500 transition flex items-center justify-center gap-2"
+      >
         <UserPlus className="w-5 h-5" />
         <span className="font-semibold">Create New Squad</span>
       </button>
@@ -510,15 +519,32 @@ function CrewTab() {
   );
 }
 
-function ProfileTab({ userProfile, onLogout }) {
+function ProfileTab({ userProfile, onLogout, onUpdateProfile }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedProfile, setEditedProfile] = useState(userProfile);
   const likedEvents = JSON.parse(localStorage.getItem('crewq_liked') || '[]');
+  const [squadsCount, setSquadsCount] = useState(0);
 
-  const handleSave = () => {
-    localStorage.setItem('crewq_user_profile', JSON.stringify(editedProfile));
+  useEffect(() => {
+    loadSquadsCount();
+  }, []);
+
+  const loadSquadsCount = async () => {
+    if (!supabaseClient) return;
+    try {
+      const { count } = await supabaseClient
+        .from('squads')
+        .select('*', { count: 'exact', head: true })
+        .eq('created_by', userProfile.id);
+      setSquadsCount(count || 0);
+    } catch (error) {
+      console.error('Error loading squads count:', error);
+    }
+  };
+
+  const handleSave = async () => {
+    await onUpdateProfile(editedProfile);
     setIsEditing(false);
-    alert('Profile updated!');
   };
 
   return (
@@ -545,7 +571,7 @@ function ProfileTab({ userProfile, onLogout }) {
 
         <div className="flex items-center justify-center mb-6">
           <div className="w-24 h-24 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center text-white text-3xl font-bold">
-            {userProfile.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+            {userProfile.name?.split(' ').map(n => n[0]).join('').toUpperCase() || '?'}
           </div>
         </div>
 
@@ -589,7 +615,7 @@ function ProfileTab({ userProfile, onLogout }) {
             {isEditing ? (
               <input
                 type="tel"
-                value={editedProfile.phone}
+                value={editedProfile.phone || ''}
                 onChange={(e) => setEditedProfile({ ...editedProfile, phone: e.target.value })}
                 className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
               />
@@ -620,7 +646,7 @@ function ProfileTab({ userProfile, onLogout }) {
             <div className="text-sm text-zinc-400">Liked Events</div>
           </div>
           <div className="bg-zinc-800 rounded-xl p-4 text-center">
-            <div className="text-3xl font-bold text-orange-500 mb-1">{squads.length}</div>
+            <div className="text-3xl font-bold text-orange-500 mb-1">{squadsCount}</div>
             <div className="text-sm text-zinc-400">Squads</div>
           </div>
         </div>
@@ -641,13 +667,16 @@ function AuthScreen({ onAuth }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!name || !email) {
       alert('Please enter your name and email');
       return;
     }
-    onAuth({ name, email, phone });
+    setIsLoading(true);
+    await onAuth({ name, email, phone });
+    setIsLoading(false);
   };
 
   return (
@@ -696,9 +725,10 @@ function AuthScreen({ onAuth }) {
 
           <button
             onClick={handleSubmit}
-            className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold text-lg hover:shadow-lg transition"
+            disabled={isLoading}
+            className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold text-lg hover:shadow-lg transition disabled:opacity-50"
           >
-            Get Started
+            {isLoading ? 'Creating Account...' : 'Get Started'}
           </button>
         </div>
       </div>
@@ -714,6 +744,8 @@ export default function App() {
   const [events, setEvents] = useState([]);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [crewMembers, setCrewMembers] = useState([]);
+  const [squads, setSquads] = useState([]);
 
   useEffect(() => {
     const script = document.createElement('script');
@@ -726,22 +758,95 @@ export default function App() {
   }, []);
 
   const checkAuth = async () => {
-    const profile = localStorage.getItem('crewq_user_profile');
-    if (profile) {
-      setUserProfile(JSON.parse(profile));
-      await loadEvents();
+    const profileId = localStorage.getItem('crewq_user_id');
+    if (profileId && supabaseClient) {
+      try {
+        const { data, error } = await supabaseClient
+          .from('users')
+          .select('*')
+          .eq('id', profileId)
+          .single();
+        
+        if (data && !error) {
+          setUserProfile(data);
+          await loadEvents();
+          await loadCrewMembers(data.id);
+          await loadSquads(data.id);
+        } else {
+          localStorage.removeItem('crewq_user_id');
+        }
+      } catch (error) {
+        console.error('Error checking auth:', error);
+      }
     }
     setLoading(false);
   };
 
   const handleAuth = async (profile) => {
-    setUserProfile(profile);
-    localStorage.setItem('crewq_user_profile', JSON.stringify(profile));
-    await loadEvents();
+    if (!supabaseClient) return;
+    
+    try {
+      // Check if user exists
+      const { data: existingUser } = await supabaseClient
+        .from('users')
+        .select('*')
+        .eq('email', profile.email)
+        .single();
+
+      let userData;
+      if (existingUser) {
+        userData = existingUser;
+      } else {
+        // Create new user
+        const { data: newUser, error } = await supabaseClient
+          .from('users')
+          .insert([{
+            name: profile.name,
+            email: profile.email,
+            phone: profile.phone
+          }])
+          .select()
+          .single();
+
+        if (error) throw error;
+        userData = newUser;
+      }
+
+      setUserProfile(userData);
+      localStorage.setItem('crewq_user_id', userData.id);
+      await loadEvents();
+      await loadCrewMembers(userData.id);
+      await loadSquads(userData.id);
+    } catch (error) {
+      console.error('Error creating/logging in user:', error);
+      alert('Error creating account. Please try again.');
+    }
+  };
+
+  const handleUpdateProfile = async (updatedProfile) => {
+    if (!supabaseClient) return;
+    
+    try {
+      const { error } = await supabaseClient
+        .from('users')
+        .update({
+          name: updatedProfile.name,
+          email: updatedProfile.email,
+          phone: updatedProfile.phone
+        })
+        .eq('id', userProfile.id);
+
+      if (error) throw error;
+      setUserProfile(updatedProfile);
+      alert('Profile updated successfully!');
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      alert('Error updating profile. Please try again.');
+    }
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('crewq_user_profile');
+    localStorage.removeItem('crewq_user_id');
     setUserProfile(null);
     setCurrentTab('discover');
   };
@@ -762,15 +867,65 @@ export default function App() {
     }
   };
 
-  const handleSwipe = (direction) => {
+  const loadCrewMembers = async (userId) => {
+    if (!supabaseClient) return;
+    
+    try {
+      const { data, error } = await supabaseClient
+        .from('crew_members')
+        .select('*, user:users(*)')
+        .eq('user_id', userId);
+      
+      if (error) throw error;
+      setCrewMembers(data?.map(cm => cm.user) || []);
+    } catch (error) {
+      console.error('Error loading crew members:', error);
+    }
+  };
+
+  const loadSquads = async (userId) => {
+    if (!supabaseClient) return;
+    
+    try {
+      const { data, error } = await supabaseClient
+        .from('squads')
+        .select('*')
+        .or(`created_by.eq.${userId},members.cs.{${userId}}`);
+      
+      if (error) throw error;
+      setSquads(data || []);
+    } catch (error) {
+      console.error('Error loading squads:', error);
+    }
+  };
+
+  const handleSwipe = async (direction) => {
     if (direction === 'right') {
       const liked = JSON.parse(localStorage.getItem('crewq_liked') || '[]');
       liked.push(events[currentIndex]);
       localStorage.setItem('crewq_liked', JSON.stringify(liked));
+
+      // Save to Supabase
+      if (supabaseClient && userProfile) {
+        try {
+          await supabaseClient
+            .from('liked_events')
+            .insert([{
+              user_id: userProfile.id,
+              event_id: events[currentIndex].id
+            }]);
+        } catch (error) {
+          console.error('Error saving liked event:', error);
+        }
+      }
     }
     if (currentIndex < events.length - 1) {
       setCurrentIndex(currentIndex + 1);
     }
+  };
+
+  const handleCreateSquad = () => {
+    alert('Create Squad feature coming soon! This will open a form to create a new squad.');
   };
 
   if (loading) {
@@ -790,7 +945,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">
-      {/* Mobile Container */}
       <div className="w-full max-w-md bg-zinc-950 min-h-screen relative flex flex-col">
         {/* Header */}
         <div className="bg-zinc-900 border-b border-zinc-800 px-4 py-4">
@@ -814,23 +968,25 @@ export default function App() {
           </div>
 
           <div className="flex flex-col items-center gap-3">
-            <div className="flex gap-2 bg-zinc-800 rounded-full p-1.5">
+            <div className={`flex gap-2 rounded-full p-1.5 transition-all duration-300 ${
+              mode === 'crew' ? 'bg-zinc-800' : 'bg-orange-500'
+            }`}>
               <button
                 onClick={() => setMode('crew')}
-                className={`px-8 py-2.5 rounded-full text-base font-bold transition ${
+                className={`px-8 py-2.5 rounded-full text-base font-bold transition-all duration-300 ${
                   mode === 'crew' 
                     ? 'bg-orange-500 text-white' 
-                    : 'text-zinc-400'
+                    : 'bg-transparent text-zinc-900'
                 }`}
               >
                 Crew
               </button>
               <button
                 onClick={() => setMode('solo')}
-                className={`px-8 py-2.5 rounded-full text-base font-bold transition ${
+                className={`px-8 py-2.5 rounded-full text-base font-bold transition-all duration-300 ${
                   mode === 'solo' 
-                    ? 'bg-orange-500 text-white' 
-                    : 'text-zinc-400'
+                    ? 'bg-zinc-900 text-white' 
+                    : 'bg-transparent text-white'
                 }`}
               >
                 Solo
@@ -844,7 +1000,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Content Area - with bottom padding for nav */}
+        {/* Content Area */}
         <div className="flex-1 overflow-y-auto pb-24">
           {currentTab === 'discover' && (
             <div className="px-4 py-6">
@@ -898,8 +1054,14 @@ export default function App() {
 
           {currentTab === 'search' && <AIChat />}
           {currentTab === 'events' && <CalendarView likedEvents={likedEvents} />}
-          {currentTab === 'crew' && <CrewTab />}
-          {currentTab === 'profile' && <ProfileTab userProfile={userProfile} onLogout={handleLogout} />}
+          {currentTab === 'crew' && <CrewTab squads={squads} onCreateSquad={handleCreateSquad} />}
+          {currentTab === 'profile' && (
+            <ProfileTab 
+              userProfile={userProfile} 
+              onLogout={handleLogout}
+              onUpdateProfile={handleUpdateProfile}
+            />
+          )}
         </div>
 
         {/* Bottom Navigation */}
@@ -930,6 +1092,7 @@ export default function App() {
           <ShareModal 
             event={currentEvent}
             onClose={() => setShowShareModal(false)}
+            crewMembers={crewMembers}
           />
         )}
       </div>
