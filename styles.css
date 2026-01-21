@@ -8,6 +8,17 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     min-height: 100vh;
+    overflow-x: hidden;
+}
+
+/* Hide scrollbar */
+::-webkit-scrollbar {
+    display: none;
+}
+
+body {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
 }
 
 #app {
@@ -42,7 +53,12 @@ body {
     border-radius: 8px;
     font-size: 14px;
     margin: 10px 0;
-    font-family: monospace;
+}
+
+.setup-screen input[type="text"],
+.setup-screen input[type="email"],
+.setup-screen input[type="tel"] {
+    font-family: inherit;
 }
 
 .btn {
@@ -90,6 +106,7 @@ body {
     color: #6b7280;
     font-size: 0.9rem;
     margin-bottom: 15px;
+    line-height: 1.6;
 }
 
 .event-actions {
@@ -105,16 +122,30 @@ body {
     border-radius: 10px;
     font-weight: bold;
     cursor: pointer;
+    font-size: 14px;
+    transition: transform 0.2s;
+}
+
+.event-actions button:active {
+    transform: scale(0.95);
 }
 
 .pass-btn {
-    background: #e5e7eb;
+    background: #f3f4f6;
     color: #374151;
+}
+
+.pass-btn:hover {
+    background: #e5e7eb;
 }
 
 .interested-btn {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
+}
+
+.interested-btn:hover {
+    background: linear-gradient(135deg, #5568d3 0%, #6a3b8f 100%);
 }
 
 .bottom-nav {
@@ -127,6 +158,9 @@ body {
     padding: 15px;
     display: flex;
     justify-content: space-around;
+    max-width: 480px;
+    margin: 0 auto;
+    z-index: 100;
 }
 
 .nav-btn {
@@ -139,6 +173,11 @@ body {
     flex-direction: column;
     align-items: center;
     gap: 5px;
+    transition: color 0.2s;
+}
+
+.nav-btn span:first-child {
+    font-size: 1.5rem;
 }
 
 .nav-btn.active {
@@ -161,6 +200,12 @@ body {
     overflow-x: auto;
     margin-bottom: 20px;
     padding-bottom: 10px;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.filter-pills::-webkit-scrollbar {
+    display: none;
 }
 
 .filter-pill {
@@ -173,6 +218,11 @@ body {
     color: #374151;
     cursor: pointer;
     white-space: nowrap;
+    transition: all 0.2s;
+}
+
+.filter-pill:hover {
+    transform: translateY(-2px);
 }
 
 .filter-pill.active {
