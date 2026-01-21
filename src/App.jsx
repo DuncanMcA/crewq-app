@@ -125,7 +125,7 @@ function ShareModal({ event, onClose, crewMembers }) {
     const shareData = {
       title: event.name,
       text: `Check out ${event.name} at ${event.venue}! Join me on CrewQ 🎉`,
-      url: `https://crewq.app/events/${event.id}`
+      url: `https://crewq-app.vercel.app/event/${event.id}`
     };
 
     try {
@@ -211,6 +211,121 @@ function ShareModal({ event, onClose, crewMembers }) {
               {selected.length > 0 ? `Send to ${selected.length} ${selected.length === 1 ? 'Person' : 'People'}` : 'Select Crew Members'}
             </button>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SharedEventView({ eventId, onJoinCrew, onClose }) {
+  const [event, setEvent] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [joining, setJoining] = useState(false);
+
+  useEffect(() => {
+    loadEvent();
+  }, [eventId]);
+
+  const loadEvent = async () => {
+    if (!supabaseClient) return;
+    
+    try {
+      const { data, error } = await supabaseClient
+        .from('events')
+        .select('*')
+        .eq('id', eventId)
+        .single();
+      
+      if (error) throw error;
+      setEvent(data);
+    } catch (error) {
+      console.error('Error loading event:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleJoinCrew = async () => {
+    setJoining(true);
+    await onJoinCrew(event);
+    setJoining(false);
+  };
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+        <div className="text-white text-xl">Loading event...</div>
+      </div>
+    );
+  }
+
+  if (!event) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+        <div className="bg-zinc-900 rounded-3xl max-w-md w-full p-6 text-center">
+          <h3 className="text-xl font-bold text-white mb-4">Event Not Found</h3>
+          <p className="text-zinc-400 mb-6">This event may have been removed or doesn't exist.</p>
+          <button
+            onClick={onClose}
+            className="w-full bg-orange-500 text-white py-3 rounded-xl font-bold hover:bg-orange-600 transition"
+          >
+            Continue to CrewQ
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+      <div className="bg-zinc-900 rounded-3xl max-w-md w-full overflow-hidden">
+        <div className="relative h-64">
+          <img src={event.image_url} alt={event.name} className="w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-transparent" />
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 bg-zinc-900 bg-opacity-80 rounded-full p-2 hover:bg-opacity-100 transition"
+          >
+            <X className="w-6 h-6 text-white" />
+          </button>
+        </div>
+
+        <div className="p-6">
+          <div className="mb-6">
+            <div className="inline-block bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase mb-3">
+              {event.category?.replace('-', ' ') || 'Event'}
+            </div>
+            <h2 className="text-2xl font-bold text-white mb-2">{event.name}</h2>
+            <p className="text-zinc-400 text-sm mb-4">{event.description}</p>
+            
+            <div className="space-y-2 mb-4">
+              <div className="flex items-center gap-2 text-zinc-300 text-sm">
+                <MapPin className="w-4 h-4 text-orange-500" />
+                <span>{event.venue} • {event.neighborhood}</span>
+              </div>
+              <div className="flex items-center gap-2 text-zinc-300 text-sm">
+                <Calendar className="w-4 h-4 text-orange-500" />
+                <span>{event.time}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <button
+              onClick={handleJoinCrew}
+              disabled={joining}
+              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold hover:shadow-lg transition disabled:opacity-50"
+            >
+              {joining ? 'Joining...' : '🎉 Join the Crew & Like Event'}
+            </button>
+            
+            <button
+              onClick={onClose}
+              className="w-full bg-zinc-800 text-white py-3 rounded-xl font-semibold hover:bg-zinc-700 transition"
+            >
+              Explore More Events
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -746,6 +861,8 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [crewMembers, setCrewMembers] = useState([]);
   const [squads, setSquads] = useState([]);
+  const [sharedEventId, setSharedEventId] = useState(null);
+  const [showSharedEvent, setShowSharedEvent] = useState(false);
 
   useEffect(() => {
     const script = document.createElement('script');
@@ -753,9 +870,59 @@ export default function App() {
     script.onload = () => {
       initSupabase();
       checkAuth();
+      checkForSharedEvent();
     };
     document.body.appendChild(script);
   }, []);
+
+  const checkForSharedEvent = () => {
+    const params = new URLSearchParams(window.location.search);
+    const eventId = params.get('event');
+    
+    const path = window.location.pathname;
+    const eventMatch = path.match(/\/event\/([a-zA-Z0-9-]+)/);
+    
+    if (eventId || eventMatch) {
+      setSharedEventId(eventId || eventMatch[1]);
+      setShowSharedEvent(true);
+    }
+  };
+
+  const handleJoinFromSharedLink = async (event) => {
+    if (!userProfile) {
+      alert('Please create an account or log in to join!');
+      setShowSharedEvent(false);
+      return;
+    }
+
+    const liked = JSON.parse(localStorage.getItem('crewq_liked') || '[]');
+    if (!liked.find(e => e.id === event.id)) {
+      liked.push(event);
+      localStorage.setItem('crewq_liked', JSON.stringify(liked));
+
+      if (supabaseClient) {
+        try {
+          await supabaseClient
+            .from('liked_events')
+            .insert([{
+              user_id: userProfile.id,
+              event_id: event.id
+            }]);
+        } catch (error) {
+          console.error('Error saving liked event:', error);
+        }
+      }
+    }
+
+    setShowSharedEvent(false);
+    alert('🎉 You joined the crew and liked this event! Check it out in your calendar.');
+    setCurrentTab('events');
+  };
+
+  const handleCloseSharedEvent = () => {
+    setShowSharedEvent(false);
+    window.history.replaceState({}, document.title, window.location.pathname);
+  };
 
   const checkAuth = async () => {
     const profileId = localStorage.getItem('crewq_user_id');
@@ -786,7 +953,6 @@ export default function App() {
     if (!supabaseClient) return;
     
     try {
-      // Check if user exists
       const { data: existingUser } = await supabaseClient
         .from('users')
         .select('*')
@@ -797,7 +963,6 @@ export default function App() {
       if (existingUser) {
         userData = existingUser;
       } else {
-        // Create new user
         const { data: newUser, error } = await supabaseClient
           .from('users')
           .insert([{
@@ -871,7 +1036,6 @@ export default function App() {
     if (!supabaseClient) return;
     
     try {
-      // Get crew members where the user is the friend
       const { data, error } = await supabaseClient
         .from('crew_members')
         .select('friend_id, friend:users!crew_members_friend_id_fkey(*)')
@@ -883,7 +1047,7 @@ export default function App() {
         id: cm.friend?.id,
         name: cm.friend?.name,
         email: cm.friend?.email,
-        online: false // You can add online status logic later
+        online: false
       })) || [];
       
       setCrewMembers(members);
@@ -915,7 +1079,6 @@ export default function App() {
       liked.push(events[currentIndex]);
       localStorage.setItem('crewq_liked', JSON.stringify(liked));
 
-      // Save to Supabase
       if (supabaseClient && userProfile) {
         try {
           await supabaseClient
@@ -956,7 +1119,6 @@ export default function App() {
   return (
     <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">
       <div className="w-full max-w-md bg-zinc-950 min-h-screen relative flex flex-col">
-        {/* Header */}
         <div className="bg-zinc-900 border-b border-zinc-800 px-4 py-4">
           <div className="flex items-center justify-between mb-6">
             <div>
@@ -1010,7 +1172,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Content Area */}
         <div className="flex-1 overflow-y-auto pb-24">
           {currentTab === 'discover' && (
             <div className="px-4 py-6">
@@ -1074,7 +1235,6 @@ export default function App() {
           )}
         </div>
 
-        {/* Bottom Navigation */}
         <div className="fixed bottom-0 left-1/2 transform -translate-x-1/2 w-full max-w-md bg-zinc-900 border-t border-zinc-800 px-6 py-4">
           <div className="flex justify-around items-center">
             {[
@@ -1103,6 +1263,14 @@ export default function App() {
             event={currentEvent}
             onClose={() => setShowShareModal(false)}
             crewMembers={crewMembers}
+          />
+        )}
+
+        {showSharedEvent && sharedEventId && (
+          <SharedEventView
+            eventId={sharedEventId}
+            onJoinCrew={handleJoinFromSharedLink}
+            onClose={handleCloseSharedEvent}
           />
         )}
       </div>
