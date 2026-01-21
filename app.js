@@ -1,5 +1,5 @@
 const SUPABASE_URL = 'https://nwrglwfobtvqqrdemoag.supabase.co';
-let supabase = null;
+let supabaseClient = null;
 let events = [];
 let currentEventIndex = 0;
 let currentFilter = 'all';
@@ -46,7 +46,7 @@ function saveApiKey() {
 }
 
 function initSupabase(apiKey) {
-    supabase = window.supabase.createClient(SUPABASE_URL, apiKey, {
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, apiKey, {
         auth: { persistSession: false }
     });
 }
@@ -84,7 +84,7 @@ async function showApp() {
 
 async function loadEvents() {
     try {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
             .from('events')
             .select('*')
             .order('date', { ascending: true });
@@ -159,7 +159,6 @@ function filterEvents(filter) {
 
 function swipeEvent(direction) {
     if (direction === 'right') {
-        // Save to liked events
         const liked = JSON.parse(localStorage.getItem('crewq_liked') || '[]');
         const filteredEvents = currentFilter === 'all' 
             ? events 
