@@ -871,15 +871,25 @@ export default function App() {
     if (!supabaseClient) return;
     
     try {
+      // Get crew members where the user is the friend
       const { data, error } = await supabaseClient
         .from('crew_members')
-        .select('*, user:users(*)')
+        .select('friend_id, friend:users!crew_members_friend_id_fkey(*)')
         .eq('user_id', userId);
       
       if (error) throw error;
-      setCrewMembers(data?.map(cm => cm.user) || []);
+      
+      const members = data?.map(cm => ({
+        id: cm.friend?.id,
+        name: cm.friend?.name,
+        email: cm.friend?.email,
+        online: false // You can add online status logic later
+      })) || [];
+      
+      setCrewMembers(members);
     } catch (error) {
       console.error('Error loading crew members:', error);
+      setCrewMembers([]);
     }
   };
 
