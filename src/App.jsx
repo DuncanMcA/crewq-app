@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Heart, X, Share2, Bell, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone } from 'lucide-react';
+import { Heart, X, Share2, Bell, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle } from 'lucide-react';
 
 const SUPABASE_URL = 'https://nwrglwfobtvqqrdemoag.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im53cmdsd2ZvYnR2cXFyZGVtb2FnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkwMDYyMDUsImV4cCI6MjA4NDU4MjIwNX0.tNwEmzXnes_r7HrOhD3iO3YgN7rP9LW4nmGM46cfI8M';
@@ -11,6 +11,24 @@ const initSupabase = () => {
     supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   }
 };
+
+const VIBE_OPTIONS = [
+  { id: 'live-music', label: '🎸 Live Music', icon: '🎸' },
+  { id: 'trivia', label: '🧠 Trivia', icon: '🧠' },
+  { id: 'happy-hour', label: '🍻 Happy Hour', icon: '🍻' },
+  { id: 'sports-bars', label: '🏈 Sports Bars', icon: '🏈' },
+  { id: 'tacos', label: '🌮 Tacos', icon: '🌮' },
+  { id: 'rooftop', label: '🌆 Rooftop', icon: '🌆' },
+  { id: 'karaoke', label: '🎤 Karaoke', icon: '🎤' },
+  { id: 'dancing', label: '💃 Dancing', icon: '💃' },
+  { id: 'chill-drinks', label: '🍸 Chill Drinks', icon: '🍸' },
+  { id: 'networking', label: '🤝 Networking', icon: '🤝' },
+  { id: 'foodie', label: '🍽️ Foodie', icon: '🍽️' },
+  { id: 'outdoor', label: '🌳 Outdoor', icon: '🌳' },
+  { id: 'games', label: '🎮 Games', icon: '🎮' },
+  { id: 'concerts', label: '🎵 Concerts', icon: '🎵' },
+  { id: 'comedy', label: '😂 Comedy', icon: '😂' }
+];
 
 function EventCard({ event, onSwipe, style }) {
   const [dragStart, setDragStart] = useState(0);
@@ -112,6 +130,75 @@ function EventCard({ event, onSwipe, style }) {
   );
 }
 
+function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount, userProfile }) {
+  const [checking, setChecking] = useState(false);
+
+  const handleCheckIn = async () => {
+    setChecking(true);
+    await onCheckIn(event);
+    setChecking(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+      <div className="bg-zinc-900 rounded-3xl max-w-md w-full overflow-hidden max-h-[90vh] overflow-y-auto">
+        <div className="relative h-64">
+          <img src={event.image_url} alt={event.name} className="w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-transparent" />
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 bg-zinc-900 bg-opacity-80 rounded-full p-2 hover:bg-opacity-100 transition"
+          >
+            <X className="w-6 h-6 text-white" />
+          </button>
+          
+          <div className="absolute top-4 left-4 bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase">
+            {event.category?.replace('-', ' ') || 'Event'}
+          </div>
+        </div>
+
+        <div className="p-6">
+          <h2 className="text-2xl font-bold text-white mb-2">{event.name}</h2>
+          <p className="text-zinc-400 text-sm mb-4">{event.description}</p>
+          
+          <div className="space-y-3 mb-6">
+            <div className="flex items-center gap-2 text-zinc-300 text-sm">
+              <MapPin className="w-4 h-4 text-orange-500" />
+              <span>{event.venue} • {event.neighborhood}</span>
+            </div>
+            <div className="flex items-center gap-2 text-zinc-300 text-sm">
+              <Calendar className="w-4 h-4 text-orange-500" />
+              <span>{event.time}</span>
+            </div>
+            {checkInCount > 0 && (
+              <div className="flex items-center gap-2 text-zinc-300 text-sm">
+                <Users className="w-4 h-4 text-orange-500" />
+                <span>{checkInCount} {checkInCount === 1 ? 'person' : 'people'} checked in</span>
+              </div>
+            )}
+          </div>
+
+          {isCheckedIn ? (
+            <div className="bg-emerald-500 bg-opacity-20 border-2 border-emerald-500 text-emerald-400 py-4 rounded-xl font-bold flex items-center justify-center gap-2">
+              <CheckCircle className="w-5 h-5" />
+              You're Checked In!
+            </div>
+          ) : (
+            <button
+              onClick={handleCheckIn}
+              disabled={checking}
+              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold hover:shadow-lg transition disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              <CheckCircle className="w-5 h-5" />
+              {checking ? 'Checking In...' : "I'm Here! Check In"}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ShareModal({ event, onClose, crewMembers }) {
   const [selected, setSelected] = useState([]);
 
@@ -171,8 +258,12 @@ function ShareModal({ event, onClose, crewMembers }) {
                       : 'bg-zinc-800 border-2 border-transparent'
                   }`}
                 >
-                  <div className="w-10 h-10 rounded-full bg-zinc-700 flex items-center justify-center text-white font-semibold">
-                    {member.name?.charAt(0).toUpperCase() || '?'}
+                  <div className="w-10 h-10 rounded-full bg-zinc-700 flex items-center justify-center text-white font-semibold overflow-hidden">
+                    {member.profile_picture ? (
+                      <img src={member.profile_picture} alt={member.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <span>{member.name?.charAt(0).toUpperCase() || '?'}</span>
+                    )}
                   </div>
                   <div className="flex-1 text-left">
                     <p className="text-white font-medium">{member.name}</p>
@@ -437,7 +528,7 @@ function AIChat() {
   );
 }
 
-function CalendarView({ likedEvents }) {
+function CalendarView({ likedEvents, onEventClick }) {
   const [currentDate, setCurrentDate] = useState(new Date(2026, 0, 1));
   const [selectedDate, setSelectedDate] = useState(null);
 
@@ -532,14 +623,18 @@ function CalendarView({ likedEvents }) {
           </h3>
           <div className="space-y-3">
             {getEventsForDate(selectedDate).map((event, idx) => (
-              <div key={idx} className="bg-zinc-800 rounded-2xl p-4">
+              <button
+                key={idx}
+                onClick={() => onEventClick(event)}
+                className="w-full bg-zinc-800 rounded-2xl p-4 hover:bg-zinc-700 transition text-left"
+              >
                 <h4 className="text-white font-semibold mb-1">{event.name}</h4>
                 <p className="text-zinc-400 text-sm mb-2">{event.venue}</p>
                 <div className="flex items-center gap-2 text-xs text-zinc-500">
                   <Clock className="w-3 h-3" />
                   <span>{event.time}</span>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -580,8 +675,12 @@ function CrewTab({ squads, onCreateSquad }) {
                 <div className="flex items-center gap-2 mb-4 overflow-x-auto">
                   {squad.members.slice(0, 5).map(member => (
                     <div key={member.id} className="flex-shrink-0">
-                      <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-white text-sm font-semibold">
-                        {member.name?.charAt(0).toUpperCase() || '?'}
+                      <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-white text-sm font-semibold overflow-hidden">
+                        {member.profile_picture ? (
+                          <img src={member.profile_picture} alt={member.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <span>{member.name?.charAt(0).toUpperCase() || '?'}</span>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -637,8 +736,10 @@ function CrewTab({ squads, onCreateSquad }) {
 function ProfileTab({ userProfile, onLogout, onUpdateProfile }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedProfile, setEditedProfile] = useState(userProfile);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const likedEvents = JSON.parse(localStorage.getItem('crewq_liked') || '[]');
   const [squadsCount, setSquadsCount] = useState(0);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     loadSquadsCount();
@@ -657,9 +758,37 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile }) {
     }
   };
 
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploadingImage(true);
+    
+    try {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setEditedProfile({ ...editedProfile, profile_picture: reader.result });
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      alert('Error uploading image. Please try again.');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
   const handleSave = async () => {
     await onUpdateProfile(editedProfile);
     setIsEditing(false);
+  };
+
+  const handleVibeToggle = (vibeId) => {
+    const currentVibes = editedProfile.vibes || [];
+    const newVibes = currentVibes.includes(vibeId)
+      ? currentVibes.filter(v => v !== vibeId)
+      : [...currentVibes, vibeId];
+    setEditedProfile({ ...editedProfile, vibes: newVibes });
   };
 
   return (
@@ -685,8 +814,29 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile }) {
         </div>
 
         <div className="flex items-center justify-center mb-6">
-          <div className="w-24 h-24 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center text-white text-3xl font-bold">
-            {userProfile.name?.split(' ').map(n => n[0]).join('').toUpperCase() || '?'}
+          <div className="relative">
+            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center text-white text-3xl font-bold overflow-hidden">
+              {editedProfile.profile_picture ? (
+                <img src={editedProfile.profile_picture} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                <span>{userProfile.name?.charAt(0).toUpperCase() || '?'}</span>
+              )}
+            </div>
+            {isEditing && (
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute bottom-0 right-0 bg-orange-500 rounded-full p-2 hover:bg-orange-600 transition"
+              >
+                <Camera className="w-4 h-4 text-white" />
+              </button>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="hidden"
+            />
           </div>
         </div>
 
@@ -709,24 +859,24 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile }) {
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-zinc-400 mb-2">Email</label>
+            <label className="block text-sm font-semibold text-zinc-400 mb-2">Age</label>
             {isEditing ? (
               <input
-                type="email"
-                value={editedProfile.email}
-                onChange={(e) => setEditedProfile({ ...editedProfile, email: e.target.value })}
+                type="number"
+                value={editedProfile.age || ''}
+                onChange={(e) => setEditedProfile({ ...editedProfile, age: e.target.value })}
                 className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
+                placeholder="21+"
               />
             ) : (
               <div className="flex items-center gap-3 bg-zinc-800 rounded-xl px-4 py-3">
-                <Mail className="w-5 h-5 text-zinc-500" />
-                <span className="text-white">{userProfile.email}</span>
+                <span className="text-white">{userProfile.age || 'Not provided'}</span>
               </div>
             )}
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-zinc-400 mb-2">Phone</label>
+            <label className="block text-sm font-semibold text-zinc-400 mb-2">Phone (Optional)</label>
             {isEditing ? (
               <input
                 type="tel"
@@ -741,6 +891,65 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile }) {
               </div>
             )}
           </div>
+
+          {isEditing && (
+            <>
+              <div>
+                <label className="block text-sm font-semibold text-zinc-400 mb-2">What's your vibe?</label>
+                <div className="flex flex-wrap gap-2">
+                  {VIBE_OPTIONS.map(vibe => (
+                    <button
+                      key={vibe.id}
+                      onClick={() => handleVibeToggle(vibe.id)}
+                      className={`px-3 py-2 rounded-full text-sm font-semibold transition ${
+                        (editedProfile.vibes || []).includes(vibe.id)
+                          ? 'bg-orange-500 text-white'
+                          : 'bg-zinc-800 text-zinc-400'
+                      }`}
+                    >
+                      {vibe.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-zinc-400 mb-2">Bio (Optional)</label>
+                <textarea
+                  value={editedProfile.bio || ''}
+                  onChange={(e) => setEditedProfile({ ...editedProfile, bio: e.target.value })}
+                  className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500 resize-none"
+                  rows="3"
+                  placeholder="Tell us about yourself..."
+                />
+              </div>
+            </>
+          )}
+
+          {!isEditing && userProfile.bio && (
+            <div>
+              <label className="block text-sm font-semibold text-zinc-400 mb-2">Bio</label>
+              <div className="bg-zinc-800 rounded-xl px-4 py-3">
+                <p className="text-white text-sm">{userProfile.bio}</p>
+              </div>
+            </div>
+          )}
+
+          {!isEditing && userProfile.vibes && userProfile.vibes.length > 0 && (
+            <div>
+              <label className="block text-sm font-semibold text-zinc-400 mb-2">Vibes</label>
+              <div className="flex flex-wrap gap-2">
+                {userProfile.vibes.map(vibeId => {
+                  const vibe = VIBE_OPTIONS.find(v => v.id === vibeId);
+                  return vibe ? (
+                    <span key={vibeId} className="bg-orange-500 bg-opacity-20 text-orange-400 px-3 py-1 rounded-full text-sm font-semibold">
+                      {vibe.label}
+                    </span>
+                  ) : null;
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {isEditing && (
@@ -779,73 +988,182 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile }) {
 }
 
 function AuthScreen({ onAuth }) {
+  const [step, setStep] = useState(1);
   const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
+  const [age, setAge] = useState('');
   const [phone, setPhone] = useState('');
+  const [vibes, setVibes] = useState([]);
+  const [bio, setBio] = useState('');
+  const [profilePicture, setProfilePicture] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setProfilePicture(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleVibeToggle = (vibeId) => {
+    setVibes(prev =>
+      prev.includes(vibeId)
+        ? prev.filter(v => v !== vibeId)
+        : [...prev, vibeId]
+    );
+  };
 
   const handleSubmit = async () => {
-    if (!name || !email) {
-      alert('Please enter your name and email');
+    if (!name || !age) {
+      alert('Please enter your name and age');
       return;
     }
+
+    if (parseInt(age) < 21) {
+      alert('You must be 21 or older to use CrewQ');
+      return;
+    }
+
     setIsLoading(true);
-    await onAuth({ name, email, phone });
+    await onAuth({ name, age: parseInt(age), phone, vibes, bio, profile_picture: profilePicture });
     setIsLoading(false);
   };
 
   return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
-      <div className="bg-zinc-900 rounded-3xl p-8 max-w-md w-full">
+      <div className="bg-zinc-900 rounded-3xl p-8 max-w-md w-full max-h-[90vh] overflow-y-auto">
         <h1 className="text-3xl font-bold text-white mb-2">
           Crew<span className="text-orange-500">Q</span>
         </h1>
         <p className="text-zinc-400 mb-6">Dallas Nightlife, Solved</p>
 
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-semibold text-zinc-300 mb-2">Name</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
-              placeholder="Enter your name"
-            />
-          </div>
+        {step === 1 && (
+          <div className="space-y-4">
+            <div className="flex justify-center mb-4">
+              <div className="relative">
+                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center text-white text-3xl font-bold overflow-hidden">
+                  {profilePicture ? (
+                    <img src={profilePicture} alt="Profile" className="w-full h-full object-cover" />
+                  ) : (
+                    <Camera className="w-10 h-10" />
+                  )}
+                </div>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="absolute bottom-0 right-0 bg-orange-500 rounded-full p-2 hover:bg-orange-600 transition"
+                >
+                  <Camera className="w-4 h-4 text-white" />
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                />
+              </div>
+            </div>
 
-          <div>
-            <label className="block text-sm font-semibold text-zinc-300 mb-2">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
-              placeholder="your@email.com"
-            />
-          </div>
+            <div>
+              <label className="block text-sm font-semibold text-zinc-300 mb-2">First Name *</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
+                placeholder="Enter your first name"
+              />
+            </div>
 
-          <div>
-            <label className="block text-sm font-semibold text-zinc-300 mb-2">
-              Phone (Optional)
-            </label>
-            <input
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
-              placeholder="(555) 123-4567"
-            />
-          </div>
+            <div>
+              <label className="block text-sm font-semibold text-zinc-300 mb-2">Age * (21+)</label>
+              <input
+                type="number"
+                value={age}
+                onChange={(e) => setAge(e.target.value)}
+                className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
+                placeholder="Must be 21+"
+                min="21"
+              />
+            </div>
 
-          <button
-            onClick={handleSubmit}
-            disabled={isLoading}
-            className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold text-lg hover:shadow-lg transition disabled:opacity-50"
-          >
-            {isLoading ? 'Creating Account...' : 'Get Started'}
-          </button>
-        </div>
+            <div>
+              <label className="block text-sm font-semibold text-zinc-300 mb-2">
+                Phone (Optional)
+              </label>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
+                placeholder="(555) 123-4567"
+              />
+            </div>
+
+            <button
+              onClick={() => setStep(2)}
+              disabled={!name || !age || parseInt(age) < 21}
+              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold text-lg hover:shadow-lg transition disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-semibold text-zinc-300 mb-3">What's your vibe?</label>
+              <p className="text-xs text-zinc-500 mb-3">Select all that apply</p>
+              <div className="flex flex-wrap gap-2">
+                {VIBE_OPTIONS.map(vibe => (
+                  <button
+                    key={vibe.id}
+                    onClick={() => handleVibeToggle(vibe.id)}
+                    className={`px-3 py-2 rounded-full text-sm font-semibold transition ${
+                      vibes.includes(vibe.id)
+                        ? 'bg-orange-500 text-white'
+                        : 'bg-zinc-800 text-zinc-400'
+                    }`}
+                  >
+                    {vibe.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-zinc-300 mb-2">Bio (Optional)</label>
+              <textarea
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500 resize-none"
+                rows="3"
+                placeholder="Tell us about yourself..."
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setStep(1)}
+                className="flex-1 bg-zinc-800 text-white py-4 rounded-xl font-bold hover:bg-zinc-700 transition"
+              >
+                Back
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={isLoading}
+                className="flex-1 bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold text-lg hover:shadow-lg transition disabled:opacity-50"
+              >
+                {isLoading ? 'Creating...' : 'Get Started'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -863,6 +1181,9 @@ export default function App() {
   const [squads, setSquads] = useState([]);
   const [sharedEventId, setSharedEventId] = useState(null);
   const [showSharedEvent, setShowSharedEvent] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [showEventDetail, setShowEventDetail] = useState(false);
+  const [checkedInEvents, setCheckedInEvents] = useState([]);
 
   useEffect(() => {
     const script = document.createElement('script');
@@ -924,6 +1245,63 @@ export default function App() {
     window.history.replaceState({}, document.title, window.location.pathname);
   };
 
+  const handleEventClick = (event) => {
+    setSelectedEvent(event);
+    setShowEventDetail(true);
+  };
+
+  const handleCheckIn = async (event) => {
+    if (!supabaseClient || !userProfile) return;
+
+    try {
+      await supabaseClient
+        .from('event_checkins')
+        .insert([{
+          user_id: userProfile.id,
+          event_id: event.id
+        }]);
+
+      setCheckedInEvents(prev => [...prev, event.id]);
+      alert("You're checked in! Your crew will see you're here.");
+    } catch (error) {
+      console.error('Error checking in:', error);
+      alert('Error checking in. Please try again.');
+    }
+  };
+
+  const loadCheckedInEvents = async (userId) => {
+    if (!supabaseClient) return;
+    
+    try {
+      const { data, error } = await supabaseClient
+        .from('event_checkins')
+        .select('event_id')
+        .eq('user_id', userId);
+      
+      if (error) throw error;
+      setCheckedInEvents(data?.map(c => c.event_id) || []);
+    } catch (error) {
+      console.error('Error loading check-ins:', error);
+    }
+  };
+
+  const getCheckInCount = async (eventId) => {
+    if (!supabaseClient) return 0;
+    
+    try {
+      const { count, error } = await supabaseClient
+        .from('event_checkins')
+        .select('*', { count: 'exact', head: true })
+        .eq('event_id', eventId);
+      
+      if (error) throw error;
+      return count || 0;
+    } catch (error) {
+      console.error('Error getting check-in count:', error);
+      return 0;
+    }
+  };
+
   const checkAuth = async () => {
     const profileId = localStorage.getItem('crewq_user_id');
     if (profileId && supabaseClient) {
@@ -939,6 +1317,7 @@ export default function App() {
           await loadEvents();
           await loadCrewMembers(data.id);
           await loadSquads(data.id);
+          await loadCheckedInEvents(data.id);
         } else {
           localStorage.removeItem('crewq_user_id');
         }
@@ -953,37 +1332,28 @@ export default function App() {
     if (!supabaseClient) return;
     
     try {
-      const { data: existingUser } = await supabaseClient
+      const { data: newUser, error } = await supabaseClient
         .from('users')
-        .select('*')
-        .eq('email', profile.email)
+        .insert([{
+          name: profile.name,
+          age: profile.age,
+          phone: profile.phone,
+          vibes: profile.vibes,
+          bio: profile.bio,
+          profile_picture: profile.profile_picture
+        }])
+        .select()
         .single();
 
-      let userData;
-      if (existingUser) {
-        userData = existingUser;
-      } else {
-        const { data: newUser, error } = await supabaseClient
-          .from('users')
-          .insert([{
-            name: profile.name,
-            email: profile.email,
-            phone: profile.phone
-          }])
-          .select()
-          .single();
+      if (error) throw error;
 
-        if (error) throw error;
-        userData = newUser;
-      }
-
-      setUserProfile(userData);
-      localStorage.setItem('crewq_user_id', userData.id);
+      setUserProfile(newUser);
+      localStorage.setItem('crewq_user_id', newUser.id);
       await loadEvents();
-      await loadCrewMembers(userData.id);
-      await loadSquads(userData.id);
+      await loadCrewMembers(newUser.id);
+      await loadSquads(newUser.id);
     } catch (error) {
-      console.error('Error creating/logging in user:', error);
+      console.error('Error creating account:', error);
       alert('Error creating account. Please try again.');
     }
   };
@@ -996,8 +1366,11 @@ export default function App() {
         .from('users')
         .update({
           name: updatedProfile.name,
-          email: updatedProfile.email,
-          phone: updatedProfile.phone
+          age: updatedProfile.age,
+          phone: updatedProfile.phone,
+          vibes: updatedProfile.vibes,
+          bio: updatedProfile.bio,
+          profile_picture: updatedProfile.profile_picture
         })
         .eq('id', userProfile.id);
 
@@ -1047,6 +1420,7 @@ export default function App() {
         id: cm.friend?.id,
         name: cm.friend?.name,
         email: cm.friend?.email,
+        profile_picture: cm.friend?.profile_picture,
         online: false
       })) || [];
       
@@ -1224,7 +1598,7 @@ export default function App() {
           )}
 
           {currentTab === 'search' && <AIChat />}
-          {currentTab === 'events' && <CalendarView likedEvents={likedEvents} />}
+          {currentTab === 'events' && <CalendarView likedEvents={likedEvents} onEventClick={handleEventClick} />}
           {currentTab === 'crew' && <CrewTab squads={squads} onCreateSquad={handleCreateSquad} />}
           {currentTab === 'profile' && (
             <ProfileTab 
@@ -1271,6 +1645,17 @@ export default function App() {
             eventId={sharedEventId}
             onJoinCrew={handleJoinFromSharedLink}
             onClose={handleCloseSharedEvent}
+          />
+        )}
+
+        {showEventDetail && selectedEvent && (
+          <EventDetailModal
+            event={selectedEvent}
+            onClose={() => setShowEventDetail(false)}
+            onCheckIn={handleCheckIn}
+            isCheckedIn={checkedInEvents.includes(selectedEvent.id)}
+            checkInCount={0}
+            userProfile={userProfile}
           />
         )}
       </div>
