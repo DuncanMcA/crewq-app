@@ -83,6 +83,12 @@ function EventCard({ event, onSwipe, style }) {
             {event.category?.replace('-', ' ') || 'Event'}
           </div>
 
+          {event.age_restricted && (
+            <div className="absolute top-4 right-4 bg-red-500 text-white px-3 py-1 rounded-full text-xs font-bold">
+              21+
+            </div>
+          )}
+
           {dragOffset < -50 && (
             <div className="absolute inset-0 flex items-center justify-center bg-red-500 bg-opacity-20">
               <div className="bg-red-500 rounded-full p-4">
@@ -99,7 +105,7 @@ function EventCard({ event, onSwipe, style }) {
           )}
         </div>
 
-        <div className="p-6">
+        <div className="p-6 pb-20">
           <h2 className="text-2xl font-bold text-white mb-2">{event.name}</h2>
           <p className="text-zinc-400 text-sm mb-4">{event.description}</p>
           
@@ -155,6 +161,12 @@ function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount
           <div className="absolute top-4 left-4 bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase">
             {event.category?.replace('-', ' ') || 'Event'}
           </div>
+
+          {event.age_restricted && (
+            <div className="absolute top-4 right-14 bg-red-500 text-white px-3 py-1 rounded-full text-xs font-bold">
+              21+
+            </div>
+          )}
         </div>
 
         <div className="p-6">
@@ -423,9 +435,9 @@ function SharedEventView({ eventId, onJoinCrew, onClose }) {
   );
 }
 
-function AIChat() {
+function AIChat({ userProfile }) {
   const [messages, setMessages] = useState([
-    { role: 'assistant', content: "Hey! I'm your Dallas nightlife assistant. Ask me about events, venues, or what to do tonight!" }
+    { role: 'assistant', content: `Hey ${userProfile?.name || 'there'}! I'm your Dallas nightlife assistant. I can help you find events based on your vibes, recommend venues, or answer questions about what's happening tonight!` }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -444,6 +456,17 @@ function AIChat() {
     setIsLoading(true);
 
     try {
+      // Build context about the user
+      const userContext = userProfile ? `
+User Info:
+- Name: ${userProfile.name}
+- Age: ${userProfile.age || 'Not specified'}
+- Vibes: ${userProfile.vibes?.map(v => VIBE_OPTIONS.find(vo => vo.id === v)?.label).join(', ') || 'Not specified'}
+- Bio: ${userProfile.bio || 'Not provided'}
+
+Use this info to personalize recommendations.
+      ` : '';
+
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
@@ -456,7 +479,19 @@ function AIChat() {
             role: msg.role,
             content: msg.content
           })),
-          system: 'You are a knowledgeable Dallas nightlife assistant. Help users find events, venues, and activities in Dallas. Be friendly, concise, and provide specific recommendations. Focus on Deep Ellum, Uptown, Lower Greenville, and other popular Dallas nightlife areas.'
+          system: `You are a knowledgeable and enthusiastic Dallas nightlife assistant helping users discover the best events and venues. 
+
+${userContext}
+
+Your expertise includes:
+- Deep Ellum: Live music venues, dive bars, punk/indie scene, The Rustic, Club Dada, Trees
+- Uptown: Upscale bars, rooftop lounges, Happiest Hour, The Whippersnapper, Citizen
+- Lower Greenville: Craft cocktails, neighborhood bars, Sundown at Granada, The Foundry
+- Design District: Trendy spots, cocktail bars, Midnight Rambler, Sassetta
+- Knox-Henderson: Wine bars, date spots, Barcadia, The Ginger Man
+- West Village: Walkable bar scene, patios, The Rustic, Citizen
+
+Be friendly, concise, and enthusiastic. Give specific recommendations based on the user's vibes and preferences. Include venue names, neighborhoods, and what makes each spot special. Keep responses conversational and helpful - you're like a local friend giving insider tips!`
         })
       });
 
@@ -482,12 +517,12 @@ function AIChat() {
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {messages.map((msg, idx) => (
           <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+            <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${
               msg.role === 'user' 
                 ? 'bg-orange-500 text-white' 
                 : 'bg-zinc-800 text-white'
             }`}>
-              <p className="text-sm">{msg.content}</p>
+              <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
             </div>
           </div>
         ))}
@@ -512,13 +547,13 @@ function AIChat() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Ask about events..."
-            className="flex-1 bg-zinc-800 text-white rounded-full px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
+            placeholder="Ask about events, venues, or what to do tonight..."
+            className="flex-1 bg-zinc-800 text-white rounded-full px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500 text-sm"
           />
           <button
             onClick={handleSend}
             disabled={!input.trim() || isLoading}
-            className="bg-orange-500 text-white rounded-full w-12 h-12 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+            className="bg-orange-500 text-white rounded-full w-12 h-12 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-orange-600 transition"
           >
             <Send className="w-5 h-5" />
           </button>
@@ -866,7 +901,7 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile }) {
                 value={editedProfile.age || ''}
                 onChange={(e) => setEditedProfile({ ...editedProfile, age: e.target.value })}
                 className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
-                placeholder="21+"
+                placeholder="Your age"
               />
             ) : (
               <div className="flex items-center gap-3 bg-zinc-800 rounded-xl px-4 py-3">
@@ -994,20 +1029,7 @@ function AuthScreen({ onAuth }) {
   const [phone, setPhone] = useState('');
   const [vibes, setVibes] = useState([]);
   const [bio, setBio] = useState('');
-  const [profilePicture, setProfilePicture] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const fileInputRef = useRef(null);
-
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setProfilePicture(reader.result);
-    };
-    reader.readAsDataURL(file);
-  };
 
   const handleVibeToggle = (vibeId) => {
     setVibes(prev =>
@@ -1018,18 +1040,13 @@ function AuthScreen({ onAuth }) {
   };
 
   const handleSubmit = async () => {
-    if (!name || !age) {
-      alert('Please enter your name and age');
-      return;
-    }
-
-    if (parseInt(age) < 21) {
-      alert('You must be 21 or older to use CrewQ');
+    if (!name) {
+      alert('Please enter your name');
       return;
     }
 
     setIsLoading(true);
-    await onAuth({ name, age: parseInt(age), phone, vibes, bio, profile_picture: profilePicture });
+    await onAuth({ name, age: age ? parseInt(age) : null, phone, vibes, bio, profile_picture: null });
     setIsLoading(false);
   };
 
@@ -1043,31 +1060,6 @@ function AuthScreen({ onAuth }) {
 
         {step === 1 && (
           <div className="space-y-4">
-            <div className="flex justify-center mb-4">
-              <div className="relative">
-                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center text-white text-3xl font-bold overflow-hidden">
-                  {profilePicture ? (
-                    <img src={profilePicture} alt="Profile" className="w-full h-full object-cover" />
-                  ) : (
-                    <Camera className="w-10 h-10" />
-                  )}
-                </div>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="absolute bottom-0 right-0 bg-orange-500 rounded-full p-2 hover:bg-orange-600 transition"
-                >
-                  <Camera className="w-4 h-4 text-white" />
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  className="hidden"
-                />
-              </div>
-            </div>
-
             <div>
               <label className="block text-sm font-semibold text-zinc-300 mb-2">First Name *</label>
               <input
@@ -1080,14 +1072,13 @@ function AuthScreen({ onAuth }) {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-zinc-300 mb-2">Age * (21+)</label>
+              <label className="block text-sm font-semibold text-zinc-300 mb-2">Age (Optional)</label>
               <input
                 type="number"
                 value={age}
                 onChange={(e) => setAge(e.target.value)}
                 className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
-                placeholder="Must be 21+"
-                min="21"
+                placeholder="Your age"
               />
             </div>
 
@@ -1106,7 +1097,7 @@ function AuthScreen({ onAuth }) {
 
             <button
               onClick={() => setStep(2)}
-              disabled={!name || !age || parseInt(age) < 21}
+              disabled={!name}
               className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold text-lg hover:shadow-lg transition disabled:opacity-50"
             >
               Next
@@ -1329,23 +1320,32 @@ export default function App() {
   };
 
   const handleAuth = async (profile) => {
-    if (!supabaseClient) return;
+    if (!supabaseClient) {
+      alert('Database connection error. Please refresh the page.');
+      return;
+    }
     
     try {
+      const newUserData = {
+        name: profile.name
+      };
+
+      if (profile.age) newUserData.age = profile.age;
+      if (profile.phone) newUserData.phone = profile.phone;
+      if (profile.vibes && profile.vibes.length > 0) newUserData.vibes = profile.vibes;
+      if (profile.bio) newUserData.bio = profile.bio;
+
       const { data: newUser, error } = await supabaseClient
         .from('users')
-        .insert([{
-          name: profile.name,
-          age: profile.age,
-          phone: profile.phone,
-          vibes: profile.vibes,
-          bio: profile.bio,
-          profile_picture: profile.profile_picture
-        }])
+        .insert([newUserData])
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Insert error:', error);
+        alert('Database error: ' + error.message);
+        return;
+      }
 
       setUserProfile(newUser);
       localStorage.setItem('crewq_user_id', newUser.id);
@@ -1354,7 +1354,7 @@ export default function App() {
       await loadSquads(newUser.id);
     } catch (error) {
       console.error('Error creating account:', error);
-      alert('Error creating account. Please try again.');
+      alert('Error creating account: ' + error.message);
     }
   };
 
@@ -1556,7 +1556,7 @@ export default function App() {
                   <p className="text-zinc-400">Check back later for more events</p>
                 </div>
               ) : (
-                <div className="relative h-[500px]">
+                <div className="relative h-[580px]">
                   {events.slice(currentIndex, currentIndex + 2).reverse().map((event, idx) => (
                     <EventCard
                       key={event.id}
@@ -1570,26 +1570,26 @@ export default function App() {
                     />
                   ))}
 
-                  <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 flex items-center gap-4 z-20">
+                  <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex items-center gap-4 z-20">
                     <button
                       onClick={() => handleSwipe('left')}
-                      className="w-14 h-14 rounded-full bg-zinc-800 bg-opacity-90 backdrop-blur-sm border border-zinc-700 flex items-center justify-center hover:bg-red-500 hover:border-red-500 transition shadow-lg"
+                      className="w-16 h-16 rounded-full bg-zinc-800 bg-opacity-90 backdrop-blur-sm border border-zinc-700 flex items-center justify-center hover:bg-red-500 hover:border-red-500 transition shadow-lg"
                     >
-                      <X className="w-6 h-6 text-white" />
+                      <X className="w-7 h-7 text-white" />
                     </button>
 
                     <button
                       onClick={() => setShowShareModal(true)}
-                      className="w-14 h-14 rounded-full bg-zinc-800 bg-opacity-90 backdrop-blur-sm border border-zinc-700 flex items-center justify-center hover:bg-orange-500 hover:border-orange-500 transition shadow-lg"
+                      className="w-16 h-16 rounded-full bg-zinc-800 bg-opacity-90 backdrop-blur-sm border border-zinc-700 flex items-center justify-center hover:bg-orange-500 hover:border-orange-500 transition shadow-lg"
                     >
-                      <Share2 className="w-6 h-6 text-white" />
+                      <Share2 className="w-7 h-7 text-white" />
                     </button>
 
                     <button
                       onClick={() => handleSwipe('right')}
-                      className="w-14 h-14 rounded-full bg-zinc-800 bg-opacity-90 backdrop-blur-sm border border-zinc-700 flex items-center justify-center hover:bg-emerald-500 hover:border-emerald-500 transition shadow-lg"
+                      className="w-16 h-16 rounded-full bg-zinc-800 bg-opacity-90 backdrop-blur-sm border border-zinc-700 flex items-center justify-center hover:bg-emerald-500 hover:border-emerald-500 transition shadow-lg"
                     >
-                      <Heart className="w-6 h-6 text-white" />
+                      <Heart className="w-7 h-7 text-white" />
                     </button>
                   </div>
                 </div>
@@ -1597,7 +1597,7 @@ export default function App() {
             </div>
           )}
 
-          {currentTab === 'search' && <AIChat />}
+          {currentTab === 'search' && <AIChat userProfile={userProfile} />}
           {currentTab === 'events' && <CalendarView likedEvents={likedEvents} onEventClick={handleEventClick} />}
           {currentTab === 'crew' && <CrewTab squads={squads} onCreateSquad={handleCreateSquad} />}
           {currentTab === 'profile' && (
