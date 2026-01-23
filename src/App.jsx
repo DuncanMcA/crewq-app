@@ -2123,20 +2123,38 @@ const loadSquads = async (userId) => {
     }
   };
 
-  const loadAllSquads = async () => {
+ const loadAllSquads = async () => {
     if (!supabaseClient) return;
     
     try {
-      const { data, error } = await supabaseClient
+      // First get solo-friendly squads
+      const { data: squadsData, error: squadsError } = await supabaseClient
         .from('squads')
-        .select('*, event:events(*)')
+        .select('*')
         .eq('is_solo_friendly', true)
         .order('created_at', { ascending: false });
       
-      if (error) throw error;
-      setAllSquads(data || []);
+      if (squadsError) throw squadsError;
+
+      // Then get events for those squads
+      const squadWithEvents = await Promise.all(
+        (squadsData || []).map(async (squad) => {
+          if (squad.event_id) {
+            const { data: eventData } = await supabaseClient
+              .from('events')
+              .select('*')
+              .eq('id', squad.event_id)
+              .single();
+            return { ...squad, event: eventData };
+          }
+          return squad;
+        })
+      );
+      
+      setAllSquads(squadWithEvents);
     } catch (error) {
       console.error('Error loading all squads:', error);
+      setAllSquads([]);
     }
   };
 
