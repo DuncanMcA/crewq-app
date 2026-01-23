@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Heart, X, Share2, Bell, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle, Trash2, Eye, EyeOff, Shield, Sparkles, ExternalLink, Globe, UtensilsCrossed } from 'lucide-react';
+import { Heart, X, Share2, Bell, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle, Trash2, Eye, EyeOff, Shield, Sparkles, ExternalLink, Globe, UtensilsCrossed, Award, Trophy, Star, Flame, Music, Mic, Beer, Coffee, Utensils, Sunrise, Moon, Key, Crown, Zap, Target } from 'lucide-react';
 
 const SUPABASE_URL = 'https://nwrglwfobtvqqrdemoag.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im53cmdsd2ZvYnR2cXFyZGVtb2FnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkwMDYyMDUsImV4cCI6MjA4NDU4MjIwNX0.tNwEmzXnes_r7HrOhD3iO3YgN7rP9LW4nmGM46cfI8M';
@@ -11,6 +11,79 @@ const initSupabase = () => {
     supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   }
 };
+
+// Badge/Award System
+const BADGES = [
+  // Getting Started Badges
+  { id: 'first-checkin', name: 'First Steps', description: 'Check in to your first event', icon: '👟', category: 'getting-started', requirement: { type: 'checkins', count: 1 }, points: 10 },
+  { id: 'profile-complete', name: 'Looking Good', description: 'Complete your profile with bio and vibes', icon: '✨', category: 'getting-started', requirement: { type: 'profile-complete' }, points: 15 },
+  { id: 'first-squad', name: 'Squad Leader', description: 'Create your first squad', icon: '👑', category: 'getting-started', requirement: { type: 'squads-created', count: 1 }, points: 20 },
+  { id: 'first-share', name: 'Spread the Word', description: 'Share an event with friends', icon: '📢', category: 'getting-started', requirement: { type: 'shares', count: 1 }, points: 10 },
+  
+  // Check-in Milestone Badges
+  { id: 'checkin-5', name: 'Regular', description: 'Check in to 5 events', icon: '🎯', category: 'milestones', requirement: { type: 'checkins', count: 5 }, points: 25 },
+  { id: 'checkin-10', name: 'Local Legend', description: 'Check in to 10 events', icon: '⭐', category: 'milestones', requirement: { type: 'checkins', count: 10 }, points: 50 },
+  { id: 'checkin-25', name: 'Dallas Veteran', description: 'Check in to 25 events', icon: '🏆', category: 'milestones', requirement: { type: 'checkins', count: 25 }, points: 100 },
+  { id: 'checkin-50', name: 'Nightlife Pro', description: 'Check in to 50 events', icon: '💎', category: 'milestones', requirement: { type: 'checkins', count: 50 }, points: 200 },
+  { id: 'checkin-100', name: 'Dallas Royalty', description: 'Check in to 100 events', icon: '👸', category: 'milestones', requirement: { type: 'checkins', count: 100 }, points: 500 },
+  
+  // Streak Badges
+  { id: 'streak-3', name: 'Hot Streak', description: 'Check in 3 days in a row', icon: '🔥', category: 'streaks', requirement: { type: 'streak', count: 3 }, points: 30 },
+  { id: 'streak-7', name: 'Week Warrior', description: 'Check in 7 days in a row', icon: '⚡', category: 'streaks', requirement: { type: 'streak', count: 7 }, points: 75 },
+  { id: 'streak-14', name: 'Unstoppable', description: 'Check in 14 days in a row', icon: '🚀', category: 'streaks', requirement: { type: 'streak', count: 14 }, points: 150 },
+  { id: 'streak-30', name: 'Month of Madness', description: 'Check in 30 days in a row', icon: '🌟', category: 'streaks', requirement: { type: 'streak', count: 30 }, points: 300 },
+  
+  // Event Type Badges
+  { id: 'karaoke-king', name: 'Karaoke King', description: 'Check in to 3 karaoke nights', icon: '🎤', category: 'event-types', requirement: { type: 'category-checkins', category: 'karaoke', count: 3 }, points: 40 },
+  { id: 'trivia-master', name: 'Trivia Master', description: 'Check in to 3 trivia nights', icon: '🧠', category: 'event-types', requirement: { type: 'category-checkins', category: 'trivia', count: 3 }, points: 40 },
+  { id: 'live-music-lover', name: 'Music Lover', description: 'Check in to 5 live music events', icon: '🎸', category: 'event-types', requirement: { type: 'category-checkins', category: 'live-music', count: 5 }, points: 50 },
+  { id: 'happy-hour-hero', name: 'Happy Hour Hero', description: 'Check in to 5 happy hours', icon: '🍻', category: 'event-types', requirement: { type: 'category-checkins', category: 'happy-hour', count: 5 }, points: 50 },
+  { id: 'rooftop-regular', name: 'Rooftop Regular', description: 'Check in to 3 rooftop events', icon: '🌆', category: 'event-types', requirement: { type: 'category-checkins', category: 'rooftop', count: 3 }, points: 40 },
+  { id: 'dance-machine', name: 'Dance Machine', description: 'Check in to 5 dancing events', icon: '💃', category: 'event-types', requirement: { type: 'category-checkins', category: 'dancing', count: 5 }, points: 50 },
+  { id: 'sports-fanatic', name: 'Sports Fanatic', description: 'Check in to 5 sports bar events', icon: '🏈', category: 'event-types', requirement: { type: 'category-checkins', category: 'sports-bars', count: 5 }, points: 50 },
+  { id: 'foodie-explorer', name: 'Foodie Explorer', description: 'Check in to 5 foodie events', icon: '🍽️', category: 'event-types', requirement: { type: 'category-checkins', category: 'foodie', count: 5 }, points: 50 },
+  { id: 'comedy-fan', name: 'Comedy Fan', description: 'Check in to 3 comedy shows', icon: '😂', category: 'event-types', requirement: { type: 'category-checkins', category: 'comedy', count: 3 }, points: 40 },
+  { id: 'concert-goer', name: 'Concert Goer', description: 'Check in to 5 concerts', icon: '🎵', category: 'event-types', requirement: { type: 'category-checkins', category: 'concerts', count: 5 }, points: 50 },
+  
+  // Social Badges
+  { id: 'social-butterfly', name: 'Social Butterfly', description: 'Join 5 different squads', icon: '🦋', category: 'social', requirement: { type: 'squads-joined', count: 5 }, points: 60 },
+  { id: 'crew-builder', name: 'Crew Builder', description: 'Create 3 squads', icon: '🏗️', category: 'social', requirement: { type: 'squads-created', count: 3 }, points: 50 },
+  { id: 'solo-adventurer', name: 'Solo Adventurer', description: 'Check in solo to 5 events', icon: '🎒', category: 'social', requirement: { type: 'solo-checkins', count: 5 }, points: 40 },
+  { id: 'open-to-all', name: 'Open to All', description: 'Create a solo-friendly squad', icon: '🤝', category: 'social', requirement: { type: 'solo-squad-created' }, points: 25 },
+  { id: 'friend-magnet', name: 'Friend Magnet', description: 'Have 10 people join your squads', icon: '🧲', category: 'social', requirement: { type: 'squad-members-total', count: 10 }, points: 75 },
+  
+  // Time-based Badges
+  { id: 'early-bird', name: 'Early Bird', description: 'Check in to 3 brunch/morning events', icon: '🌅', category: 'time-based', requirement: { type: 'time-checkins', time: 'morning', count: 3 }, points: 35 },
+  { id: 'night-owl', name: 'Night Owl', description: 'Check in after 11 PM 5 times', icon: '🦉', category: 'time-based', requirement: { type: 'time-checkins', time: 'late-night', count: 5 }, points: 45 },
+  { id: 'weekend-warrior', name: 'Weekend Warrior', description: 'Check in on 10 weekends', icon: '🎉', category: 'time-based', requirement: { type: 'weekend-checkins', count: 10 }, points: 60 },
+  
+  // Neighborhood Explorer Badges
+  { id: 'deep-ellum-regular', name: 'Deep Ellum Regular', description: 'Check in to 5 Deep Ellum events', icon: '🎨', category: 'neighborhoods', requirement: { type: 'neighborhood-checkins', neighborhood: 'Deep Ellum', count: 5 }, points: 45 },
+  { id: 'uptown-explorer', name: 'Uptown Explorer', description: 'Check in to 5 Uptown events', icon: '🏙️', category: 'neighborhoods', requirement: { type: 'neighborhood-checkins', neighborhood: 'Uptown', count: 5 }, points: 45 },
+  { id: 'bishop-arts-lover', name: 'Bishop Arts Lover', description: 'Check in to 5 Bishop Arts events', icon: '🎭', category: 'neighborhoods', requirement: { type: 'neighborhood-checkins', neighborhood: 'Bishop Arts', count: 5 }, points: 45 },
+  { id: 'downtown-dweller', name: 'Downtown Dweller', description: 'Check in to 5 Downtown events', icon: '🌃', category: 'neighborhoods', requirement: { type: 'neighborhood-checkins', neighborhood: 'Downtown', count: 5 }, points: 45 },
+  { id: 'neighborhood-hopper', name: 'Neighborhood Hopper', description: 'Check in to events in 5 different neighborhoods', icon: '🗺️', category: 'neighborhoods', requirement: { type: 'unique-neighborhoods', count: 5 }, points: 75 },
+  
+  // Special Badges
+  { id: 'trendsetter', name: 'Trendsetter', description: 'Be first to check in to a new event', icon: '🌟', category: 'special', requirement: { type: 'first-checkin' }, points: 50 },
+  { id: 'variety-seeker', name: 'Variety Seeker', description: 'Check in to 8 different event categories', icon: '🎲', category: 'special', requirement: { type: 'unique-categories', count: 8 }, points: 80 },
+  { id: 'event-suggester', name: 'Event Suggester', description: 'Suggest an event that gets added', icon: '💡', category: 'special', requirement: { type: 'suggestion-approved' }, points: 100 },
+  
+  // Ultimate Badge - Key to the City
+  { id: 'key-to-city', name: 'Key to the City', description: 'Earn 15 other badges to unlock the ultimate Dallas award', icon: '🔑', category: 'ultimate', requirement: { type: 'badges-earned', count: 15 }, points: 1000, isUltimate: true }
+];
+
+const BADGE_CATEGORIES = [
+  { id: 'getting-started', name: 'Getting Started', icon: '🚀' },
+  { id: 'milestones', name: 'Milestones', icon: '🏆' },
+  { id: 'streaks', name: 'Streaks', icon: '🔥' },
+  { id: 'event-types', name: 'Event Types', icon: '🎭' },
+  { id: 'social', name: 'Social', icon: '👥' },
+  { id: 'time-based', name: 'Time Based', icon: '⏰' },
+  { id: 'neighborhoods', name: 'Neighborhoods', icon: '📍' },
+  { id: 'special', name: 'Special', icon: '✨' },
+  { id: 'ultimate', name: 'Ultimate', icon: '🔑' }
+];
 
 const VIBE_OPTIONS = [
   { id: 'live-music', label: '🎸 Live Music', icon: '🎸' },
@@ -1839,6 +1912,234 @@ function CrewTab({ squads, onCreateSquad }) {
   );
 }
 
+function AwardsTab({ userProfile, userBadges, userStats }) {
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedBadge, setSelectedBadge] = useState(null);
+  
+  const earnedBadgeIds = userBadges || [];
+  const earnedCount = earnedBadgeIds.length;
+  const totalBadges = BADGES.length;
+  const totalPoints = BADGES.filter(b => earnedBadgeIds.includes(b.id)).reduce((sum, b) => sum + b.points, 0);
+  
+  // Progress towards Key to the City
+  const keyToCity = BADGES.find(b => b.id === 'key-to-city');
+  const keyProgress = Math.min(earnedCount, keyToCity?.requirement?.count || 15);
+  
+  const filteredBadges = selectedCategory === 'all' 
+    ? BADGES 
+    : BADGES.filter(b => b.category === selectedCategory);
+
+  const getBadgeProgress = (badge) => {
+    if (earnedBadgeIds.includes(badge.id)) return 100;
+    
+    const stats = userStats || {};
+    const req = badge.requirement;
+    
+    switch (req.type) {
+      case 'checkins':
+        return Math.min(100, ((stats.totalCheckins || 0) / req.count) * 100);
+      case 'squads-created':
+        return Math.min(100, ((stats.squadsCreated || 0) / req.count) * 100);
+      case 'squads-joined':
+        return Math.min(100, ((stats.squadsJoined || 0) / req.count) * 100);
+      case 'streak':
+        return Math.min(100, ((stats.currentStreak || 0) / req.count) * 100);
+      case 'category-checkins':
+        const catCheckins = stats.categoryCheckins?.[req.category] || 0;
+        return Math.min(100, (catCheckins / req.count) * 100);
+      case 'badges-earned':
+        return Math.min(100, (earnedCount / req.count) * 100);
+      default:
+        return 0;
+    }
+  };
+
+  return (
+    <div className="p-4 pb-8">
+      {/* Header with Total Points */}
+      <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-3xl p-6 mb-6 text-center">
+        <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-3">
+          <Trophy className="w-8 h-8 text-white" />
+        </div>
+        <h2 className="text-2xl font-bold text-white mb-1">Your Awards</h2>
+        <p className="text-orange-100 mb-4">{earnedCount} of {totalBadges} badges earned</p>
+        
+        <div className="bg-white bg-opacity-20 rounded-xl p-4">
+          <div className="text-3xl font-bold text-white mb-1">{totalPoints}</div>
+          <div className="text-orange-100 text-sm">Total Points</div>
+        </div>
+      </div>
+
+      {/* Key to the City Progress */}
+      <div className="bg-zinc-900 rounded-3xl p-6 mb-6">
+        <div className="flex items-center gap-4 mb-4">
+          <div className={`w-14 h-14 rounded-full flex items-center justify-center text-2xl ${
+            earnedBadgeIds.includes('key-to-city') 
+              ? 'bg-gradient-to-br from-yellow-400 to-yellow-600' 
+              : 'bg-zinc-800'
+          }`}>
+            🔑
+          </div>
+          <div className="flex-1">
+            <h3 className="text-white font-bold text-lg">Key to the City</h3>
+            <p className="text-zinc-400 text-sm">Earn 15 badges to unlock</p>
+          </div>
+          <div className="text-right">
+            <div className="text-2xl font-bold text-orange-500">{keyProgress}/15</div>
+          </div>
+        </div>
+        
+        <div className="w-full bg-zinc-800 rounded-full h-3">
+          <div 
+            className="bg-gradient-to-r from-orange-500 to-yellow-500 h-3 rounded-full transition-all duration-500"
+            style={{ width: `${(keyProgress / 15) * 100}%` }}
+          />
+        </div>
+        
+        {earnedBadgeIds.includes('key-to-city') && (
+          <div className="mt-4 text-center">
+            <span className="text-yellow-400 font-bold">🎉 Congratulations! You have the Key to the City! 🎉</span>
+          </div>
+        )}
+      </div>
+
+      {/* Category Filter */}
+      <div className="mb-6 overflow-x-auto pb-2 -mx-4 px-4">
+        <div className="flex gap-2 min-w-max">
+          <button
+            onClick={() => setSelectedCategory('all')}
+            className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
+              selectedCategory === 'all'
+                ? 'bg-orange-500 text-white'
+                : 'bg-zinc-800 text-zinc-400'
+            }`}
+          >
+            All ({totalBadges})
+          </button>
+          {BADGE_CATEGORIES.map(cat => {
+            const catBadges = BADGES.filter(b => b.category === cat.id);
+            const earnedInCat = catBadges.filter(b => earnedBadgeIds.includes(b.id)).length;
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setSelectedCategory(cat.id)}
+                className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
+                  selectedCategory === cat.id
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-zinc-800 text-zinc-400'
+                }`}
+              >
+                {cat.icon} {cat.name} ({earnedInCat}/{catBadges.length})
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Badges Grid */}
+      <div className="grid grid-cols-3 gap-3">
+        {filteredBadges.map(badge => {
+          const isEarned = earnedBadgeIds.includes(badge.id);
+          const progress = getBadgeProgress(badge);
+          
+          return (
+            <button
+              key={badge.id}
+              onClick={() => setSelectedBadge(badge)}
+              className={`relative p-4 rounded-2xl transition-all ${
+                isEarned 
+                  ? 'bg-gradient-to-br from-zinc-800 to-zinc-900 border-2 border-orange-500' 
+                  : 'bg-zinc-900 border-2 border-zinc-800 opacity-60'
+              }`}
+            >
+              <div className={`text-3xl mb-2 ${!isEarned && 'grayscale opacity-50'}`}>
+                {badge.icon}
+              </div>
+              <div className={`text-xs font-semibold truncate ${isEarned ? 'text-white' : 'text-zinc-500'}`}>
+                {badge.name}
+              </div>
+              
+              {!isEarned && progress > 0 && (
+                <div className="absolute bottom-2 left-2 right-2">
+                  <div className="w-full bg-zinc-800 rounded-full h-1">
+                    <div 
+                      className="bg-orange-500 h-1 rounded-full"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+              
+              {isEarned && (
+                <div className="absolute -top-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center">
+                  <Check className="w-3 h-3 text-white" />
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Badge Detail Modal */}
+      {selectedBadge && (
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 rounded-3xl max-w-sm w-full p-6 text-center">
+            <button 
+              onClick={() => setSelectedBadge(null)}
+              className="absolute top-4 right-4 text-zinc-400 hover:text-white"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            
+            <div className={`w-24 h-24 rounded-full flex items-center justify-center text-5xl mx-auto mb-4 ${
+              earnedBadgeIds.includes(selectedBadge.id)
+                ? 'bg-gradient-to-br from-orange-500 to-orange-600'
+                : 'bg-zinc-800 grayscale'
+            }`}>
+              {selectedBadge.icon}
+            </div>
+            
+            <h3 className="text-xl font-bold text-white mb-2">{selectedBadge.name}</h3>
+            <p className="text-zinc-400 mb-4">{selectedBadge.description}</p>
+            
+            <div className="flex items-center justify-center gap-2 mb-4">
+              <Star className="w-4 h-4 text-yellow-500" />
+              <span className="text-yellow-500 font-bold">{selectedBadge.points} points</span>
+            </div>
+            
+            {earnedBadgeIds.includes(selectedBadge.id) ? (
+              <div className="bg-emerald-500 bg-opacity-20 border border-emerald-500 rounded-xl p-4">
+                <CheckCircle className="w-6 h-6 text-emerald-500 mx-auto mb-2" />
+                <span className="text-emerald-400 font-semibold">Badge Earned!</span>
+              </div>
+            ) : (
+              <div className="bg-zinc-800 rounded-xl p-4">
+                <div className="text-zinc-400 text-sm mb-2">Progress</div>
+                <div className="w-full bg-zinc-700 rounded-full h-2 mb-2">
+                  <div 
+                    className="bg-orange-500 h-2 rounded-full transition-all"
+                    style={{ width: `${getBadgeProgress(selectedBadge)}%` }}
+                  />
+                </div>
+                <div className="text-zinc-500 text-xs">
+                  {Math.round(getBadgeProgress(selectedBadge))}% complete
+                </div>
+              </div>
+            )}
+            
+            <button
+              onClick={() => setSelectedBadge(null)}
+              className="mt-4 w-full bg-zinc-800 text-white py-3 rounded-xl font-semibold hover:bg-zinc-700 transition"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProfileTab({ userProfile, onLogout, onUpdateProfile }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedProfile, setEditedProfile] = useState(userProfile);
@@ -2382,6 +2683,8 @@ export default function App() {
   const [likedEventsRefresh, setLikedEventsRefresh] = useState(0);
   const [likedEvents, setLikedEvents] = useState([]);
   const [showSuggestionModal, setShowSuggestionModal] = useState(false);
+  const [userBadges, setUserBadges] = useState([]);
+  const [userStats, setUserStats] = useState({});
 
   // Load liked events from localStorage
   useEffect(() => {
@@ -2391,6 +2694,140 @@ export default function App() {
     };
     loadLikedEvents();
   }, [likedEventsRefresh]);
+
+  // Load user badges and stats
+  useEffect(() => {
+    if (userProfile?.id) {
+      loadUserBadges(userProfile.id);
+      loadUserStats(userProfile.id);
+    }
+  }, [userProfile?.id]);
+
+  const loadUserBadges = async (userId) => {
+    if (!supabaseClient) return;
+    try {
+      const { data } = await supabaseClient
+        .from('user_badges')
+        .select('badge_id')
+        .eq('user_id', userId);
+      setUserBadges(data?.map(b => b.badge_id) || []);
+    } catch (error) {
+      console.error('Error loading badges:', error);
+    }
+  };
+
+  const loadUserStats = async (userId) => {
+    if (!supabaseClient) return;
+    try {
+      // Get total check-ins
+      const { count: totalCheckins } = await supabaseClient
+        .from('event_checkins')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId);
+
+      // Get squads created
+      const { count: squadsCreated } = await supabaseClient
+        .from('squads')
+        .select('*', { count: 'exact', head: true })
+        .eq('created_by', userId);
+
+      // Get category check-ins
+      const { data: checkinData } = await supabaseClient
+        .from('event_checkins')
+        .select('event_id, events(category)')
+        .eq('user_id', userId);
+
+      const categoryCheckins = {};
+      checkinData?.forEach(c => {
+        const cat = c.events?.category;
+        if (cat) {
+          categoryCheckins[cat] = (categoryCheckins[cat] || 0) + 1;
+        }
+      });
+
+      setUserStats({
+        totalCheckins: totalCheckins || 0,
+        squadsCreated: squadsCreated || 0,
+        categoryCheckins
+      });
+    } catch (error) {
+      console.error('Error loading stats:', error);
+    }
+  };
+
+  const awardBadge = async (badgeId) => {
+    if (!supabaseClient || !userProfile) return;
+    if (userBadges.includes(badgeId)) return;
+
+    try {
+      await supabaseClient
+        .from('user_badges')
+        .insert([{ user_id: userProfile.id, badge_id: badgeId }]);
+      
+      setUserBadges(prev => [...prev, badgeId]);
+      
+      const badge = BADGES.find(b => b.id === badgeId);
+      if (badge) {
+        alert(`🎉 Badge Earned: ${badge.name}!\n${badge.description}`);
+      }
+    } catch (error) {
+      console.error('Error awarding badge:', error);
+    }
+  };
+
+  const checkAndAwardBadges = async () => {
+    if (!userProfile) return;
+    
+    const stats = userStats;
+    
+    // Check check-in milestones
+    if (stats.totalCheckins >= 1 && !userBadges.includes('first-checkin')) {
+      await awardBadge('first-checkin');
+    }
+    if (stats.totalCheckins >= 5 && !userBadges.includes('checkin-5')) {
+      await awardBadge('checkin-5');
+    }
+    if (stats.totalCheckins >= 10 && !userBadges.includes('checkin-10')) {
+      await awardBadge('checkin-10');
+    }
+    if (stats.totalCheckins >= 25 && !userBadges.includes('checkin-25')) {
+      await awardBadge('checkin-25');
+    }
+    
+    // Check squad badges
+    if (stats.squadsCreated >= 1 && !userBadges.includes('first-squad')) {
+      await awardBadge('first-squad');
+    }
+    if (stats.squadsCreated >= 3 && !userBadges.includes('crew-builder')) {
+      await awardBadge('crew-builder');
+    }
+    
+    // Check category badges
+    const catCheckins = stats.categoryCheckins || {};
+    if ((catCheckins['karaoke'] || 0) >= 3 && !userBadges.includes('karaoke-king')) {
+      await awardBadge('karaoke-king');
+    }
+    if ((catCheckins['trivia'] || 0) >= 3 && !userBadges.includes('trivia-master')) {
+      await awardBadge('trivia-master');
+    }
+    if ((catCheckins['live-music'] || 0) >= 5 && !userBadges.includes('live-music-lover')) {
+      await awardBadge('live-music-lover');
+    }
+    if ((catCheckins['happy-hour'] || 0) >= 5 && !userBadges.includes('happy-hour-hero')) {
+      await awardBadge('happy-hour-hero');
+    }
+    
+    // Check Key to the City
+    if (userBadges.length >= 15 && !userBadges.includes('key-to-city')) {
+      await awardBadge('key-to-city');
+    }
+  };
+
+  useEffect(() => {
+    if (userStats.totalCheckins !== undefined) {
+      checkAndAwardBadges();
+    }
+  }, [userStats]);
 
   useEffect(() => {
     const script = document.createElement('script');
@@ -2483,16 +2920,54 @@ export default function App() {
   const handleCheckIn = async (event) => {
     if (!supabaseClient || !userProfile) return;
 
+    // Check if event has started (time-based check)
+    const now = new Date();
+    const eventDate = new Date(event.date);
+    
+    // Parse event time (e.g., "8:00 PM - 2:00 AM")
+    if (event.time) {
+      const timeMatch = event.time.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+      if (timeMatch) {
+        let hours = parseInt(timeMatch[1]);
+        const minutes = parseInt(timeMatch[2]);
+        const period = timeMatch[3].toUpperCase();
+        
+        if (period === 'PM' && hours !== 12) hours += 12;
+        if (period === 'AM' && hours === 12) hours = 0;
+        
+        eventDate.setHours(hours, minutes, 0, 0);
+      }
+    }
+    
+    // Allow check-in starting 30 minutes before event
+    const checkInStart = new Date(eventDate.getTime() - 30 * 60 * 1000);
+    
+    if (now < checkInStart) {
+      const timeUntil = Math.ceil((checkInStart - now) / (1000 * 60));
+      if (timeUntil > 60) {
+        const hours = Math.floor(timeUntil / 60);
+        alert(`This event hasn't started yet! Check-in opens in ${hours} hour${hours > 1 ? 's' : ''}.`);
+      } else {
+        alert(`This event hasn't started yet! Check-in opens in ${timeUntil} minutes.`);
+      }
+      return;
+    }
+
     try {
       await supabaseClient
         .from('event_checkins')
         .insert([{
           user_id: userProfile.id,
-          event_id: event.id
+          event_id: event.id,
+          event_category: event.category || null
         }]);
 
       setCheckedInEvents(prev => [...prev, event.id]);
-      alert("You're checked in! Your crew will see you're here.");
+      
+      // Refresh stats to check for new badges
+      await loadUserStats(userProfile.id);
+      
+      alert("🎉 You're checked in! Your crew will see you're here.");
     } catch (error) {
       console.error('Error checking in:', error);
       alert('Error checking in. Please try again.');
@@ -3053,6 +3528,13 @@ const loadSquads = async (userId) => {
               userProfile={userProfile}
             />
           )}
+          {currentTab === 'awards' && (
+            <AwardsTab 
+              userProfile={userProfile}
+              userBadges={userBadges}
+              userStats={userStats}
+            />
+          )}
           {currentTab === 'profile' && (
             <ProfileTab 
               userProfile={userProfile} 
@@ -3063,22 +3545,22 @@ const loadSquads = async (userId) => {
         </div>
 
         {/* Fixed Bottom Navigation */}
-        <div className="fixed bottom-0 left-0 right-0 z-50 bg-zinc-900 border-t border-zinc-800 px-6 py-3 pb-safe">
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-zinc-900 border-t border-zinc-800 px-4 py-2 pb-safe">
           <div className="flex justify-around items-center max-w-md mx-auto">
             {[
               { id: 'discover', icon: Home, label: 'Discover' },
-              { id: 'search', icon: MessageCircle, label: 'Chat' },
               { id: 'events', icon: Calendar, label: 'Events' },
+              { id: 'awards', icon: Trophy, label: 'Awards' },
               { id: 'crew', icon: Users, label: 'Crew' },
               { id: 'profile', icon: User, label: 'Profile' }
             ].map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setCurrentTab(tab.id)}
-                className="flex flex-col items-center gap-1 py-1"
+                className="flex flex-col items-center gap-0.5 py-1 px-2"
               >
-                <tab.icon className={`w-6 h-6 ${currentTab === tab.id ? 'text-orange-500' : 'text-zinc-500'}`} />
-                <span className={`text-xs ${currentTab === tab.id ? 'text-orange-500' : 'text-zinc-500'}`}>
+                <tab.icon className={`w-5 h-5 ${currentTab === tab.id ? 'text-orange-500' : 'text-zinc-500'}`} />
+                <span className={`text-[10px] ${currentTab === tab.id ? 'text-orange-500' : 'text-zinc-500'}`}>
                   {tab.label}
                 </span>
               </button>
