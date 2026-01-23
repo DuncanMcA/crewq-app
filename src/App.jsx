@@ -1103,7 +1103,113 @@ function CalendarView({ likedEvents, onEventClick }) {
     return { daysInMonth, startingDayOfWeek };
   };
 
-  // Add this new component after the CalendarView component (around line 1400)
+  const getEventsForDate = (day) => {
+    const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    return likedEvents.filter(event => event.date === dateStr);
+  };
+
+  const { daysInMonth, startingDayOfWeek } = getDaysInMonth(currentDate);
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+  return (
+    <div className="p-4">
+      <div className="flex items-center justify-between mb-6">
+        <button
+          onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1))}
+          className="p-2 hover:bg-zinc-800 rounded-full transition"
+        >
+          <ChevronLeft className="w-6 h-6 text-white" />
+        </button>
+        <h2 className="text-xl font-bold text-white">
+          {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
+        </h2>
+        <button
+          onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1))}
+          className="p-2 hover:bg-zinc-800 rounded-full transition"
+        >
+          <ChevronRight className="w-6 h-6 text-white" />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-2 mb-2">
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+          <div key={day} className="text-center text-zinc-500 text-sm font-semibold py-2">
+            {day}
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-7 gap-2">
+        {Array.from({ length: startingDayOfWeek }).map((_, idx) => (
+          <div key={`empty-${idx}`} className="aspect-square" />
+        ))}
+        
+        {Array.from({ length: daysInMonth }).map((_, idx) => {
+          const day = idx + 1;
+          const events = getEventsForDate(day);
+          const hasEvents = events.length > 0;
+          const today = new Date();
+          const isToday = today.getDate() === day && 
+                         today.getMonth() === currentDate.getMonth() && 
+                         today.getFullYear() === currentDate.getFullYear();
+
+          return (
+            <button
+              key={day}
+              onClick={() => setSelectedDate(day)}
+              className={`aspect-square rounded-lg flex flex-col items-center justify-center transition ${
+                isToday ? 'bg-orange-500 text-white' :
+                hasEvents ? 'bg-zinc-800 text-white' :
+                'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'
+              }`}
+            >
+              <span className="text-sm font-semibold">{day}</span>
+              {hasEvents && (
+                <div className="flex gap-0.5 mt-1">
+                  {events.slice(0, 3).map((_, i) => (
+                    <div key={i} className="w-1 h-1 rounded-full bg-orange-500" />
+                  ))}
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {selectedDate && getEventsForDate(selectedDate).length > 0 && (
+        <div className="mt-6">
+          <h3 className="text-lg font-bold text-white mb-3">
+            Events on {monthNames[currentDate.getMonth()]} {selectedDate}
+          </h3>
+          <div className="space-y-3">
+            {getEventsForDate(selectedDate).map((event, idx) => (
+              <button
+                key={idx}
+                onClick={() => onEventClick(event)}
+                className="w-full bg-zinc-800 rounded-2xl p-4 hover:bg-zinc-700 transition text-left"
+              >
+                <h4 className="text-white font-semibold mb-1">{event.name}</h4>
+                <p className="text-zinc-400 text-sm mb-2">{event.venue}</p>
+                <div className="flex items-center gap-2 text-xs text-zinc-500">
+                  <Clock className="w-3 h-3" />
+                  <span>{event.time}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {likedEvents.length === 0 && (
+        <div className="text-center py-12">
+          <Calendar className="w-16 h-16 text-zinc-700 mx-auto mb-4" />
+          <p className="text-zinc-400">No saved events yet</p>
+          <p className="text-zinc-600 text-sm mt-2">Like events to add them to your calendar</p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function LiveEventsView({ events, onEventClick }) {
   const [liveEvents, setLiveEvents] = useState([]);
