@@ -1216,11 +1216,9 @@ function LiveEventsView({ events, onEventClick }) {
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
-    // Update current time every minute
     const timer = setInterval(() => {
       setCurrentTime(new Date());
-    }, 60000); // Update every minute
-
+    }, 60000);
     return () => clearInterval(timer);
   }, []);
 
@@ -1232,12 +1230,9 @@ function LiveEventsView({ events, onEventClick }) {
     const now = new Date();
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
-    const currentDay = now.toLocaleDateString('en-US', { weekday: 'long' });
 
     const live = events.filter(event => {
-      // Parse event time (assuming format like "8:00 PM - 2:00 AM")
       const timeMatch = event.time?.match(/(\d+):(\d+)\s*(AM|PM)\s*-\s*(\d+):(\d+)\s*(AM|PM)/);
-      
       if (!timeMatch) return false;
 
       let startHour = parseInt(timeMatch[1]);
@@ -1247,22 +1242,18 @@ function LiveEventsView({ events, onEventClick }) {
       const endMinute = parseInt(timeMatch[5]);
       const endPeriod = timeMatch[6];
 
-      // Convert to 24-hour format
       if (startPeriod === 'PM' && startHour !== 12) startHour += 12;
       if (startPeriod === 'AM' && startHour === 12) startHour = 0;
       if (endPeriod === 'PM' && endHour !== 12) endHour += 12;
       if (endPeriod === 'AM' && endHour === 12) endHour = 0;
 
-      // Handle events that go past midnight
       if (endHour < startHour) endHour += 24;
 
       const currentTimeInMinutes = currentHour * 60 + currentMinute;
       const startTimeInMinutes = startHour * 60 + startMinute;
       let endTimeInMinutes = endHour * 60 + endMinute;
 
-      // Check if event is happening now
       if (endHour >= 24) {
-        // Event goes past midnight
         return currentTimeInMinutes >= startTimeInMinutes || currentTimeInMinutes <= (endTimeInMinutes - 24 * 60);
       } else {
         return currentTimeInMinutes >= startTimeInMinutes && currentTimeInMinutes <= endTimeInMinutes;
@@ -1303,7 +1294,6 @@ function LiveEventsView({ events, onEventClick }) {
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-transparent" />
                 
-                {/* Live badge */}
                 <div className="absolute top-3 left-3 flex items-center gap-2 bg-red-500 text-white px-3 py-1.5 rounded-full">
                   <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
                   <span className="text-xs font-bold uppercase">Live Now</span>
@@ -1352,7 +1342,6 @@ function LiveEventsView({ events, onEventClick }) {
         </div>
       )}
 
-      {/* Current time display */}
       <div className="mt-6 text-center text-zinc-500 text-sm">
         Updated: {currentTime.toLocaleTimeString('en-US', { 
           hour: 'numeric', 
@@ -1360,114 +1349,6 @@ function LiveEventsView({ events, onEventClick }) {
           hour12: true 
         })}
       </div>
-    </div>
-  );
-}
-
-  const getEventsForDate = (day) => {
-    const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    return likedEvents.filter(event => event.date === dateStr);
-  };
-
-  const { daysInMonth, startingDayOfWeek } = getDaysInMonth(currentDate);
-  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-
-  return (
-    <div className="p-4">
-      <div className="flex items-center justify-between mb-6">
-        <button
-          onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1))}
-          className="p-2 hover:bg-zinc-800 rounded-full transition"
-        >
-          <ChevronLeft className="w-6 h-6 text-white" />
-        </button>
-        <h2 className="text-xl font-bold text-white">
-          {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
-        </h2>
-        <button
-          onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1))}
-          className="p-2 hover:bg-zinc-800 rounded-full transition"
-        >
-          <ChevronRight className="w-6 h-6 text-white" />
-        </button>
-      </div>
-
-      <div className="grid grid-cols-7 gap-2 mb-2">
-        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-          <div key={day} className="text-center text-zinc-500 text-sm font-semibold py-2">
-            {day}
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-7 gap-2">
-        {Array.from({ length: startingDayOfWeek }).map((_, idx) => (
-          <div key={`empty-${idx}`} className="aspect-square" />
-        ))}
-        
-        {Array.from({ length: daysInMonth }).map((_, idx) => {
-          const day = idx + 1;
-          const events = getEventsForDate(day);
-          const hasEvents = events.length > 0;
-          const today = new Date();
-          const isToday = today.getDate() === day && 
-                         today.getMonth() === currentDate.getMonth() && 
-                         today.getFullYear() === currentDate.getFullYear();
-
-          return (
-            <button
-              key={day}
-              onClick={() => setSelectedDate(day)}
-              className={`aspect-square rounded-lg flex flex-col items-center justify-center transition ${
-                isToday ? 'bg-orange-500 text-white' :
-                hasEvents ? 'bg-zinc-800 text-white' :
-                'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'
-              }`}
-            >
-              <span className="text-sm font-semibold">{day}</span>
-              {hasEvents && (
-                <div className="flex gap-0.5 mt-1">
-                  {events.slice(0, 3).map((_, i) => (
-                    <div key={i} className="w-1 h-1 rounded-full bg-orange-500" />
-                  ))}
-                </div>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {selectedDate && getEventsForDate(selectedDate).length > 0 && (
-        <div className="mt-6">
-          <h3 className="text-lg font-bold text-white mb-3">
-            Events on {monthNames[currentDate.getMonth()]} {selectedDate}
-          </h3>
-          <div className="space-y-3">
-            {getEventsForDate(selectedDate).map((event, idx) => (
-              <button
-                key={idx}
-                onClick={() => onEventClick(event)}
-                className="w-full bg-zinc-800 rounded-2xl p-4 hover:bg-zinc-700 transition text-left"
-              >
-                <h4 className="text-white font-semibold mb-1">{event.name}</h4>
-                <p className="text-zinc-400 text-sm mb-2">{event.venue}</p>
-                <div className="flex items-center gap-2 text-xs text-zinc-500">
-                  <Clock className="w-3 h-3" />
-                  <span>{event.time}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {likedEvents.length === 0 && (
-        <div className="text-center py-12">
-          <Calendar className="w-16 h-16 text-zinc-700 mx-auto mb-4" />
-          <p className="text-zinc-400">No saved events yet</p>
-          <p className="text-zinc-600 text-sm mt-2">Like events to add them to your calendar</p>
-        </div>
-      )}
     </div>
   );
 }
@@ -2591,7 +2472,7 @@ const loadSquads = async (userId) => {
 
         <div className="fixed bottom-0 left-1/2 transform -translate-x-1/2 w-full max-w-md bg-zinc-900 border-t border-zinc-800 px-6 py-4">
           <div className="flex justify-around items-center">
-          {[
+            {[
               { id: 'discover', icon: Home, label: 'Discover' },
               { id: 'live', icon: Clock, label: 'Live' },
               { id: 'events', icon: Calendar, label: 'Events' },
