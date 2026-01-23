@@ -1387,7 +1387,10 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile }) {
   }, []);
 
   useEffect(() => {
-    setEditedProfile(userProfile);
+    setEditedProfile({
+      ...userProfile,
+      profile_visibility: userProfile.profile_visibility || 'squad_only'
+    });
   }, [userProfile]);
 
   const loadSquadsCount = async () => {
@@ -1650,41 +1653,52 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile }) {
         </div>
         
         <div className="space-y-4">
+          {/* Toggle Row */}
           <div className="flex items-center justify-between p-4 bg-zinc-800 rounded-xl">
             <div className="flex-1">
               <p className="text-white font-semibold mb-1">Profile Visibility</p>
               <p className="text-zinc-400 text-sm">
-                {(editedProfile.profile_visibility || userProfile.profile_visibility) === 'public' 
-                  ? 'Your profile is visible to all solo users' 
+                {(isEditing ? editedProfile.profile_visibility : userProfile.profile_visibility) === 'public' 
+                  ? 'Anyone can see your profile in Solo mode' 
                   : 'Only squad members can see your profile'}
               </p>
             </div>
             <button
-              onClick={isEditing ? handlePrivacyToggle : undefined}
-              disabled={!isEditing}
-              className={`relative w-14 h-8 rounded-full transition ${
-                (editedProfile.profile_visibility || userProfile.profile_visibility) === 'public'
+              onClick={() => {
+                if (isEditing) {
+                  const currentVisibility = editedProfile.profile_visibility || 'squad_only';
+                  const newVisibility = currentVisibility === 'public' ? 'squad_only' : 'public';
+                  setEditedProfile({ ...editedProfile, profile_visibility: newVisibility });
+                }
+              }}
+              className={`relative w-14 h-8 rounded-full transition-colors duration-200 ${
+                (isEditing ? editedProfile.profile_visibility : userProfile.profile_visibility) === 'public'
                   ? 'bg-orange-500'
-                  : 'bg-zinc-700'
-              } ${!isEditing ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  : 'bg-zinc-600'
+              } ${!isEditing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
             >
               <div
-                className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full transition-transform ${
-                  (editedProfile.profile_visibility || userProfile.profile_visibility) === 'public'
-                    ? 'translate-x-6'
-                    : ''
+                className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow-md transition-all duration-200 ${
+                  (isEditing ? editedProfile.profile_visibility : userProfile.profile_visibility) === 'public'
+                    ? 'left-7'
+                    : 'left-1'
                 }`}
               />
             </button>
           </div>
 
-          <div className="flex items-center gap-3 p-4 bg-zinc-800 rounded-xl">
-            {(editedProfile.profile_visibility || userProfile.profile_visibility) === 'public' ? (
+          {/* Status Indicator */}
+          <div className={`flex items-center gap-3 p-4 rounded-xl ${
+            (isEditing ? editedProfile.profile_visibility : userProfile.profile_visibility) === 'public'
+              ? 'bg-emerald-500 bg-opacity-10 border border-emerald-500 border-opacity-30'
+              : 'bg-zinc-800'
+          }`}>
+            {(isEditing ? editedProfile.profile_visibility : userProfile.profile_visibility) === 'public' ? (
               <>
-                <Eye className="w-5 h-5 text-emerald-500" />
+                <Eye className="w-5 h-5 text-emerald-400" />
                 <div>
                   <p className="text-emerald-400 font-semibold">Public Profile</p>
-                  <p className="text-zinc-500 text-xs">Others can find you in Solo mode</p>
+                  <p className="text-emerald-400 text-opacity-70 text-xs">Solo users can see you're attending events</p>
                 </div>
               </>
             ) : (
