@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Heart, X, Share2, Bell, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle, Trash2, Eye, EyeOff, Shield } from 'lucide-react';
 
 const SUPABASE_URL = 'https://nwrglwfobtvqqrdemoag.supabase.co';
@@ -1875,6 +1875,16 @@ export default function App() {
   const [showSquadDetail, setShowSquadDetail] = useState(false);
   const [selectedSquad, setSelectedSquad] = useState(null);
   const [likedEventsRefresh, setLikedEventsRefresh] = useState(0);
+  const [likedEvents, setLikedEvents] = useState([]);
+
+  // Load liked events from localStorage
+  useEffect(() => {
+    const loadLikedEvents = () => {
+      const liked = JSON.parse(localStorage.getItem('crewq_liked') || '[]');
+      setLikedEvents(liked);
+    };
+    loadLikedEvents();
+  }, [likedEventsRefresh]);
 
   useEffect(() => {
     const script = document.createElement('script');
@@ -2382,10 +2392,6 @@ const loadSquads = async (userId) => {
   }
 
   const currentEvent = events[currentIndex];
-  // Recalculate likedEvents when refresh counter changes
-  const likedEvents = useMemo(() => {
-    return JSON.parse(localStorage.getItem('crewq_liked') || '[]');
-  }, [likedEventsRefresh]);
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">
