@@ -28,6 +28,7 @@ const VIBE_OPTIONS = [
   { id: 'games', label: '🎮 Games', icon: '🎮' },
   { id: 'concerts', label: '🎵 Concerts', icon: '🎵' },
   { id: 'comedy', label: '😂 Comedy', icon: '😂' }
+  { id: 'sunsets', label: '🌇 Sunsets', icon: '🌇' }
 ];
 
 function EventCard({ event, onSwipe, style }) {
