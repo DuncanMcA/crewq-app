@@ -949,7 +949,7 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile }) {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-zinc-400 mb-2">Bio (Optional)</label>
+                <label className="block text-sm font-semibold text-zinc-400 mb-2">Bio (Optional, but helps us connect you)</label>
                 <textarea
                   value={editedProfile.bio || ''}
                   onChange={(e) => setEditedProfile({ ...editedProfile, bio: e.target.value })}
