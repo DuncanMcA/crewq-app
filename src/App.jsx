@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Heart, X, Share2, Bell, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle } from 'lucide-react';
+import { Heart, X, Share2, Bell, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle, Trash2, Eye, EyeOff, Shield } from 'lucide-react';
 
 const SUPABASE_URL = 'https://nwrglwfobtvqqrdemoag.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im53cmdsd2ZvYnR2cXFyZGVtb2FnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkwMDYyMDUsImV4cCI6MjA4NDU4MjIwNX0.tNwEmzXnes_r7HrOhD3iO3YgN7rP9LW4nmGM46cfI8M';
@@ -1088,9 +1088,10 @@ Be friendly, concise, and enthusiastic. Give specific recommendations based on t
   );
 }
 
-function CalendarView({ likedEvents, onEventClick }) {
+function CalendarView({ likedEvents, onEventClick, onUnlikeEvent }) {
   const [currentDate, setCurrentDate] = useState(new Date(2026, 0, 1));
   const [selectedDate, setSelectedDate] = useState(null);
+  const [showAllLiked, setShowAllLiked] = useState(false);
 
   const getDaysInMonth = (date) => {
     const year = date.getFullYear();
@@ -1113,98 +1114,171 @@ function CalendarView({ likedEvents, onEventClick }) {
 
   return (
     <div className="p-4">
-      <div className="flex items-center justify-between mb-6">
+      {/* Toggle between Calendar and All Liked Events */}
+      <div className="flex gap-2 mb-6">
         <button
-          onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1))}
-          className="p-2 hover:bg-zinc-800 rounded-full transition"
+          onClick={() => setShowAllLiked(false)}
+          className={`flex-1 py-2 rounded-xl font-semibold transition ${
+            !showAllLiked ? 'bg-orange-500 text-white' : 'bg-zinc-800 text-zinc-400'
+          }`}
         >
-          <ChevronLeft className="w-6 h-6 text-white" />
+          Calendar
         </button>
-        <h2 className="text-xl font-bold text-white">
-          {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
-        </h2>
         <button
-          onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1))}
-          className="p-2 hover:bg-zinc-800 rounded-full transition"
+          onClick={() => setShowAllLiked(true)}
+          className={`flex-1 py-2 rounded-xl font-semibold transition ${
+            showAllLiked ? 'bg-orange-500 text-white' : 'bg-zinc-800 text-zinc-400'
+          }`}
         >
-          <ChevronRight className="w-6 h-6 text-white" />
+          All Liked ({likedEvents.length})
         </button>
       </div>
 
-      <div className="grid grid-cols-7 gap-2 mb-2">
-        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-          <div key={day} className="text-center text-zinc-500 text-sm font-semibold py-2">
-            {day}
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-7 gap-2">
-        {Array.from({ length: startingDayOfWeek }).map((_, idx) => (
-          <div key={`empty-${idx}`} className="aspect-square" />
-        ))}
-        
-        {Array.from({ length: daysInMonth }).map((_, idx) => {
-          const day = idx + 1;
-          const events = getEventsForDate(day);
-          const hasEvents = events.length > 0;
-          const today = new Date();
-          const isToday = today.getDate() === day && 
-                         today.getMonth() === currentDate.getMonth() && 
-                         today.getFullYear() === currentDate.getFullYear();
-
-          return (
+      {!showAllLiked ? (
+        <>
+          <div className="flex items-center justify-between mb-6">
             <button
-              key={day}
-              onClick={() => setSelectedDate(day)}
-              className={`aspect-square rounded-lg flex flex-col items-center justify-center transition ${
-                isToday ? 'bg-orange-500 text-white' :
-                hasEvents ? 'bg-zinc-800 text-white' :
-                'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'
-              }`}
+              onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1))}
+              className="p-2 hover:bg-zinc-800 rounded-full transition"
             >
-              <span className="text-sm font-semibold">{day}</span>
-              {hasEvents && (
-                <div className="flex gap-0.5 mt-1">
-                  {events.slice(0, 3).map((_, i) => (
-                    <div key={i} className="w-1 h-1 rounded-full bg-orange-500" />
-                  ))}
-                </div>
-              )}
+              <ChevronLeft className="w-6 h-6 text-white" />
             </button>
-          );
-        })}
-      </div>
+            <h2 className="text-xl font-bold text-white">
+              {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
+            </h2>
+            <button
+              onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1))}
+              className="p-2 hover:bg-zinc-800 rounded-full transition"
+            >
+              <ChevronRight className="w-6 h-6 text-white" />
+            </button>
+          </div>
 
-      {selectedDate && getEventsForDate(selectedDate).length > 0 && (
-        <div className="mt-6">
-          <h3 className="text-lg font-bold text-white mb-3">
-            Events on {monthNames[currentDate.getMonth()]} {selectedDate}
-          </h3>
-          <div className="space-y-3">
-            {getEventsForDate(selectedDate).map((event, idx) => (
-              <button
-                key={idx}
-                onClick={() => onEventClick(event)}
-                className="w-full bg-zinc-800 rounded-2xl p-4 hover:bg-zinc-700 transition text-left"
-              >
-                <h4 className="text-white font-semibold mb-1">{event.name}</h4>
-                <p className="text-zinc-400 text-sm mb-2">{event.venue}</p>
-                <div className="flex items-center gap-2 text-xs text-zinc-500">
-                  <Clock className="w-3 h-3" />
-                  <span>{event.time}</span>
-                </div>
-              </button>
+          <div className="grid grid-cols-7 gap-2 mb-2">
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+              <div key={day} className="text-center text-zinc-500 text-sm font-semibold py-2">
+                {day}
+              </div>
             ))}
           </div>
-        </div>
-      )}
 
-      {likedEvents.length === 0 && (
-        <div className="text-center py-12">
-          <Calendar className="w-16 h-16 text-zinc-700 mx-auto mb-4" />
-          <p className="text-zinc-400">No saved events yet</p>
-          <p className="text-zinc-600 text-sm mt-2">Like events to add them to your calendar</p>
+          <div className="grid grid-cols-7 gap-2">
+            {Array.from({ length: startingDayOfWeek }).map((_, idx) => (
+              <div key={`empty-${idx}`} className="aspect-square" />
+            ))}
+            
+            {Array.from({ length: daysInMonth }).map((_, idx) => {
+              const day = idx + 1;
+              const events = getEventsForDate(day);
+              const hasEvents = events.length > 0;
+              const today = new Date();
+              const isToday = today.getDate() === day && 
+                             today.getMonth() === currentDate.getMonth() && 
+                             today.getFullYear() === currentDate.getFullYear();
+
+              return (
+                <button
+                  key={day}
+                  onClick={() => setSelectedDate(day)}
+                  className={`aspect-square rounded-lg flex flex-col items-center justify-center transition ${
+                    isToday ? 'bg-orange-500 text-white' :
+                    hasEvents ? 'bg-zinc-800 text-white' :
+                    'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'
+                  }`}
+                >
+                  <span className="text-sm font-semibold">{day}</span>
+                  {hasEvents && (
+                    <div className="flex gap-0.5 mt-1">
+                      {events.slice(0, 3).map((_, i) => (
+                        <div key={i} className="w-1 h-1 rounded-full bg-orange-500" />
+                      ))}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {selectedDate && getEventsForDate(selectedDate).length > 0 && (
+            <div className="mt-6">
+              <h3 className="text-lg font-bold text-white mb-3">
+                Events on {monthNames[currentDate.getMonth()]} {selectedDate}
+              </h3>
+              <div className="space-y-3">
+                {getEventsForDate(selectedDate).map((event, idx) => (
+                  <div
+                    key={idx}
+                    className="bg-zinc-800 rounded-2xl p-4 flex items-center gap-3"
+                  >
+                    <button
+                      onClick={() => onEventClick(event)}
+                      className="flex-1 text-left"
+                    >
+                      <h4 className="text-white font-semibold mb-1">{event.name}</h4>
+                      <p className="text-zinc-400 text-sm mb-2">{event.venue}</p>
+                      <div className="flex items-center gap-2 text-xs text-zinc-500">
+                        <Clock className="w-3 h-3" />
+                        <span>{event.time}</span>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => onUnlikeEvent(event)}
+                      className="p-2 bg-red-500 bg-opacity-20 rounded-full hover:bg-opacity-40 transition"
+                    >
+                      <Trash2 className="w-4 h-4 text-red-500" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {likedEvents.length === 0 && (
+            <div className="text-center py-12">
+              <Calendar className="w-16 h-16 text-zinc-700 mx-auto mb-4" />
+              <p className="text-zinc-400">No saved events yet</p>
+              <p className="text-zinc-600 text-sm mt-2">Like events to add them to your calendar</p>
+            </div>
+          )}
+        </>
+      ) : (
+        /* All Liked Events List View */
+        <div className="space-y-3">
+          <h3 className="text-lg font-bold text-white mb-3">All Liked Events</h3>
+          {likedEvents.length > 0 ? (
+            likedEvents.map((event, idx) => (
+              <div
+                key={idx}
+                className="bg-zinc-800 rounded-2xl p-4 flex items-center gap-3"
+              >
+                <button
+                  onClick={() => onEventClick(event)}
+                  className="flex-1 text-left"
+                >
+                  <h4 className="text-white font-semibold mb-1">{event.name}</h4>
+                  <p className="text-zinc-400 text-sm mb-1">{event.venue}</p>
+                  <div className="flex items-center gap-3 text-xs text-zinc-500">
+                    <span>{event.date}</span>
+                    <span>•</span>
+                    <span>{event.time}</span>
+                  </div>
+                </button>
+                <button
+                  onClick={() => onUnlikeEvent(event)}
+                  className="p-2 bg-red-500 bg-opacity-20 rounded-full hover:bg-opacity-40 transition"
+                  title="Remove from liked"
+                >
+                  <Trash2 className="w-4 h-4 text-red-500" />
+                </button>
+              </div>
+            ))
+          ) : (
+            <div className="text-center py-12">
+              <Heart className="w-16 h-16 text-zinc-700 mx-auto mb-4" />
+              <p className="text-zinc-400">No liked events yet</p>
+              <p className="text-zinc-600 text-sm mt-2">Swipe right on events to like them</p>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1312,6 +1386,10 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile }) {
     loadSquadsCount();
   }, []);
 
+  useEffect(() => {
+    setEditedProfile(userProfile);
+  }, [userProfile]);
+
   const loadSquadsCount = async () => {
     if (!supabaseClient) return;
     try {
@@ -1345,6 +1423,10 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile }) {
     }
   };
 
+  const handleRemovePhoto = () => {
+    setEditedProfile({ ...editedProfile, profile_picture: null });
+  };
+
   const handleSave = async () => {
     await onUpdateProfile(editedProfile);
     setIsEditing(false);
@@ -1356,6 +1438,11 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile }) {
       ? currentVibes.filter(v => v !== vibeId)
       : [...currentVibes, vibeId];
     setEditedProfile({ ...editedProfile, vibes: newVibes });
+  };
+
+  const handlePrivacyToggle = () => {
+    const newVisibility = editedProfile.profile_visibility === 'public' ? 'squad_only' : 'public';
+    setEditedProfile({ ...editedProfile, profile_visibility: newVisibility });
   };
 
   return (
@@ -1390,12 +1477,24 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile }) {
               )}
             </div>
             {isEditing && (
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="absolute bottom-0 right-0 bg-orange-500 rounded-full p-2 hover:bg-orange-600 transition"
-              >
-                <Camera className="w-4 h-4 text-white" />
-              </button>
+              <div className="absolute -bottom-1 -right-1 flex gap-1">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="bg-orange-500 rounded-full p-2 hover:bg-orange-600 transition"
+                  title="Upload photo"
+                >
+                  <Camera className="w-4 h-4 text-white" />
+                </button>
+                {editedProfile.profile_picture && (
+                  <button
+                    onClick={handleRemovePhoto}
+                    className="bg-red-500 rounded-full p-2 hover:bg-red-600 transition"
+                    title="Remove photo"
+                  >
+                    <Trash2 className="w-4 h-4 text-white" />
+                  </button>
+                )}
+              </div>
             )}
             <input
               ref={fileInputRef}
@@ -1540,6 +1639,70 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile }) {
             <div className="text-3xl font-bold text-orange-500 mb-1">{squadsCount}</div>
             <div className="text-sm text-zinc-400">Squads</div>
           </div>
+        </div>
+      </div>
+
+      {/* Privacy Settings Section */}
+      <div className="bg-zinc-900 rounded-3xl p-6 mb-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Shield className="w-5 h-5 text-orange-500" />
+          <h3 className="text-lg font-bold text-white">Privacy Settings</h3>
+        </div>
+        
+        <div className="space-y-4">
+          <div className="flex items-center justify-between p-4 bg-zinc-800 rounded-xl">
+            <div className="flex-1">
+              <p className="text-white font-semibold mb-1">Profile Visibility</p>
+              <p className="text-zinc-400 text-sm">
+                {(editedProfile.profile_visibility || userProfile.profile_visibility) === 'public' 
+                  ? 'Your profile is visible to all solo users' 
+                  : 'Only squad members can see your profile'}
+              </p>
+            </div>
+            <button
+              onClick={isEditing ? handlePrivacyToggle : undefined}
+              disabled={!isEditing}
+              className={`relative w-14 h-8 rounded-full transition ${
+                (editedProfile.profile_visibility || userProfile.profile_visibility) === 'public'
+                  ? 'bg-orange-500'
+                  : 'bg-zinc-700'
+              } ${!isEditing ? 'opacity-60 cursor-not-allowed' : ''}`}
+            >
+              <div
+                className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full transition-transform ${
+                  (editedProfile.profile_visibility || userProfile.profile_visibility) === 'public'
+                    ? 'translate-x-6'
+                    : ''
+                }`}
+              />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-3 p-4 bg-zinc-800 rounded-xl">
+            {(editedProfile.profile_visibility || userProfile.profile_visibility) === 'public' ? (
+              <>
+                <Eye className="w-5 h-5 text-emerald-500" />
+                <div>
+                  <p className="text-emerald-400 font-semibold">Public Profile</p>
+                  <p className="text-zinc-500 text-xs">Others can find you in Solo mode</p>
+                </div>
+              </>
+            ) : (
+              <>
+                <EyeOff className="w-5 h-5 text-zinc-500" />
+                <div>
+                  <p className="text-zinc-300 font-semibold">Squad Only</p>
+                  <p className="text-zinc-500 text-xs">Only your squad members can see you</p>
+                </div>
+              </>
+            )}
+          </div>
+          
+          {!isEditing && (
+            <p className="text-zinc-500 text-xs text-center">
+              Tap the edit button above to change privacy settings
+            </p>
+          )}
         </div>
       </div>
 
@@ -1711,6 +1874,7 @@ export default function App() {
   const [showCreateSquad, setShowCreateSquad] = useState(false);
   const [showSquadDetail, setShowSquadDetail] = useState(false);
   const [selectedSquad, setSelectedSquad] = useState(null);
+  const [likedEventsRefresh, setLikedEventsRefresh] = useState(0);
 
   useEffect(() => {
     const script = document.createElement('script');
@@ -1775,6 +1939,29 @@ export default function App() {
   const handleEventClick = (event) => {
     setSelectedEvent(event);
     setShowEventDetail(true);
+  };
+
+  const handleUnlikeEvent = async (event) => {
+    // Remove from localStorage
+    const liked = JSON.parse(localStorage.getItem('crewq_liked') || '[]');
+    const updatedLiked = liked.filter(e => e.id !== event.id);
+    localStorage.setItem('crewq_liked', JSON.stringify(updatedLiked));
+
+    // Remove from Supabase
+    if (supabaseClient && userProfile) {
+      try {
+        await supabaseClient
+          .from('liked_events')
+          .delete()
+          .eq('user_id', userProfile.id)
+          .eq('event_id', event.id);
+      } catch (error) {
+        console.error('Error unliking event:', error);
+      }
+    }
+
+    // Force re-render by updating refresh counter
+    setLikedEventsRefresh(prev => prev + 1);
   };
 
   const handleCheckIn = async (event) => {
@@ -2015,7 +2202,8 @@ export default function App() {
           phone: updatedProfile.phone,
           vibes: updatedProfile.vibes,
           bio: updatedProfile.bio,
-          profile_picture: updatedProfile.profile_picture
+          profile_picture: updatedProfile.profile_picture,
+          profile_visibility: updatedProfile.profile_visibility || 'squad_only'
         })
         .eq('id', userProfile.id);
 
@@ -2194,7 +2382,10 @@ const loadSquads = async (userId) => {
   }
 
   const currentEvent = events[currentIndex];
-  const likedEvents = JSON.parse(localStorage.getItem('crewq_liked') || '[]');
+  // Recalculate likedEvents when refresh counter changes
+  const likedEvents = React.useMemo(() => {
+    return JSON.parse(localStorage.getItem('crewq_liked') || '[]');
+  }, [likedEventsRefresh]);
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">
@@ -2304,7 +2495,7 @@ const loadSquads = async (userId) => {
           )}
 
           {currentTab === 'search' && <AIChat userProfile={userProfile} />}
-          {currentTab === 'events' && <CalendarView likedEvents={likedEvents} onEventClick={handleEventClick} />}
+          {currentTab === 'events' && <CalendarView likedEvents={likedEvents} onEventClick={handleEventClick} onUnlikeEvent={handleUnlikeEvent} />}
           {currentTab === 'crew' && mode === 'crew' && (
             <CrewTab squads={squads} onCreateSquad={() => setShowCreateSquad(true)} />
           )}
