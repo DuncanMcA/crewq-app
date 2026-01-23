@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Heart, X, Share2, Bell, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle, Trash2, Eye, EyeOff, Shield } from 'lucide-react';
 
 const SUPABASE_URL = 'https://nwrglwfobtvqqrdemoag.supabase.co';
@@ -2383,7 +2383,7 @@ const loadSquads = async (userId) => {
 
   const currentEvent = events[currentIndex];
   // Recalculate likedEvents when refresh counter changes
-  const likedEvents = React.useMemo(() => {
+  const likedEvents = useMemo(() => {
     return JSON.parse(localStorage.getItem('crewq_liked') || '[]');
   }, [likedEventsRefresh]);
 
