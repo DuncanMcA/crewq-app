@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Heart, X, Share2, Bell, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle, Trash2, Eye, EyeOff, Shield } from 'lucide-react';
+import { Heart, X, Share2, Bell, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle, Trash2, Eye, EyeOff, Shield, Sparkles } from 'lucide-react';
 
 const SUPABASE_URL = 'https://nwrglwfobtvqqrdemoag.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im53cmdsd2ZvYnR2cXFyZGVtb2FnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkwMDYyMDUsImV4cCI6MjA4NDU4MjIwNX0.tNwEmzXnes_r7HrOhD3iO3YgN7rP9LW4nmGM46cfI8M';
@@ -30,6 +30,279 @@ const VIBE_OPTIONS = [
   { id: 'comedy', label: '😂 Comedy', icon: '😂' },
   { id: 'sunsets', label: '🌇 Sunsets', icon: '🌇' }
 ];
+
+const BIO_QUESTIONS = [
+  { id: 'cowboys', question: "Do you go to sports bars to watch Cowboys games?", tag: 'Cowboys fan' },
+  { id: 'rooftops', question: "Do you love rooftop bars when it's nice out?", tag: 'rooftop lover' },
+  { id: 'new-restaurants', question: "Are you down to hit up a new restaurant every month?", tag: 'foodie explorer' },
+  { id: 'drinks-weekly', question: "Do you go out for drinks at least twice a week?", tag: 'regular' },
+  { id: 'dive-bars', question: "Do you enjoy dive bars with a real local vibe?", tag: 'dive bar enthusiast' },
+  { id: 'happy-hour', question: "Are you into happy hour deals most weeks?", tag: 'happy hour hunter' },
+  { id: 'live-music-dj', question: "Do you like bars with live music or DJs on weekends?", tag: 'music lover' },
+  { id: 'breweries', question: "Do you go to breweries that have big patios?", tag: 'brewery hopper' },
+  { id: 'brunch', question: "Are you someone who loves bottomless brunch/mimosas?", tag: 'brunch enthusiast' },
+  { id: 'ufc', question: "Do you hit up bars to watch UFC or big fights?", tag: 'fight night fan' },
+  { id: 'cocktails', question: "Do you prefer cocktail bars over beer-and-shot spots?", tag: 'cocktail connoisseur' },
+  { id: 'solo', question: "Are you open to going to bars alone sometimes?", tag: 'solo adventurer' },
+  { id: 'patios', question: "Do you love patios year-round (even when it's chilly)?", tag: 'patio person' },
+  { id: 'try-food', question: "Do you go to restaurants mainly to try new food?", tag: 'culinary curious' },
+  { id: 'speakeasy', question: "Are you into speakeasy or hidden-bar vibes?", tag: 'speakeasy seeker' },
+  { id: 'trivia', question: "Do you attend trivia nights at bars regularly?", tag: 'trivia buff' },
+  { id: 'dog-friendly', question: "Do you like dog-friendly patios or beer gardens?", tag: 'dog-friendly fan' },
+  { id: 'late-night', question: "Do you go out for late-night eats after the bars close?", tag: 'late-night snacker' },
+  { id: 'group-hangs', question: "Are you down for group hangs at places with big tables?", tag: 'group hangout person' },
+  { id: 'soccer', question: "Do you enjoy watching soccer (Premier League, MLS, etc.) at bars?", tag: 'soccer fan' },
+  { id: 'lively', question: "Do you like places that get lively after 10 PM?", tag: 'night owl' },
+  { id: 'craft-beer', question: "Are you into craft beer spots or taprooms?", tag: 'craft beer lover' },
+  { id: 'comedy', question: "Do you go to comedy nights or open mics at bars?", tag: 'comedy fan' },
+  { id: 'cocktail-menu', question: "Do you love restaurants with killer cocktail menus?", tag: 'cocktail menu hunter' },
+  { id: 'favorites', question: "Are you someone who returns to the same few favorite spots over and over?", tag: 'loyal regular' }
+];
+
+const generateBioFromAnswers = (answers, userName) => {
+  const yesAnswers = Object.entries(answers).filter(([_, value]) => value === true);
+  const tags = yesAnswers.map(([id]) => BIO_QUESTIONS.find(q => q.id === id)?.tag).filter(Boolean);
+  
+  if (tags.length === 0) {
+    return `${userName} is new to the Dallas nightlife scene and ready to explore!`;
+  }
+  
+  // Group similar interests
+  const sports = tags.filter(t => ['Cowboys fan', 'fight night fan', 'soccer fan'].includes(t));
+  const drinks = tags.filter(t => ['cocktail connoisseur', 'craft beer lover', 'happy hour hunter', 'cocktail menu hunter'].includes(t));
+  const food = tags.filter(t => ['foodie explorer', 'culinary curious', 'late-night snacker', 'brunch enthusiast'].includes(t));
+  const vibes = tags.filter(t => ['rooftop lover', 'dive bar enthusiast', 'speakeasy seeker', 'patio person', 'brewery hopper'].includes(t));
+  const social = tags.filter(t => ['solo adventurer', 'group hangout person', 'loyal regular', 'regular'].includes(t));
+  const entertainment = tags.filter(t => ['music lover', 'trivia buff', 'comedy fan', 'night owl'].includes(t));
+  const lifestyle = tags.filter(t => ['dog-friendly fan'].includes(t));
+
+  let bio = '';
+  
+  // Opening
+  if (social.includes('regular')) {
+    bio = `${userName} is a Dallas nightlife regular who's always down for a good time. `;
+  } else if (social.includes('solo adventurer')) {
+    bio = `${userName} isn't afraid to explore Dallas solo and loves meeting new people. `;
+  } else {
+    bio = `${userName} loves exploring what Dallas has to offer. `;
+  }
+
+  // Drinks preference
+  if (drinks.length > 0) {
+    if (drinks.includes('cocktail connoisseur') || drinks.includes('cocktail menu hunter')) {
+      bio += "Craft cocktails are definitely their thing. ";
+    } else if (drinks.includes('craft beer lover')) {
+      bio += "You'll find them checking out the latest craft beer spots. ";
+    } else if (drinks.includes('happy hour hunter')) {
+      bio += "They know all the best happy hour deals in town. ";
+    }
+  }
+
+  // Venue vibes
+  if (vibes.length > 0) {
+    const vibeList = [];
+    if (vibes.includes('rooftop lover')) vibeList.push('rooftops');
+    if (vibes.includes('patio person')) vibeList.push('patios');
+    if (vibes.includes('dive bar enthusiast')) vibeList.push('dive bars');
+    if (vibes.includes('speakeasy seeker')) vibeList.push('speakeasies');
+    if (vibes.includes('brewery hopper')) vibeList.push('breweries');
+    
+    if (vibeList.length > 0) {
+      bio += `They're drawn to ${vibeList.slice(0, 2).join(' and ')}. `;
+    }
+  }
+
+  // Sports
+  if (sports.length > 0) {
+    if (sports.includes('Cowboys fan')) {
+      bio += "Game days mean finding the perfect sports bar for Cowboys action. ";
+    } else if (sports.includes('fight night fan')) {
+      bio += "They never miss a big UFC fight night. ";
+    } else if (sports.includes('soccer fan')) {
+      bio += "Early mornings for Premier League? Count them in. ";
+    }
+  }
+
+  // Food
+  if (food.length > 0) {
+    if (food.includes('foodie explorer') || food.includes('culinary curious')) {
+      bio += "Always hunting for the next great restaurant to try. ";
+    }
+    if (food.includes('brunch enthusiast')) {
+      bio += "Weekend brunch is a must. ";
+    }
+    if (food.includes('late-night snacker')) {
+      bio += "Late-night eats after the bars? Absolutely. ";
+    }
+  }
+
+  // Entertainment
+  if (entertainment.length > 0) {
+    if (entertainment.includes('music lover')) {
+      bio += "Live music and DJ nights are their jam. ";
+    }
+    if (entertainment.includes('trivia buff')) {
+      bio += "Trivia nights are a weekly tradition. ";
+    }
+    if (entertainment.includes('comedy fan')) {
+      bio += "Comedy nights and open mics are always on the radar. ";
+    }
+    if (entertainment.includes('night owl')) {
+      bio += "The party really starts after 10 PM for them. ";
+    }
+  }
+
+  // Lifestyle
+  if (lifestyle.includes('dog-friendly fan')) {
+    bio += "Bonus points if the patio is dog-friendly! ";
+  }
+
+  // Social style closing
+  if (social.includes('group hangout person')) {
+    bio += "They love bringing the crew together at spots with big tables.";
+  } else if (social.includes('loyal regular')) {
+    bio += "Once they find a spot they love, they keep coming back.";
+  }
+
+  return bio.trim();
+};
+
+function BioBuilderModal({ onClose, onSaveBio, userName, currentAnswers }) {
+  const [answers, setAnswers] = useState(currentAnswers || {});
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [showPreview, setShowPreview] = useState(false);
+
+  const handleAnswer = (answer) => {
+    const question = BIO_QUESTIONS[currentQuestionIndex];
+    setAnswers({ ...answers, [question.id]: answer });
+    
+    if (currentQuestionIndex < BIO_QUESTIONS.length - 1) {
+      setCurrentQuestionIndex(currentQuestionIndex + 1);
+    } else {
+      setShowPreview(true);
+    }
+  };
+
+  const handleBack = () => {
+    if (currentQuestionIndex > 0) {
+      setCurrentQuestionIndex(currentQuestionIndex - 1);
+    }
+  };
+
+  const generatedBio = generateBioFromAnswers(answers, userName);
+  const progress = ((currentQuestionIndex + 1) / BIO_QUESTIONS.length) * 100;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+      <div className="bg-zinc-900 rounded-3xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+        {!showPreview ? (
+          <>
+            {/* Header */}
+            <div className="p-6 border-b border-zinc-800">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-white">Bio Builder</h2>
+                <button onClick={onClose} className="text-zinc-400 hover:text-white">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              
+              {/* Progress bar */}
+              <div className="w-full bg-zinc-800 rounded-full h-2">
+                <div 
+                  className="bg-orange-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <p className="text-zinc-500 text-sm mt-2">
+                Question {currentQuestionIndex + 1} of {BIO_QUESTIONS.length}
+              </p>
+            </div>
+
+            {/* Question */}
+            <div className="p-6">
+              <p className="text-white text-lg font-medium mb-8 text-center">
+                {BIO_QUESTIONS[currentQuestionIndex].question}
+              </p>
+
+              {/* Answer buttons */}
+              <div className="flex gap-4 mb-6">
+                <button
+                  onClick={() => handleAnswer(true)}
+                  className="flex-1 bg-emerald-500 bg-opacity-20 border-2 border-emerald-500 text-emerald-400 py-4 rounded-xl font-bold text-lg hover:bg-opacity-30 transition"
+                >
+                  👍 Yes
+                </button>
+                <button
+                  onClick={() => handleAnswer(false)}
+                  className="flex-1 bg-zinc-800 border-2 border-zinc-700 text-zinc-400 py-4 rounded-xl font-bold text-lg hover:bg-zinc-700 transition"
+                >
+                  👎 No
+                </button>
+              </div>
+
+              {/* Back button */}
+              {currentQuestionIndex > 0 && (
+                <button
+                  onClick={handleBack}
+                  className="w-full text-zinc-500 hover:text-white transition"
+                >
+                  ← Back to previous question
+                </button>
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Preview Header */}
+            <div className="p-6 border-b border-zinc-800">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-white">Your Bio Preview</h2>
+                <button onClick={onClose} className="text-zinc-400 hover:text-white">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+
+            {/* Bio Preview */}
+            <div className="p-6">
+              <div className="bg-zinc-800 rounded-xl p-4 mb-6">
+                <p className="text-white leading-relaxed">{generatedBio}</p>
+              </div>
+
+              <div className="space-y-3">
+                <button
+                  onClick={() => {
+                    onSaveBio(generatedBio, answers);
+                    onClose();
+                  }}
+                  className="w-full bg-orange-500 text-white py-4 rounded-xl font-bold hover:bg-orange-600 transition"
+                >
+                  Save This Bio
+                </button>
+                <button
+                  onClick={() => {
+                    setCurrentQuestionIndex(0);
+                    setAnswers({});
+                    setShowPreview(false);
+                  }}
+                  className="w-full bg-zinc-800 text-zinc-300 py-4 rounded-xl font-bold hover:bg-zinc-700 transition"
+                >
+                  Start Over
+                </button>
+                <button
+                  onClick={() => setShowPreview(false)}
+                  className="w-full text-zinc-500 hover:text-white transition"
+                >
+                  ← Go back and edit answers
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function EventCard({ event, onSwipe, style }) {
   const [dragStart, setDragStart] = useState(0);
@@ -1381,6 +1654,7 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile }) {
   const likedEvents = JSON.parse(localStorage.getItem('crewq_liked') || '[]');
   const [squadsCount, setSquadsCount] = useState(0);
   const fileInputRef = useRef(null);
+  const [showBioBuilder, setShowBioBuilder] = useState(false);
 
   useEffect(() => {
     loadSquadsCount();
@@ -1392,6 +1666,12 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile }) {
       profile_visibility: userProfile.profile_visibility || 'squad_only'
     });
   }, [userProfile]);
+
+  const handleSaveBio = async (bio, bioAnswers) => {
+    const updatedProfile = { ...editedProfile, bio, bio_answers: bioAnswers };
+    setEditedProfile(updatedProfile);
+    await onUpdateProfile(updatedProfile);
+  };
 
   const loadSquadsCount = async () => {
     if (!supabaseClient) return;
@@ -1583,14 +1863,19 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile }) {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-zinc-400 mb-2">Bio (Optional)</label>
-                <textarea
-                  value={editedProfile.bio || ''}
-                  onChange={(e) => setEditedProfile({ ...editedProfile, bio: e.target.value })}
-                  className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500 resize-none"
-                  rows="3"
-                  placeholder="Tell us about yourself..."
-                />
+                <label className="block text-sm font-semibold text-zinc-400 mb-2">Bio</label>
+                <button
+                  onClick={() => setShowBioBuilder(true)}
+                  className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl px-4 py-4 font-semibold flex items-center justify-center gap-2 hover:shadow-lg transition"
+                >
+                  <Sparkles className="w-5 h-5" />
+                  {userProfile.bio ? 'Rebuild My Bio' : 'Build My Bio'}
+                </button>
+                {editedProfile.bio && (
+                  <div className="mt-3 bg-zinc-800 rounded-xl px-4 py-3">
+                    <p className="text-zinc-300 text-sm">{editedProfile.bio}</p>
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -1601,6 +1886,22 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile }) {
               <div className="bg-zinc-800 rounded-xl px-4 py-3">
                 <p className="text-white text-sm">{userProfile.bio}</p>
               </div>
+            </div>
+          )}
+
+          {!isEditing && !userProfile.bio && (
+            <div>
+              <label className="block text-sm font-semibold text-zinc-400 mb-2">Bio</label>
+              <button
+                onClick={() => {
+                  setIsEditing(true);
+                  setTimeout(() => setShowBioBuilder(true), 100);
+                }}
+                className="w-full bg-zinc-800 border-2 border-dashed border-zinc-700 text-zinc-400 rounded-xl px-4 py-4 font-semibold flex items-center justify-center gap-2 hover:border-orange-500 hover:text-orange-500 transition"
+              >
+                <Sparkles className="w-5 h-5" />
+                Build Your Bio
+              </button>
             </div>
           )}
 
@@ -1727,6 +2028,15 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile }) {
         <LogOut className="w-5 h-5" />
         Logout
       </button>
+
+      {showBioBuilder && (
+        <BioBuilderModal
+          onClose={() => setShowBioBuilder(false)}
+          onSaveBio={handleSaveBio}
+          userName={userProfile.name}
+          currentAnswers={userProfile.bio_answers || {}}
+        />
+      )}
     </div>
   );
 }
@@ -1834,17 +2144,6 @@ function AuthScreen({ onAuth }) {
                   </button>
                 ))}
               </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-zinc-300 mb-2">Bio (Optional)</label>
-              <textarea
-                value={bio}
-                onChange={(e) => setBio(e.target.value)}
-                className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500 resize-none"
-                rows="3"
-                placeholder="Tell us about yourself..."
-              />
             </div>
 
             <div className="flex gap-3">
@@ -2226,6 +2525,7 @@ export default function App() {
           phone: updatedProfile.phone,
           vibes: updatedProfile.vibes,
           bio: updatedProfile.bio,
+          bio_answers: updatedProfile.bio_answers,
           profile_picture: updatedProfile.profile_picture,
           profile_visibility: updatedProfile.profile_visibility || 'squad_only'
         })
