@@ -19,6 +19,17 @@ const BADGES = [
   { id: 'profile-complete', name: 'Looking Good', description: 'Complete your profile with bio and vibes', icon: '✨', category: 'getting-started', requirement: { type: 'profile-complete' }, points: 15 },
   { id: 'first-squad', name: 'Squad Leader', description: 'Create your first squad', icon: '👑', category: 'getting-started', requirement: { type: 'squads-created', count: 1 }, points: 20 },
   { id: 'first-share', name: 'Spread the Word', description: 'Share an event with friends', icon: '📢', category: 'getting-started', requirement: { type: 'shares', count: 1 }, points: 10 },
+  { id: 'first-like', name: 'Heartbreaker', description: 'Like your first event', icon: '💕', category: 'getting-started', requirement: { type: 'likes', count: 1 }, points: 5 },
+  
+  // App Engagement Badges
+  { id: 'daily-3', name: 'Getting Started', description: 'Open the app 3 days', icon: '📱', category: 'engagement', requirement: { type: 'days-active', count: 3 }, points: 15 },
+  { id: 'daily-7', name: 'Weekly Regular', description: 'Open the app 7 days', icon: '📲', category: 'engagement', requirement: { type: 'days-active', count: 7 }, points: 30 },
+  { id: 'daily-30', name: 'Monthly Maven', description: 'Open the app 30 days', icon: '🗓️', category: 'engagement', requirement: { type: 'days-active', count: 30 }, points: 100 },
+  { id: 'swipe-25', name: 'Swipe Happy', description: 'Swipe through 25 events', icon: '👆', category: 'engagement', requirement: { type: 'swipes', count: 25 }, points: 20 },
+  { id: 'swipe-100', name: 'Event Explorer', description: 'Swipe through 100 events', icon: '🔄', category: 'engagement', requirement: { type: 'swipes', count: 100 }, points: 50 },
+  { id: 'swipe-500', name: 'Swipe Master', description: 'Swipe through 500 events', icon: '🌀', category: 'engagement', requirement: { type: 'swipes', count: 500 }, points: 150 },
+  { id: 'likes-10', name: 'Picky Picker', description: 'Like 10 events', icon: '💝', category: 'engagement', requirement: { type: 'likes', count: 10 }, points: 25 },
+  { id: 'likes-50', name: 'Event Enthusiast', description: 'Like 50 events', icon: '❤️‍🔥', category: 'engagement', requirement: { type: 'likes', count: 50 }, points: 75 },
   
   // Check-in Milestone Badges
   { id: 'checkin-5', name: 'Regular', description: 'Check in to 5 events', icon: '🎯', category: 'milestones', requirement: { type: 'checkins', count: 5 }, points: 25 },
@@ -28,10 +39,10 @@ const BADGES = [
   { id: 'checkin-100', name: 'Dallas Royalty', description: 'Check in to 100 events', icon: '👸', category: 'milestones', requirement: { type: 'checkins', count: 100 }, points: 500 },
   
   // Streak Badges
-  { id: 'streak-3', name: 'Hot Streak', description: 'Check in 3 days in a row', icon: '🔥', category: 'streaks', requirement: { type: 'streak', count: 3 }, points: 30 },
-  { id: 'streak-7', name: 'Week Warrior', description: 'Check in 7 days in a row', icon: '⚡', category: 'streaks', requirement: { type: 'streak', count: 7 }, points: 75 },
-  { id: 'streak-14', name: 'Unstoppable', description: 'Check in 14 days in a row', icon: '🚀', category: 'streaks', requirement: { type: 'streak', count: 14 }, points: 150 },
-  { id: 'streak-30', name: 'Month of Madness', description: 'Check in 30 days in a row', icon: '🌟', category: 'streaks', requirement: { type: 'streak', count: 30 }, points: 300 },
+  { id: 'streak-3', name: 'Hot Streak', description: 'Use the app 3 days in a row', icon: '🔥', category: 'streaks', requirement: { type: 'streak', count: 3 }, points: 30 },
+  { id: 'streak-7', name: 'Week Warrior', description: 'Use the app 7 days in a row', icon: '⚡', category: 'streaks', requirement: { type: 'streak', count: 7 }, points: 75 },
+  { id: 'streak-14', name: 'Unstoppable', description: 'Use the app 14 days in a row', icon: '🚀', category: 'streaks', requirement: { type: 'streak', count: 14 }, points: 150 },
+  { id: 'streak-30', name: 'Month of Madness', description: 'Use the app 30 days in a row', icon: '🌟', category: 'streaks', requirement: { type: 'streak', count: 30 }, points: 300 },
   
   // Event Type Badges
   { id: 'karaoke-king', name: 'Karaoke King', description: 'Check in to 3 karaoke nights', icon: '🎤', category: 'event-types', requirement: { type: 'category-checkins', category: 'karaoke', count: 3 }, points: 40 },
@@ -70,11 +81,12 @@ const BADGES = [
   { id: 'event-suggester', name: 'Event Suggester', description: 'Suggest an event that gets added', icon: '💡', category: 'special', requirement: { type: 'suggestion-approved' }, points: 100 },
   
   // Ultimate Badge - Key to the City
-  { id: 'key-to-city', name: 'Key to the City', description: 'Earn 15 other badges to unlock the ultimate Dallas award', icon: '🔑', category: 'ultimate', requirement: { type: 'badges-earned', count: 15 }, points: 1000, isUltimate: true }
+  { id: 'key-to-city', name: 'Key to the City', description: 'Earn 25 badges to unlock the ultimate Dallas award', icon: '🔑', category: 'ultimate', requirement: { type: 'badges-earned', count: 25 }, points: 1000, isUltimate: true }
 ];
 
 const BADGE_CATEGORIES = [
   { id: 'getting-started', name: 'Getting Started', icon: '🚀' },
+  { id: 'engagement', name: 'Engagement', icon: '📱' },
   { id: 'milestones', name: 'Milestones', icon: '🏆' },
   { id: 'streaks', name: 'Streaks', icon: '🔥' },
   { id: 'event-types', name: 'Event Types', icon: '🎭' },
@@ -1915,15 +1927,16 @@ function CrewTab({ squads, onCreateSquad }) {
 function AwardsTab({ userProfile, userBadges, userStats }) {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedBadge, setSelectedBadge] = useState(null);
+  const categoryScrollRef = useRef(null);
   
   const earnedBadgeIds = userBadges || [];
   const earnedCount = earnedBadgeIds.length;
   const totalBadges = BADGES.length;
   const totalPoints = BADGES.filter(b => earnedBadgeIds.includes(b.id)).reduce((sum, b) => sum + b.points, 0);
   
-  // Progress towards Key to the City
+  // Progress towards Key to the City (now 25 badges)
   const keyToCity = BADGES.find(b => b.id === 'key-to-city');
-  const keyProgress = Math.min(earnedCount, keyToCity?.requirement?.count || 15);
+  const keyProgress = Math.min(earnedCount, keyToCity?.requirement?.count || 25);
   
   const filteredBadges = selectedCategory === 'all' 
     ? BADGES 
@@ -1949,8 +1962,37 @@ function AwardsTab({ userProfile, userBadges, userStats }) {
         return Math.min(100, (catCheckins / req.count) * 100);
       case 'badges-earned':
         return Math.min(100, (earnedCount / req.count) * 100);
+      case 'days-active':
+        return Math.min(100, ((stats.daysActive || 0) / req.count) * 100);
+      case 'swipes':
+        return Math.min(100, ((stats.totalSwipes || 0) / req.count) * 100);
+      case 'likes':
+        return Math.min(100, ((stats.totalLikes || 0) / req.count) * 100);
+      case 'profile-complete':
+        return stats.profileComplete ? 100 : 0;
       default:
         return 0;
+    }
+  };
+
+  const handleShareBadge = async (badge) => {
+    const shareText = `🏆 I just earned the "${badge.name}" badge on CrewQ!\n\n${badge.icon} ${badge.description}\n\nJoin me in exploring Dallas nightlife! 🎉`;
+    
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `I earned ${badge.name} on CrewQ!`,
+          text: shareText,
+          url: 'https://crewq-app.vercel.app'
+        });
+      } else {
+        await navigator.clipboard.writeText(shareText + '\n\nhttps://crewq-app.vercel.app');
+        alert('Copied to clipboard! Share it with your friends.');
+      }
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        console.error('Error sharing:', err);
+      }
     }
   };
 
@@ -1975,24 +2017,24 @@ function AwardsTab({ userProfile, userBadges, userStats }) {
         <div className="flex items-center gap-4 mb-4">
           <div className={`w-14 h-14 rounded-full flex items-center justify-center text-2xl ${
             earnedBadgeIds.includes('key-to-city') 
-              ? 'bg-gradient-to-br from-yellow-400 to-yellow-600' 
+              ? 'bg-gradient-to-br from-yellow-400 to-yellow-600 animate-pulse' 
               : 'bg-zinc-800'
           }`}>
             🔑
           </div>
           <div className="flex-1">
             <h3 className="text-white font-bold text-lg">Key to the City</h3>
-            <p className="text-zinc-400 text-sm">Earn 15 badges to unlock</p>
+            <p className="text-zinc-400 text-sm">Earn 25 badges to unlock</p>
           </div>
           <div className="text-right">
-            <div className="text-2xl font-bold text-orange-500">{keyProgress}/15</div>
+            <div className="text-2xl font-bold text-orange-500">{keyProgress}/25</div>
           </div>
         </div>
         
         <div className="w-full bg-zinc-800 rounded-full h-3">
           <div 
             className="bg-gradient-to-r from-orange-500 to-yellow-500 h-3 rounded-full transition-all duration-500"
-            style={{ width: `${(keyProgress / 15) * 100}%` }}
+            style={{ width: `${(keyProgress / 25) * 100}%` }}
           />
         </div>
         
@@ -2003,12 +2045,20 @@ function AwardsTab({ userProfile, userBadges, userStats }) {
         )}
       </div>
 
-      {/* Category Filter */}
-      <div className="mb-6 overflow-x-auto pb-2 -mx-4 px-4">
-        <div className="flex gap-2 min-w-max">
+      {/* Category Filter - Drag to scroll, no scrollbar */}
+      <div className="mb-6 -mx-4 px-4">
+        <div 
+          ref={categoryScrollRef}
+          className="flex gap-2 overflow-x-auto scrollbar-hide touch-pan-x"
+          style={{ 
+            scrollbarWidth: 'none', 
+            msOverflowStyle: 'none',
+            WebkitOverflowScrolling: 'touch'
+          }}
+        >
           <button
             onClick={() => setSelectedCategory('all')}
-            className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
+            className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
               selectedCategory === 'all'
                 ? 'bg-orange-500 text-white'
                 : 'bg-zinc-800 text-zinc-400'
@@ -2023,7 +2073,7 @@ function AwardsTab({ userProfile, userBadges, userStats }) {
               <button
                 key={cat.id}
                 onClick={() => setSelectedCategory(cat.id)}
-                className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
+                className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
                   selectedCategory === cat.id
                     ? 'bg-orange-500 text-white'
                     : 'bg-zinc-800 text-zinc-400'
@@ -2046,7 +2096,7 @@ function AwardsTab({ userProfile, userBadges, userStats }) {
             <button
               key={badge.id}
               onClick={() => setSelectedBadge(badge)}
-              className={`relative p-4 rounded-2xl transition-all ${
+              className={`relative p-4 rounded-2xl transition-all active:scale-95 ${
                 isEarned 
                   ? 'bg-gradient-to-br from-zinc-800 to-zinc-900 border-2 border-orange-500' 
                   : 'bg-zinc-900 border-2 border-zinc-800 opacity-60'
@@ -2083,7 +2133,7 @@ function AwardsTab({ userProfile, userBadges, userStats }) {
       {/* Badge Detail Modal */}
       {selectedBadge && (
         <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 rounded-3xl max-w-sm w-full p-6 text-center">
+          <div className="bg-zinc-900 rounded-3xl max-w-sm w-full p-6 text-center relative">
             <button 
               onClick={() => setSelectedBadge(null)}
               className="absolute top-4 right-4 text-zinc-400 hover:text-white"
@@ -2108,12 +2158,22 @@ function AwardsTab({ userProfile, userBadges, userStats }) {
             </div>
             
             {earnedBadgeIds.includes(selectedBadge.id) ? (
-              <div className="bg-emerald-500 bg-opacity-20 border border-emerald-500 rounded-xl p-4">
-                <CheckCircle className="w-6 h-6 text-emerald-500 mx-auto mb-2" />
-                <span className="text-emerald-400 font-semibold">Badge Earned!</span>
-              </div>
+              <>
+                <div className="bg-emerald-500 bg-opacity-20 border border-emerald-500 rounded-xl p-4 mb-4">
+                  <CheckCircle className="w-6 h-6 text-emerald-500 mx-auto mb-2" />
+                  <span className="text-emerald-400 font-semibold">Badge Earned!</span>
+                </div>
+                
+                <button
+                  onClick={() => handleShareBadge(selectedBadge)}
+                  className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2 hover:shadow-lg transition mb-3"
+                >
+                  <Share2 className="w-5 h-5" />
+                  Share This Badge
+                </button>
+              </>
             ) : (
-              <div className="bg-zinc-800 rounded-xl p-4">
+              <div className="bg-zinc-800 rounded-xl p-4 mb-4">
                 <div className="text-zinc-400 text-sm mb-2">Progress</div>
                 <div className="w-full bg-zinc-700 rounded-full h-2 mb-2">
                   <div 
@@ -2129,7 +2189,7 @@ function AwardsTab({ userProfile, userBadges, userStats }) {
             
             <button
               onClick={() => setSelectedBadge(null)}
-              className="mt-4 w-full bg-zinc-800 text-white py-3 rounded-xl font-semibold hover:bg-zinc-700 transition"
+              className="w-full bg-zinc-800 text-white py-3 rounded-xl font-semibold hover:bg-zinc-700 transition"
             >
               Close
             </button>
@@ -2685,6 +2745,52 @@ export default function App() {
   const [showSuggestionModal, setShowSuggestionModal] = useState(false);
   const [userBadges, setUserBadges] = useState([]);
   const [userStats, setUserStats] = useState({});
+  const [showBadgeEarned, setShowBadgeEarned] = useState(null);
+
+  // Add CSS for animations and scrollbar hide
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = `
+      .scrollbar-hide::-webkit-scrollbar { display: none; }
+      .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+      @keyframes bounce-in {
+        0% { transform: scale(0.3); opacity: 0; }
+        50% { transform: scale(1.05); }
+        70% { transform: scale(0.9); }
+        100% { transform: scale(1); opacity: 1; }
+      }
+      .animate-bounce-in { animation: bounce-in 0.5s ease-out; }
+    `;
+    document.head.appendChild(style);
+    return () => document.head.removeChild(style);
+  }, []);
+
+  // Track daily app usage
+  useEffect(() => {
+    const today = new Date().toDateString();
+    const lastVisit = localStorage.getItem('crewq_last_visit');
+    const daysActive = parseInt(localStorage.getItem('crewq_days_active') || '0');
+    const currentStreak = parseInt(localStorage.getItem('crewq_streak') || '0');
+    
+    if (lastVisit !== today) {
+      // New day
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      
+      const newDaysActive = daysActive + 1;
+      let newStreak = currentStreak;
+      
+      if (lastVisit === yesterday.toDateString()) {
+        newStreak = currentStreak + 1;
+      } else if (lastVisit !== today) {
+        newStreak = 1;
+      }
+      
+      localStorage.setItem('crewq_last_visit', today);
+      localStorage.setItem('crewq_days_active', newDaysActive.toString());
+      localStorage.setItem('crewq_streak', newStreak.toString());
+    }
+  }, []);
 
   // Load liked events from localStorage
   useEffect(() => {
@@ -2745,10 +2851,24 @@ export default function App() {
         }
       });
 
+      // Get local engagement stats
+      const totalSwipes = parseInt(localStorage.getItem('crewq_swipes') || '0');
+      const totalLikes = JSON.parse(localStorage.getItem('crewq_liked') || '[]').length;
+      const daysActive = parseInt(localStorage.getItem('crewq_days_active') || '0');
+      const currentStreak = parseInt(localStorage.getItem('crewq_streak') || '0');
+      
+      // Check if profile is complete
+      const profileComplete = !!(userProfile?.bio && userProfile?.vibes?.length > 0);
+
       setUserStats({
         totalCheckins: totalCheckins || 0,
         squadsCreated: squadsCreated || 0,
-        categoryCheckins
+        categoryCheckins,
+        totalSwipes,
+        totalLikes,
+        daysActive,
+        currentStreak,
+        profileComplete
       });
     } catch (error) {
       console.error('Error loading stats:', error);
@@ -2768,7 +2888,7 @@ export default function App() {
       
       const badge = BADGES.find(b => b.id === badgeId);
       if (badge) {
-        alert(`🎉 Badge Earned: ${badge.name}!\n${badge.description}`);
+        setShowBadgeEarned(badge);
       }
     } catch (error) {
       console.error('Error awarding badge:', error);
@@ -2779,6 +2899,58 @@ export default function App() {
     if (!userProfile) return;
     
     const stats = userStats;
+    
+    // Check profile complete badge
+    if (stats.profileComplete && !userBadges.includes('profile-complete')) {
+      await awardBadge('profile-complete');
+    }
+    
+    // Check engagement badges - days active
+    if (stats.daysActive >= 3 && !userBadges.includes('daily-3')) {
+      await awardBadge('daily-3');
+    }
+    if (stats.daysActive >= 7 && !userBadges.includes('daily-7')) {
+      await awardBadge('daily-7');
+    }
+    if (stats.daysActive >= 30 && !userBadges.includes('daily-30')) {
+      await awardBadge('daily-30');
+    }
+    
+    // Check swipe badges
+    if (stats.totalSwipes >= 25 && !userBadges.includes('swipe-25')) {
+      await awardBadge('swipe-25');
+    }
+    if (stats.totalSwipes >= 100 && !userBadges.includes('swipe-100')) {
+      await awardBadge('swipe-100');
+    }
+    if (stats.totalSwipes >= 500 && !userBadges.includes('swipe-500')) {
+      await awardBadge('swipe-500');
+    }
+    
+    // Check like badges
+    if (stats.totalLikes >= 1 && !userBadges.includes('first-like')) {
+      await awardBadge('first-like');
+    }
+    if (stats.totalLikes >= 10 && !userBadges.includes('likes-10')) {
+      await awardBadge('likes-10');
+    }
+    if (stats.totalLikes >= 50 && !userBadges.includes('likes-50')) {
+      await awardBadge('likes-50');
+    }
+    
+    // Check streak badges
+    if (stats.currentStreak >= 3 && !userBadges.includes('streak-3')) {
+      await awardBadge('streak-3');
+    }
+    if (stats.currentStreak >= 7 && !userBadges.includes('streak-7')) {
+      await awardBadge('streak-7');
+    }
+    if (stats.currentStreak >= 14 && !userBadges.includes('streak-14')) {
+      await awardBadge('streak-14');
+    }
+    if (stats.currentStreak >= 30 && !userBadges.includes('streak-30')) {
+      await awardBadge('streak-30');
+    }
     
     // Check check-in milestones
     if (stats.totalCheckins >= 1 && !userBadges.includes('first-checkin')) {
@@ -2817,8 +2989,8 @@ export default function App() {
       await awardBadge('happy-hour-hero');
     }
     
-    // Check Key to the City
-    if (userBadges.length >= 15 && !userBadges.includes('key-to-city')) {
+    // Check Key to the City (now 25 badges)
+    if (userBadges.length >= 25 && !userBadges.includes('key-to-city')) {
       await awardBadge('key-to-city');
     }
   };
@@ -3338,6 +3510,10 @@ const loadSquads = async (userId) => {
   };
 
   const handleSwipe = async (direction) => {
+    // Track swipes for badges
+    const currentSwipes = parseInt(localStorage.getItem('crewq_swipes') || '0');
+    localStorage.setItem('crewq_swipes', (currentSwipes + 1).toString());
+    
     if (direction === 'right') {
       const liked = JSON.parse(localStorage.getItem('crewq_liked') || '[]');
       // Prevent duplicates
@@ -3364,6 +3540,11 @@ const loadSquads = async (userId) => {
     }
     // Always move to next card
     setCurrentIndex(prev => prev + 1);
+    
+    // Refresh stats to check for new badges
+    if (userProfile?.id) {
+      setTimeout(() => loadUserStats(userProfile.id), 100);
+    }
   };
 
   if (loading) {
@@ -3621,6 +3802,58 @@ const loadSquads = async (userId) => {
             onClose={() => setShowSuggestionModal(false)}
             userProfile={userProfile}
           />
+        )}
+
+        {/* Badge Earned Popup */}
+        {showBadgeEarned && (
+          <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-[60] p-4">
+            <div className="bg-zinc-900 rounded-3xl max-w-sm w-full p-8 text-center animate-bounce-in">
+              <div className="text-6xl mb-4 animate-pulse">{showBadgeEarned.icon}</div>
+              
+              <div className="text-yellow-400 font-bold text-sm uppercase tracking-wider mb-2">
+                🎉 Badge Earned! 🎉
+              </div>
+              
+              <h2 className="text-2xl font-bold text-white mb-2">{showBadgeEarned.name}</h2>
+              <p className="text-zinc-400 mb-4">{showBadgeEarned.description}</p>
+              
+              <div className="flex items-center justify-center gap-2 mb-6">
+                <Star className="w-5 h-5 text-yellow-500" />
+                <span className="text-yellow-500 font-bold text-lg">+{showBadgeEarned.points} points</span>
+              </div>
+              
+              <div className="space-y-3">
+                <button
+                  onClick={async () => {
+                    const shareText = `🏆 I just earned the "${showBadgeEarned.name}" badge on CrewQ!\n\n${showBadgeEarned.icon} ${showBadgeEarned.description}\n\nJoin me in exploring Dallas nightlife!`;
+                    try {
+                      if (navigator.share) {
+                        await navigator.share({
+                          title: `I earned ${showBadgeEarned.name}!`,
+                          text: shareText,
+                          url: 'https://crewq-app.vercel.app'
+                        });
+                      } else {
+                        await navigator.clipboard.writeText(shareText + '\n\nhttps://crewq-app.vercel.app');
+                        alert('Copied to clipboard!');
+                      }
+                    } catch (err) {}
+                  }}
+                  className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:shadow-lg transition"
+                >
+                  <Share2 className="w-5 h-5" />
+                  Share Achievement
+                </button>
+                
+                <button
+                  onClick={() => setShowBadgeEarned(null)}
+                  className="w-full bg-zinc-800 text-white py-3 rounded-xl font-semibold hover:bg-zinc-700 transition"
+                >
+                  Awesome!
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>
