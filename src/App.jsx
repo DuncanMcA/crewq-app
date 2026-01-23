@@ -2056,8 +2056,7 @@ export default function App() {
     try {
       const { data, error } = await supabaseClient
         .from('crew_members')
-        .select('friend_id, friend:users!crew_members_friend_id_f
-                key(*)')
+        .select('friend_id, friend:users!crew_members_friend_id_fkey(*)')
         .eq('user_id', userId);
       
       if (error) throw error;
