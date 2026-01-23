@@ -2745,25 +2745,30 @@ const loadSquads = async (userId) => {
   const handleSwipe = async (direction) => {
     if (direction === 'right') {
       const liked = JSON.parse(localStorage.getItem('crewq_liked') || '[]');
-      liked.push(events[currentIndex]);
-      localStorage.setItem('crewq_liked', JSON.stringify(liked));
+      // Prevent duplicates
+      if (!liked.find(e => e.id === events[currentIndex].id)) {
+        liked.push(events[currentIndex]);
+        localStorage.setItem('crewq_liked', JSON.stringify(liked));
+        
+        // Trigger refresh so Events tab updates
+        setLikedEventsRefresh(prev => prev + 1);
 
-      if (supabaseClient && userProfile) {
-        try {
-          await supabaseClient
-            .from('liked_events')
-            .insert([{
-              user_id: userProfile.id,
-              event_id: events[currentIndex].id
-            }]);
-        } catch (error) {
-          console.error('Error saving liked event:', error);
+        if (supabaseClient && userProfile) {
+          try {
+            await supabaseClient
+              .from('liked_events')
+              .insert([{
+                user_id: userProfile.id,
+                event_id: events[currentIndex].id
+              }]);
+          } catch (error) {
+            console.error('Error saving liked event:', error);
+          }
         }
       }
     }
-    if (currentIndex < events.length - 1) {
-      setCurrentIndex(currentIndex + 1);
-    }
+    // Always move to next card
+    setCurrentIndex(prev => prev + 1);
   };
 
   if (loading) {
@@ -2841,11 +2846,39 @@ const loadSquads = async (userId) => {
         <div className="flex-1 overflow-y-auto overflow-x-hidden pb-24 -webkit-overflow-scrolling-touch">
           {currentTab === 'discover' && (
             <div className="px-4 py-6">
-              {currentIndex >= events.length ? (
-                <div className="text-center py-20">
-                  <Heart className="w-16 h-16 text-zinc-700 mx-auto mb-4" />
-                  <h2 className="text-2xl font-bold mb-2">All caught up!</h2>
-                  <p className="text-zinc-400">Check back later for more events</p>
+              {currentIndex >= events.length || events.length === 0 ? (
+                <div className="text-center py-16">
+                  <div className="w-20 h-20 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Calendar className="w-10 h-10 text-orange-500" />
+                  </div>
+                  <h2 className="text-2xl font-bold mb-3">More Events Coming Soon!</h2>
+                  <p className="text-zinc-400 mb-8 px-4">
+                    We're constantly adding new events in Dallas. Check back soon or let us know what you're looking for!
+                  </p>
+                  
+                  <button
+                    onClick={() => {
+                      const subject = encodeURIComponent("Event Suggestion for CrewQ");
+                      const body = encodeURIComponent("Hey CrewQ team!\n\nI'd love to see these types of events:\n\n");
+                      window.open(`mailto:feedback@crewq.app?subject=${subject}&body=${body}`, '_blank');
+                    }}
+                    className="bg-gradient-to-r from-orange-500 to-orange-600 text-white px-8 py-4 rounded-xl font-bold hover:shadow-lg transition flex items-center justify-center gap-2 mx-auto"
+                  >
+                    <MessageCircle className="w-5 h-5" />
+                    Can't find an event? Let us know!
+                  </button>
+
+                  {likedEvents.length > 0 && (
+                    <div className="mt-8 pt-6 border-t border-zinc-800">
+                      <p className="text-zinc-500 text-sm mb-3">Meanwhile, check out your liked events:</p>
+                      <button
+                        onClick={() => setCurrentTab('events')}
+                        className="text-orange-500 font-semibold hover:text-orange-400 transition"
+                      >
+                        View {likedEvents.length} Liked Event{likedEvents.length !== 1 ? 's' : ''} →
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="relative h-[560px]" style={{ touchAction: 'pan-y' }}>
