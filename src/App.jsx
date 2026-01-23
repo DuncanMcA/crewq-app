@@ -97,6 +97,40 @@ const BADGE_CATEGORIES = [
   { id: 'ultimate', name: 'Ultimate', icon: '🔑' }
 ];
 
+// Gender options for profile and squad restrictions
+const GENDER_OPTIONS = [
+  { id: 'woman', label: 'Woman' },
+  { id: 'man', label: 'Man' },
+  { id: 'non-binary', label: 'Non-binary' },
+  { id: 'prefer-not-to-say', label: 'Prefer not to say' }
+];
+
+// Life stage options
+const LIFE_STAGE_OPTIONS = [
+  { id: 'single', label: 'Single', icon: '💫' },
+  { id: 'in-relationship', label: 'In a relationship', icon: '💑' },
+  { id: 'married', label: 'Married', icon: '💍' },
+  { id: 'parent', label: 'Parent', icon: '👶' },
+  { id: 'expecting', label: 'Expecting', icon: '🤰' },
+  { id: 'empty-nester', label: 'Empty nester', icon: '🏠' }
+];
+
+// Squad restriction presets
+const SQUAD_GENDER_OPTIONS = [
+  { id: 'all', label: 'Everyone welcome', icon: '🌈' },
+  { id: 'women-only', label: 'Women only', icon: '👩' },
+  { id: 'men-only', label: 'Men only', icon: '👨' },
+  { id: 'women-nb', label: 'Women & Non-binary', icon: '👩‍🤝‍👩' }
+];
+
+// Rejection reasons (preset, no free text)
+const REJECTION_REASONS = [
+  { id: 'squad-full', label: 'Squad is at capacity right now' },
+  { id: 'plans-changed', label: 'Our plans have changed' },
+  { id: 'private-group', label: 'Keeping it to close friends this time' },
+  { id: 'timing', label: 'Timing didn\'t work out' }
+];
+
 const VIBE_OPTIONS = [
   { id: 'live-music', label: '🎸 Live Music', icon: '🎸' },
   { id: 'trivia', label: '🧠 Trivia', icon: '🧠' },
@@ -547,6 +581,13 @@ function CreateSquadModal({ onClose, onCreate, userProfile, events }) {
   const [phoneNumbers, setPhoneNumbers] = useState('');
   const [isSoloFriendly, setIsSoloFriendly] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  
+  // Squad restrictions
+  const [genderRestriction, setGenderRestriction] = useState('all');
+  const [minAge, setMinAge] = useState('');
+  const [maxAge, setMaxAge] = useState('');
+  const [minBadges, setMinBadges] = useState(0);
+  const [requiresApproval, setRequiresApproval] = useState(true);
 
   // Filter events to today and upcoming
   const today = new Date();
@@ -578,7 +619,13 @@ function CreateSquadModal({ onClose, onCreate, userProfile, events }) {
       event: selectedEvent,
       invited_members: invitedMembers,
       is_solo_friendly: isSoloFriendly,
-      created_by: userProfile.id
+      created_by: userProfile.id,
+      // New restriction fields
+      gender_restriction: isSoloFriendly ? genderRestriction : 'all',
+      min_age: isSoloFriendly && minAge ? parseInt(minAge) : null,
+      max_age: isSoloFriendly && maxAge ? parseInt(maxAge) : null,
+      min_badges: isSoloFriendly ? minBadges : 0,
+      requires_approval: isSoloFriendly ? requiresApproval : false
     });
     setIsCreating(false);
   };
@@ -595,7 +642,7 @@ function CreateSquadModal({ onClose, onCreate, userProfile, events }) {
           </div>
           
           <div className="flex gap-2 mt-4">
-            {[1, 2, 3].map(s => (
+            {[1, 2, 3, 4].map(s => (
               <div
                 key={s}
                 className={`flex-1 h-1 rounded-full ${
@@ -731,9 +778,133 @@ function CreateSquadModal({ onClose, onCreate, userProfile, events }) {
                   Back
                 </button>
                 <button
-                  onClick={() => setStep(3)}
+                  onClick={() => setStep(isSoloFriendly ? 3 : 4)}
                   disabled={!selectedEvent}
                   className="flex-1 bg-orange-500 text-white py-4 rounded-xl font-bold hover:bg-orange-600 transition disabled:opacity-50"
+                >
+                  {isSoloFriendly ? 'Next: Set Rules' : 'Next: Invite Friends'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === 3 && isSoloFriendly && (
+            <div className="space-y-4">
+              <div>
+                <h4 className="text-lg font-bold text-white mb-3">Squad Rules</h4>
+                <p className="text-sm text-zinc-400 mb-4">
+                  Set who can request to join your squad
+                </p>
+              </div>
+
+              {/* Gender Restriction */}
+              <div>
+                <label className="block text-sm font-semibold text-zinc-300 mb-2">
+                  Who can join?
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {SQUAD_GENDER_OPTIONS.map(option => (
+                    <button
+                      key={option.id}
+                      onClick={() => setGenderRestriction(option.id)}
+                      className={`p-3 rounded-xl text-sm font-semibold transition flex items-center gap-2 ${
+                        genderRestriction === option.id
+                          ? 'bg-orange-500 text-white'
+                          : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                      }`}
+                    >
+                      <span>{option.icon}</span>
+                      <span>{option.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Age Range */}
+              <div>
+                <label className="block text-sm font-semibold text-zinc-300 mb-2">
+                  Age Range (Optional)
+                </label>
+                <div className="flex gap-3 items-center">
+                  <input
+                    type="number"
+                    value={minAge}
+                    onChange={(e) => setMinAge(e.target.value)}
+                    placeholder="Min"
+                    className="flex-1 bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                  <span className="text-zinc-500">to</span>
+                  <input
+                    type="number"
+                    value={maxAge}
+                    onChange={(e) => setMaxAge(e.target.value)}
+                    placeholder="Max"
+                    className="flex-1 bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                </div>
+              </div>
+
+              {/* Minimum Badges */}
+              <div>
+                <label className="block text-sm font-semibold text-zinc-300 mb-2">
+                  Minimum Badges Required
+                </label>
+                <div className="flex gap-2">
+                  {[0, 1, 3, 5, 10].map(num => (
+                    <button
+                      key={num}
+                      onClick={() => setMinBadges(num)}
+                      className={`flex-1 py-3 rounded-xl text-sm font-semibold transition ${
+                        minBadges === num
+                          ? 'bg-orange-500 text-white'
+                          : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                      }`}
+                    >
+                      {num === 0 ? 'Any' : `${num}+`}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-zinc-500 mt-1">
+                  Higher badge requirements help ensure active, trusted members
+                </p>
+              </div>
+
+              {/* Approval Toggle */}
+              <div className="bg-zinc-800 rounded-xl p-4 border-2 border-zinc-700">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-white font-semibold">Review Join Requests</p>
+                    <p className="text-xs text-zinc-400 mt-1">
+                      {requiresApproval 
+                        ? 'You\'ll approve each person before they join' 
+                        : 'Anyone meeting requirements joins automatically'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setRequiresApproval(!requiresApproval)}
+                    className={`relative w-12 h-7 rounded-full transition ${
+                      requiresApproval ? 'bg-orange-500' : 'bg-zinc-700'
+                    }`}
+                  >
+                    <div
+                      className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform ${
+                        requiresApproval ? 'transform translate-x-5' : ''
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setStep(2)}
+                  className="flex-1 bg-zinc-800 text-white py-4 rounded-xl font-bold hover:bg-zinc-700 transition"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={() => setStep(4)}
+                  className="flex-1 bg-orange-500 text-white py-4 rounded-xl font-bold hover:bg-orange-600 transition"
                 >
                   Next: Invite Friends
                 </button>
@@ -741,7 +912,7 @@ function CreateSquadModal({ onClose, onCreate, userProfile, events }) {
             </div>
           )}
 
-          {step === 3 && (
+          {step === 4 && (
             <div className="space-y-4">
               <div>
                 <h4 className="text-lg font-bold text-white mb-3">Invite Friends</h4>
@@ -804,7 +975,7 @@ function CreateSquadModal({ onClose, onCreate, userProfile, events }) {
 
               <div className="flex gap-3">
                 <button
-                  onClick={() => setStep(2)}
+                  onClick={() => setStep(isSoloFriendly ? 3 : 2)}
                   className="flex-1 bg-zinc-800 text-white py-4 rounded-xl font-bold hover:bg-zinc-700 transition"
                 >
                   Back
@@ -970,12 +1141,21 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
           </div>
 
           {!isMember ? (
-            <button
-              onClick={() => onJoin(squad)}
-              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold hover:shadow-lg transition"
-            >
-              Join Squad
-            </button>
+            squad.requires_approval ? (
+              <button
+                onClick={() => onJoin(squad, true)} // true = request to join
+                className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold hover:shadow-lg transition"
+              >
+                Request to Join
+              </button>
+            ) : (
+              <button
+                onClick={() => onJoin(squad, false)}
+                className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold hover:shadow-lg transition"
+              >
+                Join Squad
+              </button>
+            )
           ) : (
             <button
               onClick={() => onLeave(squad)}
@@ -984,14 +1164,185 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
               Leave Squad
             </button>
           )}
+
+          {/* Show restrictions if any */}
+          {squad.is_solo_friendly && (squad.gender_restriction !== 'all' || squad.min_age || squad.max_age || squad.min_badges > 0) && (
+            <div className="mt-4 bg-zinc-800 rounded-xl p-4">
+              <p className="text-sm font-semibold text-zinc-400 mb-2">Squad Requirements</p>
+              <div className="space-y-1 text-sm text-zinc-500">
+                {squad.gender_restriction && squad.gender_restriction !== 'all' && (
+                  <p>• {SQUAD_GENDER_OPTIONS.find(o => o.id === squad.gender_restriction)?.label || squad.gender_restriction}</p>
+                )}
+                {squad.min_age && squad.max_age && (
+                  <p>• Ages {squad.min_age} - {squad.max_age}</p>
+                )}
+                {squad.min_age && !squad.max_age && (
+                  <p>• Ages {squad.min_age}+</p>
+                )}
+                {!squad.min_age && squad.max_age && (
+                  <p>• Ages up to {squad.max_age}</p>
+                )}
+                {squad.min_badges > 0 && (
+                  <p>• Minimum {squad.min_badges} badges earned</p>
+                )}
+                {squad.requires_approval && (
+                  <p>• Approval required to join</p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
+// Profile Preview for squad leaders reviewing join requests
+function ProfilePreviewModal({ user, onClose, onApprove, onReject, rejectionReasons }) {
+  const [showRejectOptions, setShowRejectOptions] = useState(false);
+  const [selectedReason, setSelectedReason] = useState(null);
+
+  const handleReject = () => {
+    if (!selectedReason) {
+      alert('Please select a reason');
+      return;
+    }
+    onReject(user, selectedReason);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+      <div className="bg-zinc-900 rounded-3xl max-w-sm w-full p-6">
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-xl font-bold text-white">Join Request</h3>
+          <button onClick={onClose} className="text-zinc-400 hover:text-white">
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        {/* Profile Preview */}
+        <div className="text-center mb-6">
+          <div className="w-20 h-20 rounded-full bg-zinc-800 mx-auto mb-4 flex items-center justify-center overflow-hidden">
+            {user.profile_picture ? (
+              <img src={user.profile_picture} alt={user.name} className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-3xl font-bold text-white">
+                {user.name?.charAt(0).toUpperCase() || '?'}
+              </span>
+            )}
+          </div>
+          <h4 className="text-xl font-bold text-white mb-1">{user.name}</h4>
+          {user.show_age_to_squads !== false && user.age && (
+            <p className="text-zinc-400">{user.age} years old</p>
+          )}
+        </div>
+
+        {/* Bio */}
+        {user.bio && (
+          <div className="bg-zinc-800 rounded-xl p-4 mb-4">
+            <p className="text-sm text-zinc-300">{user.bio}</p>
+          </div>
+        )}
+
+        {/* Vibes */}
+        {user.vibes && user.vibes.length > 0 && (
+          <div className="mb-4">
+            <p className="text-sm font-semibold text-zinc-400 mb-2">Vibes</p>
+            <div className="flex flex-wrap gap-2">
+              {user.vibes.map(vibe => {
+                const vibeOption = VIBE_OPTIONS.find(v => v.id === vibe);
+                return vibeOption ? (
+                  <span key={vibe} className="bg-zinc-800 text-zinc-300 px-3 py-1 rounded-full text-sm">
+                    {vibeOption.icon} {vibeOption.label?.replace(vibeOption.icon, '').trim()}
+                  </span>
+                ) : null;
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Badge Count */}
+        <div className="flex items-center gap-2 mb-6 text-zinc-400">
+          <Trophy className="w-4 h-4" />
+          <span className="text-sm">{user.badge_count || 0} badges earned</span>
+        </div>
+
+        {!showRejectOptions ? (
+          <div className="flex gap-3">
+            <button
+              onClick={() => setShowRejectOptions(true)}
+              className="flex-1 bg-zinc-800 text-zinc-400 py-3 rounded-xl font-semibold hover:bg-zinc-700 transition"
+            >
+              Decline
+            </button>
+            <button
+              onClick={() => onApprove(user)}
+              className="flex-1 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition"
+            >
+              Approve
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm font-semibold text-zinc-400">Select a reason:</p>
+            {REJECTION_REASONS.map(reason => (
+              <button
+                key={reason.id}
+                onClick={() => setSelectedReason(reason.id)}
+                className={`w-full p-3 rounded-xl text-left text-sm transition ${
+                  selectedReason === reason.id
+                    ? 'bg-orange-500 bg-opacity-20 border-2 border-orange-500 text-white'
+                    : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                }`}
+              >
+                {reason.label}
+              </button>
+            ))}
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setShowRejectOptions(false)}
+                className="flex-1 bg-zinc-800 text-zinc-400 py-3 rounded-xl font-semibold hover:bg-zinc-700 transition"
+              >
+                Back
+              </button>
+              <button
+                onClick={handleReject}
+                disabled={!selectedReason}
+                className="flex-1 bg-red-500 text-white py-3 rounded-xl font-semibold hover:bg-red-600 transition disabled:opacity-50"
+              >
+                Confirm Decline
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SoloFriendlySquadsView({ squads, onSquadClick, userProfile }) {
-  const soloSquads = squads.filter(s => s.is_solo_friendly);
+  // Filter squads based on user's eligibility
+  const soloSquads = squads.filter(s => {
+    if (!s.is_solo_friendly) return false;
+    
+    // Check gender restriction
+    if (s.gender_restriction && s.gender_restriction !== 'all') {
+      const userGender = userProfile?.gender;
+      if (s.gender_restriction === 'women-only' && userGender !== 'woman') return false;
+      if (s.gender_restriction === 'men-only' && userGender !== 'man') return false;
+      if (s.gender_restriction === 'women-nb' && !['woman', 'non-binary'].includes(userGender)) return false;
+    }
+    
+    // Check age restriction
+    const userAge = userProfile?.age;
+    if (s.min_age && userAge && userAge < s.min_age) return false;
+    if (s.max_age && userAge && userAge > s.max_age) return false;
+    
+    // Check badge restriction - we'd need to pass userBadges, simplified for now
+    // if (s.min_badges && (userBadges?.length || 0) < s.min_badges) return false;
+    
+    return true;
+  });
 
   return (
     <div className="p-4">
@@ -2598,6 +2949,7 @@ function AuthScreen({ onAuth }) {
   const [step, setStep] = useState(1);
   const [name, setName] = useState('');
   const [age, setAge] = useState('');
+  const [gender, setGender] = useState('');
   const [phone, setPhone] = useState('');
   const [vibes, setVibes] = useState([]);
   const [bio, setBio] = useState('');
@@ -2618,7 +2970,17 @@ function AuthScreen({ onAuth }) {
     }
 
     setIsLoading(true);
-    await onAuth({ name, age: age ? parseInt(age) : null, phone, vibes, bio, profile_picture: null });
+    await onAuth({ 
+      name, 
+      age: age ? parseInt(age) : null, 
+      gender: gender || null,
+      phone, 
+      vibes, 
+      bio, 
+      profile_picture: null,
+      allow_squad_requests: true,
+      show_age_to_squads: true
+    });
     setIsLoading(false);
   };
 
@@ -2644,7 +3006,7 @@ function AuthScreen({ onAuth }) {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-zinc-300 mb-2">Age (Optional)</label>
+              <label className="block text-sm font-semibold text-zinc-300 mb-2">Age</label>
               <input
                 type="number"
                 value={age}
@@ -2652,6 +3014,27 @@ function AuthScreen({ onAuth }) {
                 className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
                 placeholder="Your age"
               />
+              <p className="text-xs text-zinc-500 mt-1">Used for 21+ event filtering</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-zinc-300 mb-2">Gender</label>
+              <div className="grid grid-cols-2 gap-2">
+                {GENDER_OPTIONS.map(option => (
+                  <button
+                    key={option.id}
+                    onClick={() => setGender(option.id)}
+                    className={`px-4 py-3 rounded-xl text-sm font-semibold transition ${
+                      gender === option.id
+                        ? 'bg-orange-500 text-white'
+                        : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-zinc-500 mt-1">Helps match you with the right squads</p>
             </div>
 
             <div>
@@ -2665,6 +3048,7 @@ function AuthScreen({ onAuth }) {
                 className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
                 placeholder="(555) 123-4567"
               />
+              <p className="text-xs text-zinc-500 mt-1">For squad invites from friends</p>
             </div>
 
             <button
@@ -3161,7 +3545,13 @@ export default function App() {
           member_count: 1,
           invited_members: squadData.invited_members,
           votes_yes: 0,
-          votes_no: 0
+          votes_no: 0,
+          // New restriction fields
+          gender_restriction: squadData.gender_restriction || 'all',
+          min_age: squadData.min_age || null,
+          max_age: squadData.max_age || null,
+          min_badges: squadData.min_badges || 0,
+          requires_approval: squadData.requires_approval || false
         }])
         .select()
         .single();
@@ -3185,29 +3575,48 @@ export default function App() {
     }
   };
 
-  const handleJoinSquad = async (squad) => {
+  const handleJoinSquad = async (squad, isRequest = false) => {
     if (!supabaseClient || !userProfile) return;
     
     try {
-      await supabaseClient
-        .from('squad_members')
-        .insert([{
-          squad_id: squad.id,
-          user_id: userProfile.id
-        }]);
+      if (isRequest && squad.requires_approval) {
+        // Submit a join request instead of joining directly
+        await supabaseClient
+          .from('squad_join_requests')
+          .insert([{
+            squad_id: squad.id,
+            user_id: userProfile.id,
+            status: 'pending'
+          }]);
 
-      await supabaseClient
-        .from('squads')
-        .update({ member_count: (squad.member_count || 0) + 1 })
-        .eq('id', squad.id);
+        alert('Request sent! 📨 The squad leader will review your request.');
+        setShowSquadDetail(false);
+      } else {
+        // Direct join (no approval required or approved request)
+        await supabaseClient
+          .from('squad_members')
+          .insert([{
+            squad_id: squad.id,
+            user_id: userProfile.id
+          }]);
 
-      alert('You joined the squad! 🎉');
-      setShowSquadDetail(false);
-      await loadSquads(userProfile.id);
-      await loadAllSquads();
+        await supabaseClient
+          .from('squads')
+          .update({ member_count: (squad.member_count || 0) + 1 })
+          .eq('id', squad.id);
+
+        alert('You joined the squad! 🎉');
+        setShowSquadDetail(false);
+        await loadSquads(userProfile.id);
+        await loadAllSquads();
+      }
     } catch (error) {
       console.error('Error joining squad:', error);
-      alert('Error joining squad. Please try again.');
+      if (error.code === '23505') {
+        alert('You already have a pending request for this squad.');
+      } else {
+        alert('Error joining squad. Please try again.');
+      }
     }
   };
 
