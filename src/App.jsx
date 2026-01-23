@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Heart, X, Share2, Bell, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle, Trash2, Eye, EyeOff, Shield, Sparkles } from 'lucide-react';
+import { Heart, X, Share2, Bell, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle, Trash2, Eye, EyeOff, Shield, Sparkles, ExternalLink, Globe, UtensilsCrossed } from 'lucide-react';
 
 const SUPABASE_URL = 'https://nwrglwfobtvqqrdemoag.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im53cmdsd2ZvYnR2cXFyZGVtb2FnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkwMDYyMDUsImV4cCI6MjA4NDU4MjIwNX0.tNwEmzXnes_r7HrOhD3iO3YgN7rP9LW4nmGM46cfI8M';
@@ -308,49 +308,92 @@ function EventCard({ event, onSwipe, style }) {
   const [dragStart, setDragStart] = useState(0);
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const [swiping, setSwiping] = useState(false);
+  const cardRef = useRef(null);
 
   const handleDragStart = (e) => {
-    setDragStart(e.type.includes('mouse') ? e.clientX : e.touches[0].clientX);
+    if (swiping) return;
+    e.preventDefault();
+    const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+    setDragStart(clientX);
     setIsDragging(true);
   };
 
   const handleDragMove = (e) => {
-    if (!isDragging) return;
-    const currentX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
-    setDragOffset(currentX - dragStart);
+    if (!isDragging || swiping) return;
+    e.preventDefault();
+    const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+    setDragOffset(clientX - dragStart);
   };
 
-  const handleDragEnd = () => {
-    if (Math.abs(dragOffset) > 100) {
-      onSwipe(dragOffset > 0 ? 'right' : 'left');
+  const handleDragEnd = (e) => {
+    if (!isDragging || swiping) return;
+    e.preventDefault();
+    
+    if (Math.abs(dragOffset) > 80) {
+      setSwiping(true);
+      const direction = dragOffset > 0 ? 'right' : 'left';
+      
+      // Animate card off screen
+      setDragOffset(direction === 'right' ? 500 : -500);
+      
+      // Trigger swipe after animation
+      setTimeout(() => {
+        onSwipe(direction);
+        setDragOffset(0);
+        setIsDragging(false);
+        setSwiping(false);
+      }, 200);
+    } else {
+      setDragOffset(0);
+      setIsDragging(false);
     }
-    setDragOffset(0);
-    setIsDragging(false);
   };
 
-  const rotation = dragOffset / 20;
-  const opacity = 1 - Math.abs(dragOffset) / 400;
+  // Reset if touch is lost
+  useEffect(() => {
+    const handleTouchCancel = () => {
+      if (!swiping) {
+        setDragOffset(0);
+        setIsDragging(false);
+      }
+    };
+    
+    window.addEventListener('touchcancel', handleTouchCancel);
+    return () => window.removeEventListener('touchcancel', handleTouchCancel);
+  }, [swiping]);
+
+  const rotation = dragOffset / 25;
+  const opacity = Math.max(0.5, 1 - Math.abs(dragOffset) / 500);
 
   return (
     <div
+      ref={cardRef}
       style={{
         ...style,
         transform: `translateX(${dragOffset}px) rotate(${rotation}deg)`,
         opacity,
-        transition: isDragging ? 'none' : 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)'
+        transition: isDragging ? 'none' : 'all 0.3s ease-out',
+        touchAction: 'none',
+        userSelect: 'none'
       }}
       onMouseDown={handleDragStart}
       onMouseMove={handleDragMove}
       onMouseUp={handleDragEnd}
-      onMouseLeave={handleDragEnd}
+      onMouseLeave={() => !swiping && isDragging && handleDragEnd({ preventDefault: () => {} })}
       onTouchStart={handleDragStart}
       onTouchMove={handleDragMove}
       onTouchEnd={handleDragEnd}
-      className="absolute w-full cursor-grab active:cursor-grabbing"
+      className="absolute w-full cursor-grab active:cursor-grabbing select-none"
     >
       <div className="relative bg-zinc-900 rounded-3xl overflow-hidden shadow-2xl">
         <div className="relative h-72">
-          <img src={event.image_url} alt={event.name} className="w-full h-full object-cover" />
+          <img 
+            src={event.image_url} 
+            alt={event.name} 
+            className="w-full h-full object-cover pointer-events-none" 
+            draggable="false"
+          />
           <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-transparent" />
           
           <div className="absolute top-4 left-4 bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase">
@@ -363,16 +406,16 @@ function EventCard({ event, onSwipe, style }) {
             </div>
           )}
 
-          {dragOffset < -50 && (
-            <div className="absolute inset-0 flex items-center justify-center bg-red-500 bg-opacity-20">
-              <div className="bg-red-500 rounded-full p-4">
+          {dragOffset < -40 && (
+            <div className="absolute inset-0 flex items-center justify-center bg-red-500 bg-opacity-30 transition-opacity">
+              <div className="bg-red-500 rounded-full p-4 shadow-lg">
                 <X className="w-12 h-12 text-white" />
               </div>
             </div>
           )}
-          {dragOffset > 50 && (
-            <div className="absolute inset-0 flex items-center justify-center bg-emerald-500 bg-opacity-20">
-              <div className="bg-emerald-500 rounded-full p-4">
+          {dragOffset > 40 && (
+            <div className="absolute inset-0 flex items-center justify-center bg-emerald-500 bg-opacity-30 transition-opacity">
+              <div className="bg-emerald-500 rounded-full p-4 shadow-lg">
                 <Heart className="w-12 h-12 text-white" />
               </div>
             </div>
@@ -381,7 +424,7 @@ function EventCard({ event, onSwipe, style }) {
 
         <div className="p-6 pb-20">
           <h2 className="text-2xl font-bold text-white mb-2">{event.name}</h2>
-          <p className="text-zinc-400 text-sm mb-4">{event.description}</p>
+          <p className="text-zinc-400 text-sm mb-4 line-clamp-2">{event.description}</p>
           
           <div className="flex items-center gap-2 text-zinc-400 text-sm mb-2">
             <MapPin className="w-4 h-4" />
@@ -972,7 +1015,7 @@ function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount
           <h2 className="text-2xl font-bold text-white mb-2">{event.name}</h2>
           <p className="text-zinc-400 text-sm mb-4">{event.description}</p>
           
-          <div className="space-y-3 mb-6">
+          <div className="space-y-3 mb-4">
             <div className="flex items-center gap-2 text-zinc-300 text-sm">
               <MapPin className="w-4 h-4 text-orange-500" />
               <span>{event.venue} • {event.neighborhood}</span>
@@ -988,6 +1031,36 @@ function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount
               </div>
             )}
           </div>
+
+          {/* Website and Menu Links */}
+          {(event.website_url || event.menu_url) && (
+            <div className="flex gap-2 mb-6">
+              {event.website_url && (
+                <a
+                  href={event.website_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white py-3 px-4 rounded-xl font-semibold flex items-center justify-center gap-2 transition"
+                >
+                  <Globe className="w-4 h-4" />
+                  Website
+                  <ExternalLink className="w-3 h-3 text-zinc-400" />
+                </a>
+              )}
+              {event.menu_url && (
+                <a
+                  href={event.menu_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white py-3 px-4 rounded-xl font-semibold flex items-center justify-center gap-2 transition"
+                >
+                  <UtensilsCrossed className="w-4 h-4" />
+                  Menu
+                  <ExternalLink className="w-3 h-3 text-zinc-400" />
+                </a>
+              )}
+            </div>
+          )}
 
           {isCheckedIn ? (
             <div className="bg-emerald-500 bg-opacity-20 border-2 border-emerald-500 text-emerald-400 py-4 rounded-xl font-bold flex items-center justify-center gap-2">
@@ -2708,10 +2781,11 @@ const loadSquads = async (userId) => {
   const currentEvent = events[currentIndex];
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">
-      <div className="w-full max-w-md bg-zinc-950 min-h-screen relative flex flex-col">
-        <div className="bg-zinc-900 border-b border-zinc-800 px-4 py-4">
-          <div className="flex items-center justify-between mb-6">
+    <div className="min-h-screen bg-zinc-950 text-white">
+      <div className="w-full max-w-md mx-auto bg-zinc-950 min-h-screen relative flex flex-col">
+        {/* Fixed Header */}
+        <div className="sticky top-0 z-40 bg-zinc-900 border-b border-zinc-800 px-4 py-4">
+          <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-2xl font-bold">
                 Crew<span className="text-orange-500">Q</span>
@@ -2763,7 +2837,8 @@ const loadSquads = async (userId) => {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto pb-24">
+        {/* Scrollable Content Area */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden pb-24 -webkit-overflow-scrolling-touch">
           {currentTab === 'discover' && (
             <div className="px-4 py-6">
               {currentIndex >= events.length ? (
@@ -2773,7 +2848,7 @@ const loadSquads = async (userId) => {
                   <p className="text-zinc-400">Check back later for more events</p>
                 </div>
               ) : (
-                <div className="relative h-[580px]">
+                <div className="relative h-[560px]" style={{ touchAction: 'pan-y' }}>
                   {events.slice(currentIndex, currentIndex + 2).reverse().map((event, idx) => (
                     <EventCard
                       key={event.id}
@@ -2838,8 +2913,9 @@ const loadSquads = async (userId) => {
           )}
         </div>
 
-        <div className="fixed bottom-0 left-1/2 transform -translate-x-1/2 w-full max-w-md bg-zinc-900 border-t border-zinc-800 px-6 py-4">
-          <div className="flex justify-around items-center">
+        {/* Fixed Bottom Navigation */}
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-zinc-900 border-t border-zinc-800 px-6 py-3 pb-safe">
+          <div className="flex justify-around items-center max-w-md mx-auto">
             {[
               { id: 'discover', icon: Home, label: 'Discover' },
               { id: 'search', icon: MessageCircle, label: 'Chat' },
@@ -2850,7 +2926,7 @@ const loadSquads = async (userId) => {
               <button
                 key={tab.id}
                 onClick={() => setCurrentTab(tab.id)}
-                className="flex flex-col items-center gap-1"
+                className="flex flex-col items-center gap-1 py-1"
               >
                 <tab.icon className={`w-6 h-6 ${currentTab === tab.id ? 'text-orange-500' : 'text-zinc-500'}`} />
                 <span className={`text-xs ${currentTab === tab.id ? 'text-orange-500' : 'text-zinc-500'}`}>
