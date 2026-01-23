@@ -27,7 +27,7 @@ const VIBE_OPTIONS = [
   { id: 'outdoor', label: '🌳 Outdoor', icon: '🌳' },
   { id: 'games', label: '🎮 Games', icon: '🎮' },
   { id: 'concerts', label: '🎵 Concerts', icon: '🎵' },
-  { id: 'comedy', label: '😂 Comedy', icon: '😂' }
+  { id: 'comedy', label: '😂 Comedy', icon: '😂' },
   { id: 'sunsets', label: '🌇 Sunsets', icon: '🌇' }
 ];
 
@@ -133,6 +133,531 @@ function EventCard({ event, onSwipe, style }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function CreateSquadModal({ onClose, onCreate, userProfile, events }) {
+  const [step, setStep] = useState(1);
+  const [squadName, setSquadName] = useState('');
+  const [description, setDescription] = useState('');
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [invitedMembers, setInvitedMembers] = useState([]);
+  const [phoneNumbers, setPhoneNumbers] = useState('');
+  const [isSoloFriendly, setIsSoloFriendly] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+
+  // Filter events to today and upcoming
+  const today = new Date();
+  const upcomingEvents = events.filter(event => {
+    const eventDate = new Date(event.date);
+    return eventDate >= today;
+  }).slice(0, 10);
+
+  const handleAddPhoneNumbers = () => {
+    const phones = phoneNumbers.split(',').map(p => p.trim()).filter(p => p);
+    setInvitedMembers(prev => [...new Set([...prev, ...phones])]);
+    setPhoneNumbers('');
+  };
+
+  const handleRemoveMember = (phone) => {
+    setInvitedMembers(prev => prev.filter(p => p !== phone));
+  };
+
+  const handleCreate = async () => {
+    if (!squadName || !selectedEvent) {
+      alert('Please enter a squad name and select an event');
+      return;
+    }
+
+    setIsCreating(true);
+    await onCreate({
+      name: squadName,
+      description,
+      event: selectedEvent,
+      invited_members: invitedMembers,
+      is_solo_friendly: isSoloFriendly,
+      created_by: userProfile.id
+    });
+    setIsCreating(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+      <div className="bg-zinc-900 rounded-3xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-zinc-900 border-b border-zinc-800 p-6 z-10">
+          <div className="flex justify-between items-center">
+            <h3 className="text-2xl font-bold text-white">Create Squad</h3>
+            <button onClick={onClose} className="text-zinc-400 hover:text-white">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+          
+          <div className="flex gap-2 mt-4">
+            {[1, 2, 3].map(s => (
+              <div
+                key={s}
+                className={`flex-1 h-1 rounded-full ${
+                  step >= s ? 'bg-orange-500' : 'bg-zinc-800'
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="p-6">
+          {step === 1 && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-zinc-300 mb-2">
+                  Squad Name *
+                </label>
+                <input
+                  type="text"
+                  value={squadName}
+                  onChange={(e) => setSquadName(e.target.value)}
+                  placeholder="e.g., Friday Night Crew, Trivia Squad"
+                  className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-zinc-300 mb-2">
+                  Description (Optional)
+                </label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="What's this squad about?"
+                  className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500 resize-none"
+                  rows="3"
+                />
+              </div>
+
+              <div className="bg-zinc-800 rounded-xl p-4 border-2 border-zinc-700">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <p className="text-white font-semibold">Open to Solo Members?</p>
+                    <p className="text-xs text-zinc-400 mt-1">
+                      Let people join your squad even if they don't know anyone
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setIsSoloFriendly(!isSoloFriendly)}
+                    className={`relative w-12 h-7 rounded-full transition ${
+                      isSoloFriendly ? 'bg-orange-500' : 'bg-zinc-700'
+                    }`}
+                  >
+                    <div
+                      className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform ${
+                        isSoloFriendly ? 'transform translate-x-5' : ''
+                      }`}
+                    />
+                  </button>
+                </div>
+                {isSoloFriendly && (
+                  <div className="mt-3 p-3 bg-orange-500 bg-opacity-10 rounded-lg border border-orange-500 border-opacity-30">
+                    <p className="text-orange-400 text-xs">
+                      ✨ Your squad will appear in Solo Mode for people looking to meet new friends!
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={() => setStep(2)}
+                disabled={!squadName}
+                className="w-full bg-orange-500 text-white py-4 rounded-xl font-bold hover:bg-orange-600 transition disabled:opacity-50"
+              >
+                Next: Pick an Event
+              </button>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="space-y-4">
+              <div>
+                <h4 className="text-lg font-bold text-white mb-3">Pick an Event</h4>
+                <p className="text-sm text-zinc-400 mb-4">
+                  Choose what your squad will do together
+                </p>
+              </div>
+
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {upcomingEvents.map(event => (
+                  <button
+                    key={event.id}
+                    onClick={() => setSelectedEvent(event)}
+                    className={`w-full text-left p-4 rounded-xl transition ${
+                      selectedEvent?.id === event.id
+                        ? 'bg-orange-500 bg-opacity-20 border-2 border-orange-500'
+                        : 'bg-zinc-800 border-2 border-transparent hover:border-zinc-700'
+                    }`}
+                  >
+                    <div className="flex gap-3">
+                      <img
+                        src={event.image_url}
+                        alt={event.name}
+                        className="w-20 h-20 rounded-lg object-cover"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <h5 className="text-white font-semibold mb-1 truncate">
+                          {event.name}
+                        </h5>
+                        <p className="text-zinc-400 text-sm mb-1 truncate">
+                          {event.venue}
+                        </p>
+                        <div className="flex items-center gap-2 text-xs text-zinc-500">
+                          <Calendar className="w-3 h-3" />
+                          <span>{event.date}</span>
+                          <span>•</span>
+                          <span>{event.time}</span>
+                        </div>
+                      </div>
+                      {selectedEvent?.id === event.id && (
+                        <Check className="w-5 h-5 text-orange-500 flex-shrink-0" />
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setStep(1)}
+                  className="flex-1 bg-zinc-800 text-white py-4 rounded-xl font-bold hover:bg-zinc-700 transition"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={() => setStep(3)}
+                  disabled={!selectedEvent}
+                  className="flex-1 bg-orange-500 text-white py-4 rounded-xl font-bold hover:bg-orange-600 transition disabled:opacity-50"
+                >
+                  Next: Invite Friends
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === 3 && (
+            <div className="space-y-4">
+              <div>
+                <h4 className="text-lg font-bold text-white mb-3">Invite Friends</h4>
+                <p className="text-sm text-zinc-400 mb-4">
+                  Add phone numbers to send squad invites
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-zinc-300 mb-2">
+                  Phone Numbers
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={phoneNumbers}
+                    onChange={(e) => setPhoneNumbers(e.target.value)}
+                    placeholder="555-1234, 555-5678 (comma separated)"
+                    className="flex-1 bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                  <button
+                    onClick={handleAddPhoneNumbers}
+                    disabled={!phoneNumbers.trim()}
+                    className="bg-orange-500 text-white px-4 rounded-xl font-semibold hover:bg-orange-600 transition disabled:opacity-50"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+
+              {invitedMembers.length > 0 && (
+                <div>
+                  <p className="text-sm font-semibold text-zinc-400 mb-2">
+                    Invited ({invitedMembers.length})
+                  </p>
+                  <div className="space-y-2">
+                    {invitedMembers.map(phone => (
+                      <div
+                        key={phone}
+                        className="flex items-center justify-between bg-zinc-800 rounded-xl px-4 py-3"
+                      >
+                        <span className="text-white">{phone}</span>
+                        <button
+                          onClick={() => handleRemoveMember(phone)}
+                          className="text-red-500 hover:text-red-400"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-zinc-800 rounded-xl p-4">
+                <p className="text-sm text-zinc-400">
+                  💡 <strong className="text-white">Tip:</strong> You can skip this step and invite people later!
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setStep(2)}
+                  className="flex-1 bg-zinc-800 text-white py-4 rounded-xl font-bold hover:bg-zinc-700 transition"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={handleCreate}
+                  disabled={isCreating}
+                  className="flex-1 bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold hover:shadow-lg transition disabled:opacity-50"
+                >
+                  {isCreating ? 'Creating...' : 'Create Squad'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile, isMember }) {
+  const [hasVoted, setHasVoted] = useState(false);
+  const [vote, setVote] = useState(null);
+
+  const handleVote = async (voteType) => {
+    setVote(voteType);
+    setHasVoted(true);
+    await onVote(squad.id, voteType);
+  };
+
+  const totalVotes = (squad.votes_yes || 0) + (squad.votes_no || 0);
+  const yesPercentage = totalVotes > 0 ? Math.round(((squad.votes_yes || 0) / totalVotes) * 100) : 0;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+      <div className="bg-zinc-900 rounded-3xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+        <div className="relative">
+          {squad.event?.image_url && (
+            <div className="relative h-48">
+              <img
+                src={squad.event.image_url}
+                alt={squad.event.name}
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-transparent" />
+              <button
+                onClick={onClose}
+                className="absolute top-4 right-4 bg-zinc-900 bg-opacity-80 rounded-full p-2 hover:bg-opacity-100 transition"
+              >
+                <X className="w-6 h-6 text-white" />
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="p-6">
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <h2 className="text-2xl font-bold text-white">{squad.name}</h2>
+                {squad.is_solo_friendly && (
+                  <span className="bg-orange-500 bg-opacity-20 text-orange-400 px-2 py-1 rounded-full text-xs font-bold">
+                    SOLO FRIENDLY
+                  </span>
+                )}
+              </div>
+              {squad.description && (
+                <p className="text-zinc-400 text-sm mb-3">{squad.description}</p>
+              )}
+            </div>
+          </div>
+
+          {squad.event && (
+            <div className="bg-zinc-800 rounded-xl p-4 mb-4">
+              <p className="text-orange-500 text-xs font-semibold uppercase mb-2">Squad Event</p>
+              <h4 className="text-white font-semibold mb-2">{squad.event.name}</h4>
+              <div className="space-y-1 text-sm text-zinc-400">
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4" />
+                  <span>{squad.event.venue}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4" />
+                  <span>{squad.event.date} • {squad.event.time}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {isMember && !hasVoted && (
+            <div className="bg-zinc-800 rounded-xl p-4 mb-4">
+              <p className="text-white font-semibold mb-3">Are you in?</p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => handleVote('yes')}
+                  className="flex-1 bg-emerald-500 bg-opacity-20 border-2 border-emerald-500 text-emerald-400 py-3 rounded-xl font-bold hover:bg-opacity-30 transition"
+                >
+                  👍 I'm In!
+                </button>
+                <button
+                  onClick={() => handleVote('no')}
+                  className="flex-1 bg-red-500 bg-opacity-20 border-2 border-red-500 text-red-400 py-3 rounded-xl font-bold hover:bg-opacity-30 transition"
+                >
+                  👎 Can't Make It
+                </button>
+              </div>
+            </div>
+          )}
+
+          {hasVoted && (
+            <div className="bg-zinc-800 rounded-xl p-4 mb-4">
+              <p className="text-white font-semibold mb-2">
+                {vote === 'yes' ? '✅ You voted YES!' : '❌ You voted NO'}
+              </p>
+              <p className="text-zinc-400 text-sm">Thanks for voting! Check back to see who else is going.</p>
+            </div>
+          )}
+
+          {totalVotes > 0 && (
+            <div className="bg-zinc-800 rounded-xl p-4 mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-white font-semibold">Squad Vote</p>
+                <p className="text-zinc-400 text-sm">{totalVotes} {totalVotes === 1 ? 'vote' : 'votes'}</p>
+              </div>
+              <div className="flex gap-2 mb-2">
+                <div className="flex-1 bg-zinc-700 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-emerald-500 h-full transition-all"
+                    style={{ width: `${yesPercentage}%` }}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-emerald-400">{yesPercentage}% Going</span>
+                <span className="text-red-400">{100 - yesPercentage}% Not Going</span>
+              </div>
+            </div>
+          )}
+
+          <div className="mb-4">
+            <p className="text-sm font-semibold text-zinc-400 mb-3">
+              Members ({squad.member_count || 0})
+            </p>
+            <div className="flex items-center gap-2">
+              {squad.members?.slice(0, 6).map(member => (
+                <div
+                  key={member.id}
+                  className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-white text-sm font-semibold overflow-hidden"
+                >
+                  {member.profile_picture ? (
+                    <img src={member.profile_picture} alt={member.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <span>{member.name?.charAt(0).toUpperCase() || '?'}</span>
+                  )}
+                </div>
+              ))}
+              {(squad.member_count || 0) > 6 && (
+                <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 text-xs font-semibold">
+                  +{squad.member_count - 6}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {!isMember ? (
+            <button
+              onClick={() => onJoin(squad)}
+              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold hover:shadow-lg transition"
+            >
+              Join Squad
+            </button>
+          ) : (
+            <button
+              onClick={() => onLeave(squad)}
+              className="w-full bg-zinc-800 text-zinc-400 py-4 rounded-xl font-bold hover:bg-zinc-700 transition"
+            >
+              Leave Squad
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SoloFriendlySquadsView({ squads, onSquadClick, userProfile }) {
+  const soloSquads = squads.filter(s => s.is_solo_friendly);
+
+  return (
+    <div className="p-4">
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-white mb-2">Solo-Friendly Squads</h2>
+        <p className="text-zinc-400 text-sm">
+          Join these squads and meet new people in Dallas!
+        </p>
+      </div>
+
+      {soloSquads.length > 0 ? (
+        <div className="space-y-4">
+          {soloSquads.map(squad => (
+            <button
+              key={squad.id}
+              onClick={() => onSquadClick(squad)}
+              className="w-full bg-zinc-900 rounded-2xl p-5 text-left hover:bg-zinc-800 transition"
+            >
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <h3 className="text-xl font-bold text-white">{squad.name}</h3>
+                    <span className="bg-orange-500 bg-opacity-20 text-orange-400 px-2 py-1 rounded-full text-xs font-bold">
+                      OPEN
+                    </span>
+                  </div>
+                  {squad.description && (
+                    <p className="text-zinc-400 text-sm mb-3">{squad.description}</p>
+                  )}
+                </div>
+              </div>
+
+              {squad.event && (
+                <div className="bg-zinc-800 rounded-xl p-3 mb-3">
+                  <p className="text-white font-semibold text-sm mb-1">{squad.event.name}</p>
+                  <p className="text-zinc-400 text-xs">{squad.event.venue} • {squad.event.date}</p>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {squad.members?.slice(0, 4).map(member => (
+                    <div
+                      key={member.id}
+                      className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center text-white text-xs font-semibold overflow-hidden"
+                    >
+                      {member.profile_picture ? (
+                        <img src={member.profile_picture} alt={member.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <span>{member.name?.charAt(0).toUpperCase() || '?'}</span>
+                      )}
+                    </div>
+                  ))}
+                  <span className="text-zinc-500 text-sm">{squad.member_count || 0} members</span>
+                </div>
+                <div className="text-orange-500 font-semibold text-sm">View Squad →</div>
+              </div>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-12">
+          <Users className="w-16 h-16 text-zinc-700 mx-auto mb-4" />
+          <p className="text-zinc-400 mb-2">No solo-friendly squads yet</p>
+          <p className="text-zinc-600 text-sm">Check back later or create one yourself!</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -457,7 +982,6 @@ function AIChat({ userProfile }) {
     setIsLoading(true);
 
     try {
-      // Build context about the user
       const userContext = userProfile ? `
 User Info:
 - Name: ${userProfile.name}
@@ -698,7 +1222,14 @@ function CrewTab({ squads, onCreateSquad }) {
             <div key={squad.id} className="bg-zinc-900 rounded-2xl p-5">
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
-                  <h3 className="text-xl font-bold text-white mb-1">{squad.name}</h3>
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="text-xl font-bold text-white">{squad.name}</h3>
+                    {squad.is_solo_friendly && (
+                      <span className="bg-orange-500 bg-opacity-20 text-orange-400 px-2 py-1 rounded-full text-xs font-bold">
+                        SOLO
+                      </span>
+                    )}
+                  </div>
                   <p className="text-zinc-400 text-sm mb-3">{squad.description}</p>
                   <div className="flex items-center gap-2 text-zinc-500 text-sm">
                     <Users className="w-4 h-4" />
@@ -726,21 +1257,21 @@ function CrewTab({ squads, onCreateSquad }) {
                 </div>
               )}
 
-              {squad.next_event && (
+              {squad.event && (
                 <div className="bg-zinc-800 rounded-xl p-4 border border-zinc-700">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <p className="text-orange-500 text-xs font-semibold uppercase mb-1">Next Event</p>
-                      <h4 className="text-white font-semibold mb-1">{squad.next_event.name}</h4>
-                      <p className="text-zinc-400 text-sm mb-2">{squad.next_event.venue}</p>
+                      <h4 className="text-white font-semibold mb-1">{squad.event.name}</h4>
+                      <p className="text-zinc-400 text-sm mb-2">{squad.event.venue}</p>
                       <div className="flex items-center gap-3 text-xs text-zinc-500">
                         <div className="flex items-center gap-1">
                           <Calendar className="w-3 h-3" />
-                          <span>{squad.next_event.date}</span>
+                          <span>{squad.event.date}</span>
                         </div>
                         <div className="flex items-center gap-1">
                           <Clock className="w-3 h-3" />
-                          <span>{squad.next_event.time}</span>
+                          <span>{squad.event.time}</span>
                         </div>
                       </div>
                     </div>
@@ -950,7 +1481,7 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile }) {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-zinc-400 mb-2">Bio (Optional, but helps us connect you)</label>
+                <label className="block text-sm font-semibold text-zinc-400 mb-2">Bio (Optional)</label>
                 <textarea
                   value={editedProfile.bio || ''}
                   onChange={(e) => setEditedProfile({ ...editedProfile, bio: e.target.value })}
@@ -1171,11 +1702,15 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [crewMembers, setCrewMembers] = useState([]);
   const [squads, setSquads] = useState([]);
+  const [allSquads, setAllSquads] = useState([]);
   const [sharedEventId, setSharedEventId] = useState(null);
   const [showSharedEvent, setShowSharedEvent] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showEventDetail, setShowEventDetail] = useState(false);
   const [checkedInEvents, setCheckedInEvents] = useState([]);
+  const [showCreateSquad, setShowCreateSquad] = useState(false);
+  const [showSquadDetail, setShowSquadDetail] = useState(false);
+  const [selectedSquad, setSelectedSquad] = useState(null);
 
   useEffect(() => {
     const script = document.createElement('script');
@@ -1261,6 +1796,130 @@ export default function App() {
     }
   };
 
+  const handleCreateSquad = async (squadData) => {
+    if (!supabaseClient) return;
+    
+    try {
+      const { data: newSquad, error } = await supabaseClient
+        .from('squads')
+        .insert([{
+          name: squadData.name,
+          description: squadData.description,
+          created_by: squadData.created_by,
+          is_solo_friendly: squadData.is_solo_friendly,
+          event_id: squadData.event.id,
+          member_count: 1,
+          invited_members: squadData.invited_members,
+          votes_yes: 0,
+          votes_no: 0
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      await supabaseClient
+        .from('squad_members')
+        .insert([{
+          squad_id: newSquad.id,
+          user_id: userProfile.id
+        }]);
+
+      alert('Squad created! 🎉 Invites will be sent to your friends.');
+      setShowCreateSquad(false);
+      await loadSquads(userProfile.id);
+      await loadAllSquads();
+    } catch (error) {
+      console.error('Error creating squad:', error);
+      alert('Error creating squad. Please try again.');
+    }
+  };
+
+  const handleJoinSquad = async (squad) => {
+    if (!supabaseClient || !userProfile) return;
+    
+    try {
+      await supabaseClient
+        .from('squad_members')
+        .insert([{
+          squad_id: squad.id,
+          user_id: userProfile.id
+        }]);
+
+      await supabaseClient
+        .from('squads')
+        .update({ member_count: (squad.member_count || 0) + 1 })
+        .eq('id', squad.id);
+
+      alert('You joined the squad! 🎉');
+      setShowSquadDetail(false);
+      await loadSquads(userProfile.id);
+      await loadAllSquads();
+    } catch (error) {
+      console.error('Error joining squad:', error);
+      alert('Error joining squad. Please try again.');
+    }
+  };
+
+  const handleLeaveSquad = async (squad) => {
+    if (!supabaseClient || !userProfile) return;
+    
+    try {
+      await supabaseClient
+        .from('squad_members')
+        .delete()
+        .eq('squad_id', squad.id)
+        .eq('user_id', userProfile.id);
+
+      await supabaseClient
+        .from('squads')
+        .update({ member_count: Math.max((squad.member_count || 1) - 1, 0) })
+        .eq('id', squad.id);
+
+      alert('You left the squad');
+      setShowSquadDetail(false);
+      await loadSquads(userProfile.id);
+      await loadAllSquads();
+    } catch (error) {
+      console.error('Error leaving squad:', error);
+      alert('Error leaving squad. Please try again.');
+    }
+  };
+
+  const handleVote = async (squadId, voteType) => {
+    if (!supabaseClient || !userProfile) return;
+    
+    try {
+      await supabaseClient
+        .from('squad_votes')
+        .insert([{
+          squad_id: squadId,
+          user_id: userProfile.id,
+          vote: voteType
+        }]);
+
+      const { data: squad } = await supabaseClient
+        .from('squads')
+        .select('votes_yes, votes_no')
+        .eq('id', squadId)
+        .single();
+
+      const updates = voteType === 'yes'
+        ? { votes_yes: (squad.votes_yes || 0) + 1 }
+        : { votes_no: (squad.votes_no || 0) + 1 };
+
+      await supabaseClient
+        .from('squads')
+        .update(updates)
+        .eq('id', squadId);
+
+      await loadSquads(userProfile.id);
+      await loadAllSquads();
+    } catch (error) {
+      console.error('Error voting:', error);
+    }
+  };
+
   const loadCheckedInEvents = async (userId) => {
     if (!supabaseClient) return;
     
@@ -1274,23 +1933,6 @@ export default function App() {
       setCheckedInEvents(data?.map(c => c.event_id) || []);
     } catch (error) {
       console.error('Error loading check-ins:', error);
-    }
-  };
-
-  const getCheckInCount = async (eventId) => {
-    if (!supabaseClient) return 0;
-    
-    try {
-      const { count, error } = await supabaseClient
-        .from('event_checkins')
-        .select('*', { count: 'exact', head: true })
-        .eq('event_id', eventId);
-      
-      if (error) throw error;
-      return count || 0;
-    } catch (error) {
-      console.error('Error getting check-in count:', error);
-      return 0;
     }
   };
 
@@ -1309,6 +1951,7 @@ export default function App() {
           await loadEvents();
           await loadCrewMembers(data.id);
           await loadSquads(data.id);
+          await loadAllSquads();
           await loadCheckedInEvents(data.id);
         } else {
           localStorage.removeItem('crewq_user_id');
@@ -1353,6 +1996,7 @@ export default function App() {
       await loadEvents();
       await loadCrewMembers(newUser.id);
       await loadSquads(newUser.id);
+      await loadAllSquads();
     } catch (error) {
       console.error('Error creating account:', error);
       alert('Error creating account: ' + error.message);
@@ -1412,7 +2056,8 @@ export default function App() {
     try {
       const { data, error } = await supabaseClient
         .from('crew_members')
-        .select('friend_id, friend:users!crew_members_friend_id_fkey(*)')
+        .select('friend_id, friend:users!crew_members_friend_id_f
+                key(*)')
         .eq('user_id', userId);
       
       if (error) throw error;
@@ -1436,15 +2081,44 @@ export default function App() {
     if (!supabaseClient) return;
     
     try {
+      const { data: squadMemberships } = await supabaseClient
+        .from('squad_members')
+        .select('squad_id')
+        .eq('user_id', userId);
+
+      const squadIds = squadMemberships?.map(sm => sm.squad_id) || [];
+      
+      if (squadIds.length === 0) {
+        setSquads([]);
+        return;
+      }
+
       const { data, error } = await supabaseClient
         .from('squads')
-        .select('*')
-        .or(`created_by.eq.${userId},members.cs.{${userId}}`);
+        .select('*, event:events(*)')
+        .in('id', squadIds);
       
       if (error) throw error;
       setSquads(data || []);
     } catch (error) {
       console.error('Error loading squads:', error);
+    }
+  };
+
+  const loadAllSquads = async () => {
+    if (!supabaseClient) return;
+    
+    try {
+      const { data, error } = await supabaseClient
+        .from('squads')
+        .select('*, event:events(*)')
+        .eq('is_solo_friendly', true)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      setAllSquads(data || []);
+    } catch (error) {
+      console.error('Error loading all squads:', error);
     }
   };
 
@@ -1470,10 +2144,6 @@ export default function App() {
     if (currentIndex < events.length - 1) {
       setCurrentIndex(currentIndex + 1);
     }
-  };
-
-  const handleCreateSquad = () => {
-    alert('Create Squad feature coming soon! This will open a form to create a new squad.');
   };
 
   if (loading) {
@@ -1600,7 +2270,19 @@ export default function App() {
 
           {currentTab === 'search' && <AIChat userProfile={userProfile} />}
           {currentTab === 'events' && <CalendarView likedEvents={likedEvents} onEventClick={handleEventClick} />}
-          {currentTab === 'crew' && <CrewTab squads={squads} onCreateSquad={handleCreateSquad} />}
+          {currentTab === 'crew' && mode === 'crew' && (
+            <CrewTab squads={squads} onCreateSquad={() => setShowCreateSquad(true)} />
+          )}
+          {currentTab === 'crew' && mode === 'solo' && (
+            <SoloFriendlySquadsView 
+              squads={allSquads} 
+              onSquadClick={(squad) => {
+                setSelectedSquad(squad);
+                setShowSquadDetail(true);
+              }}
+              userProfile={userProfile}
+            />
+          )}
           {currentTab === 'profile' && (
             <ProfileTab 
               userProfile={userProfile} 
@@ -1657,6 +2339,27 @@ export default function App() {
             isCheckedIn={checkedInEvents.includes(selectedEvent.id)}
             checkInCount={0}
             userProfile={userProfile}
+          />
+        )}
+
+        {showCreateSquad && (
+          <CreateSquadModal
+            onClose={() => setShowCreateSquad(false)}
+            onCreate={handleCreateSquad}
+            userProfile={userProfile}
+            events={events}
+          />
+        )}
+
+        {showSquadDetail && selectedSquad && (
+          <SquadDetailModal
+            squad={selectedSquad}
+            onClose={() => setShowSquadDetail(false)}
+            onJoin={handleJoinSquad}
+            onLeave={handleLeaveSquad}
+            onVote={handleVote}
+            userProfile={userProfile}
+            isMember={selectedSquad.members?.some(m => m.id === userProfile.id)}
           />
         )}
       </div>
