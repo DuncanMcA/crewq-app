@@ -1083,6 +1083,125 @@ function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount
   );
 }
 
+function EventSuggestionModal({ onClose, userProfile }) {
+  const [venueName, setVenueName] = useState('');
+  const [eventName, setEventName] = useState('');
+  const [description, setDescription] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!venueName.trim() || !eventName.trim()) {
+      alert('Please fill in the venue and event name');
+      return;
+    }
+
+    setSubmitting(true);
+    
+    try {
+      if (supabaseClient) {
+        await supabaseClient
+          .from('event_suggestions')
+          .insert([{
+            user_id: userProfile?.id || null,
+            venue_name: venueName.trim(),
+            event_name: eventName.trim(),
+            description: description.trim(),
+            status: 'pending'
+          }]);
+      }
+      setSubmitted(true);
+    } catch (error) {
+      console.error('Error submitting suggestion:', error);
+      alert('Error submitting. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (submitted) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+        <div className="bg-zinc-900 rounded-3xl max-w-md w-full p-6 text-center">
+          <div className="w-16 h-16 bg-emerald-500 bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Check className="w-8 h-8 text-emerald-500" />
+          </div>
+          <h2 className="text-xl font-bold text-white mb-2">Thanks for the suggestion!</h2>
+          <p className="text-zinc-400 mb-6">We'll review it and try to add it soon.</p>
+          <button
+            onClick={onClose}
+            className="w-full bg-orange-500 text-white py-3 rounded-xl font-bold hover:bg-orange-600 transition"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+      <div className="bg-zinc-900 rounded-3xl max-w-md w-full p-6">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-bold text-white">Suggest an Event</h2>
+          <button onClick={onClose} className="text-zinc-400 hover:text-white">
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-semibold text-zinc-400 mb-2">
+              Venue / Location *
+            </label>
+            <input
+              type="text"
+              value={venueName}
+              onChange={(e) => setVenueName(e.target.value)}
+              placeholder="e.g. The Rustic, Deep Ellum"
+              className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-zinc-400 mb-2">
+              Event Name *
+            </label>
+            <input
+              type="text"
+              value={eventName}
+              onChange={(e) => setEventName(e.target.value)}
+              placeholder="e.g. Live Jazz Night, Taco Tuesday"
+              className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-zinc-400 mb-2">
+              Tell us a little about it
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="What makes this event great? When does it happen?"
+              rows={3}
+              className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500 resize-none"
+            />
+          </div>
+
+          <button
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold hover:shadow-lg transition disabled:opacity-50"
+          >
+            {submitting ? 'Submitting...' : 'Submit Suggestion'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ShareModal({ event, onClose, crewMembers }) {
   const [selected, setSelected] = useState([]);
 
@@ -2262,6 +2381,7 @@ export default function App() {
   const [selectedSquad, setSelectedSquad] = useState(null);
   const [likedEventsRefresh, setLikedEventsRefresh] = useState(0);
   const [likedEvents, setLikedEvents] = useState([]);
+  const [showSuggestionModal, setShowSuggestionModal] = useState(false);
 
   // Load liked events from localStorage
   useEffect(() => {
@@ -2857,11 +2977,7 @@ const loadSquads = async (userId) => {
                   </p>
                   
                   <button
-                    onClick={() => {
-                      const subject = encodeURIComponent("Event Suggestion for CrewQ");
-                      const body = encodeURIComponent("Hey CrewQ team!\n\nI'd love to see these types of events:\n\n");
-                      window.open(`mailto:feedback@crewq.app?subject=${subject}&body=${body}`, '_blank');
-                    }}
+                    onClick={() => setShowSuggestionModal(true)}
                     className="bg-gradient-to-r from-orange-500 to-orange-600 text-white px-8 py-4 rounded-xl font-bold hover:shadow-lg transition flex items-center justify-center gap-2 mx-auto"
                   >
                     <MessageCircle className="w-5 h-5" />
@@ -3015,6 +3131,13 @@ const loadSquads = async (userId) => {
             onVote={handleVote}
             userProfile={userProfile}
             isMember={selectedSquad.members?.some(m => m.id === userProfile.id)}
+          />
+        )}
+
+        {showSuggestionModal && (
+          <EventSuggestionModal
+            onClose={() => setShowSuggestionModal(false)}
+            userProfile={userProfile}
           />
         )}
       </div>
