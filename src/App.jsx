@@ -1103,6 +1103,161 @@ function CalendarView({ likedEvents, onEventClick }) {
     return { daysInMonth, startingDayOfWeek };
   };
 
+  // Add this new component after the CalendarView component (around line 1400)
+
+function LiveEventsView({ events, onEventClick }) {
+  const [liveEvents, setLiveEvents] = useState([]);
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    // Update current time every minute
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000); // Update every minute
+
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    filterLiveEvents();
+  }, [events, currentTime]);
+
+  const filterLiveEvents = () => {
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    const currentDay = now.toLocaleDateString('en-US', { weekday: 'long' });
+
+    const live = events.filter(event => {
+      // Parse event time (assuming format like "8:00 PM - 2:00 AM")
+      const timeMatch = event.time?.match(/(\d+):(\d+)\s*(AM|PM)\s*-\s*(\d+):(\d+)\s*(AM|PM)/);
+      
+      if (!timeMatch) return false;
+
+      let startHour = parseInt(timeMatch[1]);
+      const startMinute = parseInt(timeMatch[2]);
+      const startPeriod = timeMatch[3];
+      let endHour = parseInt(timeMatch[4]);
+      const endMinute = parseInt(timeMatch[5]);
+      const endPeriod = timeMatch[6];
+
+      // Convert to 24-hour format
+      if (startPeriod === 'PM' && startHour !== 12) startHour += 12;
+      if (startPeriod === 'AM' && startHour === 12) startHour = 0;
+      if (endPeriod === 'PM' && endHour !== 12) endHour += 12;
+      if (endPeriod === 'AM' && endHour === 12) endHour = 0;
+
+      // Handle events that go past midnight
+      if (endHour < startHour) endHour += 24;
+
+      const currentTimeInMinutes = currentHour * 60 + currentMinute;
+      const startTimeInMinutes = startHour * 60 + startMinute;
+      let endTimeInMinutes = endHour * 60 + endMinute;
+
+      // Check if event is happening now
+      if (endHour >= 24) {
+        // Event goes past midnight
+        return currentTimeInMinutes >= startTimeInMinutes || currentTimeInMinutes <= (endTimeInMinutes - 24 * 60);
+      } else {
+        return currentTimeInMinutes >= startTimeInMinutes && currentTimeInMinutes <= endTimeInMinutes;
+      }
+    });
+
+    setLiveEvents(live);
+  };
+
+  return (
+    <div className="p-4">
+      <div className="mb-6">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="relative">
+            <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+            <div className="absolute inset-0 w-3 h-3 bg-red-500 rounded-full animate-ping"></div>
+          </div>
+          <h2 className="text-2xl font-bold text-white">Live Now</h2>
+        </div>
+        <p className="text-zinc-400 text-sm">
+          Events happening right now in Dallas
+        </p>
+      </div>
+
+      {liveEvents.length > 0 ? (
+        <div className="space-y-4">
+          {liveEvents.map((event) => (
+            <button
+              key={event.id}
+              onClick={() => onEventClick(event)}
+              className="w-full bg-zinc-900 rounded-2xl overflow-hidden hover:bg-zinc-800 transition text-left"
+            >
+              <div className="relative h-40">
+                <img 
+                  src={event.image_url} 
+                  alt={event.name} 
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-transparent" />
+                
+                {/* Live badge */}
+                <div className="absolute top-3 left-3 flex items-center gap-2 bg-red-500 text-white px-3 py-1.5 rounded-full">
+                  <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                  <span className="text-xs font-bold uppercase">Live Now</span>
+                </div>
+
+                {event.age_restricted && (
+                  <div className="absolute top-3 right-3 bg-red-500 text-white px-2 py-1 rounded-full text-xs font-bold">
+                    21+
+                  </div>
+                )}
+              </div>
+
+              <div className="p-4">
+                <div className="flex items-start justify-between mb-2">
+                  <h3 className="text-lg font-bold text-white flex-1">{event.name}</h3>
+                </div>
+                
+                <p className="text-zinc-400 text-sm mb-3 line-clamp-2">{event.description}</p>
+                
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-zinc-400 text-sm">
+                    <MapPin className="w-4 h-4 text-orange-500" />
+                    <span>{event.venue} • {event.neighborhood}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-zinc-400 text-sm">
+                    <Clock className="w-4 h-4 text-orange-500" />
+                    <span>{event.time}</span>
+                  </div>
+                </div>
+
+                <div className="mt-3 inline-block bg-orange-500 bg-opacity-20 text-orange-400 px-3 py-1 rounded-full text-xs font-bold">
+                  HAPPENING NOW →
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-12">
+          <div className="relative inline-block mb-4">
+            <Clock className="w-16 h-16 text-zinc-700" />
+            <div className="absolute -top-1 -right-1 w-4 h-4 bg-zinc-800 rounded-full"></div>
+          </div>
+          <p className="text-zinc-400 mb-2">No live events right now</p>
+          <p className="text-zinc-600 text-sm">Check back later or browse upcoming events</p>
+        </div>
+      )}
+
+      {/* Current time display */}
+      <div className="mt-6 text-center text-zinc-500 text-sm">
+        Updated: {currentTime.toLocaleTimeString('en-US', { 
+          hour: 'numeric', 
+          minute: '2-digit',
+          hour12: true 
+        })}
+      </div>
+    </div>
+  );
+}
+
   const getEventsForDate = (day) => {
     const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     return likedEvents.filter(event => event.date === dateStr);
@@ -2304,6 +2459,7 @@ const loadSquads = async (userId) => {
           )}
 
           {currentTab === 'search' && <AIChat userProfile={userProfile} />}
+          {currentTab === 'live' && <LiveEventsView events={events} onEventClick={handleEventClick} />}
           {currentTab === 'events' && <CalendarView likedEvents={likedEvents} onEventClick={handleEventClick} />}
           {currentTab === 'crew' && mode === 'crew' && (
             <CrewTab squads={squads} onCreateSquad={() => setShowCreateSquad(true)} />
@@ -2329,9 +2485,9 @@ const loadSquads = async (userId) => {
 
         <div className="fixed bottom-0 left-1/2 transform -translate-x-1/2 w-full max-w-md bg-zinc-900 border-t border-zinc-800 px-6 py-4">
           <div className="flex justify-around items-center">
-            {[
+          {[
               { id: 'discover', icon: Home, label: 'Discover' },
-              { id: 'search', icon: MessageCircle, label: 'Chat' },
+              { id: 'live', icon: Clock, label: 'Live' },
               { id: 'events', icon: Calendar, label: 'Events' },
               { id: 'crew', icon: Users, label: 'Crew' },
               { id: 'profile', icon: User, label: 'Profile' }
