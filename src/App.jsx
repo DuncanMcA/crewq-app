@@ -1,6 +1,36 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Heart, X, Share2, Bell, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle, Trash2, Eye, EyeOff, Shield, Sparkles, ExternalLink, Globe, UtensilsCrossed, Award, Trophy, Star, Flame, Music, Mic, Beer, Coffee, Utensils, Sunrise, Moon, Key, Crown, Zap, Target } from 'lucide-react';
 
+// Toast Notification Component
+function Toast({ message, type = 'success', onClose }) {
+  useEffect(() => {
+    const timer = setTimeout(onClose, 3000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  const bgColor = type === 'success' ? 'bg-emerald-500' 
+    : type === 'error' ? 'bg-red-500' 
+    : type === 'info' ? 'bg-blue-500' 
+    : 'bg-orange-500';
+
+  const icon = type === 'success' ? '✓' 
+    : type === 'error' ? '✕' 
+    : type === 'info' ? 'ℹ' 
+    : '🎉';
+
+  return (
+    <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[100] animate-slide-down">
+      <div className={`${bgColor} text-white px-6 py-3 rounded-2xl shadow-lg flex items-center gap-3 max-w-sm`}>
+        <span className="text-lg">{icon}</span>
+        <span className="font-medium text-sm">{message}</span>
+        <button onClick={onClose} className="ml-2 opacity-70 hover:opacity-100">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const SUPABASE_URL = 'https://nwrglwfobtvqqrdemoag.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im53cmdsd2ZvYnR2cXFyZGVtb2FnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkwMDYyMDUsImV4cCI6MjA4NDU4MjIwNX0.tNwEmzXnes_r7HrOhD3iO3YgN7rP9LW4nmGM46cfI8M';
 
@@ -1454,117 +1484,120 @@ function ProfilePreviewModal({ user, onClose, onApprove, onReject, rejectionReas
 
   const handleReject = () => {
     if (!selectedReason) {
-      alert('Please select a reason');
       return;
     }
     onReject(user, selectedReason);
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
-      <div className="bg-zinc-900 rounded-3xl max-w-sm w-full p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-bold text-white">Join Request</h3>
-          <button onClick={onClose} className="text-zinc-400 hover:text-white">
-            <X className="w-6 h-6" />
-          </button>
+    <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4 overflow-y-auto">
+      <div className="bg-zinc-900 rounded-3xl max-w-sm w-full max-h-[90vh] overflow-y-auto my-auto">
+        <div className="sticky top-0 bg-zinc-900 rounded-t-3xl z-10 p-6 pb-0">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-bold text-white">Join Request</h3>
+            <button onClick={onClose} className="text-zinc-400 hover:text-white">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
         </div>
 
-        {/* Profile Preview */}
-        <div className="text-center mb-6">
-          <div className="w-20 h-20 rounded-full bg-zinc-800 mx-auto mb-4 flex items-center justify-center overflow-hidden">
-            {user.profile_picture ? (
-              <img src={user.profile_picture} alt={user.name} className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-3xl font-bold text-white">
-                {user.name?.charAt(0).toUpperCase() || '?'}
-              </span>
+        <div className="p-6 pt-2">
+          {/* Profile Preview */}
+          <div className="text-center mb-6">
+            <div className="w-20 h-20 rounded-full bg-zinc-800 mx-auto mb-4 flex items-center justify-center overflow-hidden">
+              {user?.profile_picture ? (
+                <img src={user.profile_picture} alt={user.name} className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-3xl font-bold text-white">
+                  {user?.name?.charAt(0).toUpperCase() || '?'}
+                </span>
+              )}
+            </div>
+            <h4 className="text-xl font-bold text-white mb-1">{user?.name}</h4>
+            {user?.show_age_to_squads !== false && user?.age && (
+              <p className="text-zinc-400">{user.age} years old</p>
             )}
           </div>
-          <h4 className="text-xl font-bold text-white mb-1">{user.name}</h4>
-          {user.show_age_to_squads !== false && user.age && (
-            <p className="text-zinc-400">{user.age} years old</p>
-          )}
-        </div>
 
-        {/* Bio */}
-        {user.bio && (
-          <div className="bg-zinc-800 rounded-xl p-4 mb-4">
-            <p className="text-sm text-zinc-300">{user.bio}</p>
-          </div>
-        )}
-
-        {/* Vibes */}
-        {user.vibes && user.vibes.length > 0 && (
-          <div className="mb-4">
-            <p className="text-sm font-semibold text-zinc-400 mb-2">Vibes</p>
-            <div className="flex flex-wrap gap-2">
-              {user.vibes.map(vibe => {
-                const vibeOption = VIBE_OPTIONS.find(v => v.id === vibe);
-                return vibeOption ? (
-                  <span key={vibe} className="bg-zinc-800 text-zinc-300 px-3 py-1 rounded-full text-sm">
-                    {vibeOption.icon} {vibeOption.label?.replace(vibeOption.icon, '').trim()}
-                  </span>
-                ) : null;
-              })}
+          {/* Bio */}
+          {user?.bio && (
+            <div className="bg-zinc-800 rounded-xl p-4 mb-4">
+              <p className="text-sm text-zinc-300">{user.bio}</p>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Badge Count */}
-        <div className="flex items-center gap-2 mb-6 text-zinc-400">
-          <Trophy className="w-4 h-4" />
-          <span className="text-sm">{user.badge_count || 0} badges earned</span>
-        </div>
+          {/* Vibes */}
+          {user?.vibes && user.vibes.length > 0 && (
+            <div className="mb-4">
+              <p className="text-sm font-semibold text-zinc-400 mb-2">Vibes</p>
+              <div className="flex flex-wrap gap-2">
+                {user.vibes.map(vibe => {
+                  const vibeOption = VIBE_OPTIONS.find(v => v.id === vibe);
+                  return vibeOption ? (
+                    <span key={vibe} className="bg-zinc-800 text-zinc-300 px-3 py-1 rounded-full text-sm">
+                      {vibeOption.icon} {vibeOption.label?.replace(vibeOption.icon, '').trim()}
+                    </span>
+                  ) : null;
+                })}
+              </div>
+            </div>
+          )}
 
-        {!showRejectOptions ? (
-          <div className="flex gap-3">
-            <button
-              onClick={() => setShowRejectOptions(true)}
-              className="flex-1 bg-zinc-800 text-zinc-400 py-3 rounded-xl font-semibold hover:bg-zinc-700 transition"
-            >
-              Decline
-            </button>
-            <button
-              onClick={() => onApprove(user)}
-              className="flex-1 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition"
-            >
-              Approve
-            </button>
+          {/* Badge Count */}
+          <div className="flex items-center gap-2 mb-6 text-zinc-400">
+            <Trophy className="w-4 h-4" />
+            <span className="text-sm">{user?.badge_count || 0} badges earned</span>
           </div>
-        ) : (
-          <div className="space-y-3">
-            <p className="text-sm font-semibold text-zinc-400">Select a reason:</p>
-            {REJECTION_REASONS.map(reason => (
+
+          {!showRejectOptions ? (
+            <div className="flex gap-3">
               <button
-                key={reason.id}
-                onClick={() => setSelectedReason(reason.id)}
-                className={`w-full p-3 rounded-xl text-left text-sm transition ${
-                  selectedReason === reason.id
-                    ? 'bg-orange-500 bg-opacity-20 border-2 border-orange-500 text-white'
-                    : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-                }`}
-              >
-                {reason.label}
-              </button>
-            ))}
-            <div className="flex gap-3 pt-2">
-              <button
-                onClick={() => setShowRejectOptions(false)}
+                onClick={() => setShowRejectOptions(true)}
                 className="flex-1 bg-zinc-800 text-zinc-400 py-3 rounded-xl font-semibold hover:bg-zinc-700 transition"
               >
-                Back
+                Decline
               </button>
               <button
-                onClick={handleReject}
-                disabled={!selectedReason}
-                className="flex-1 bg-red-500 text-white py-3 rounded-xl font-semibold hover:bg-red-600 transition disabled:opacity-50"
+                onClick={() => onApprove(user)}
+                className="flex-1 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition"
               >
-                Confirm Decline
+                Approve
               </button>
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-zinc-400">Select a reason:</p>
+              {REJECTION_REASONS.map(reason => (
+                <button
+                  key={reason.id}
+                  onClick={() => setSelectedReason(reason.id)}
+                  className={`w-full p-3 rounded-xl text-left text-sm transition ${
+                    selectedReason === reason.id
+                      ? 'bg-orange-500 bg-opacity-20 border-2 border-orange-500 text-white'
+                      : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                  }`}
+                >
+                  {reason.label}
+                </button>
+              ))}
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowRejectOptions(false)}
+                  className="flex-1 bg-zinc-800 text-zinc-400 py-3 rounded-xl font-semibold hover:bg-zinc-700 transition"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={handleReject}
+                  disabled={!selectedReason}
+                  className="flex-1 bg-red-500 text-white py-3 rounded-xl font-semibold hover:bg-red-600 transition disabled:opacity-50"
+                >
+                  Confirm Decline
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -3389,6 +3422,17 @@ export default function App() {
   const [notifications, setNotifications] = useState([]);
   const [pendingJoinRequests, setPendingJoinRequests] = useState([]);
   const [showJoinRequestReview, setShowJoinRequestReview] = useState(null);
+  const [toast, setToast] = useState(null);
+
+  // Helper function to show toast instead of alert
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+  };
+
+  // Helper to get user-specific localStorage key
+  const getUserKey = (key) => {
+    return userProfile?.id ? `crewq_${userProfile.id}_${key}` : `crewq_${key}`;
+  };
 
   // Add CSS for animations and scrollbar hide
   useEffect(() => {
@@ -3403,6 +3447,11 @@ export default function App() {
         100% { transform: scale(1); opacity: 1; }
       }
       .animate-bounce-in { animation: bounce-in 0.5s ease-out; }
+      @keyframes slide-down {
+        0% { transform: translate(-50%, -100%); opacity: 0; }
+        100% { transform: translate(-50%, 0); opacity: 1; }
+      }
+      .animate-slide-down { animation: slide-down 0.3s ease-out; }
     `;
     document.head.appendChild(style);
     return () => document.head.removeChild(style);
@@ -3427,8 +3476,8 @@ export default function App() {
     // Build notifications from various sources
     const notifs = [];
     
-    // Check for upcoming liked events (within next 24 hours)
-    const likedEventsData = JSON.parse(localStorage.getItem('crewq_liked') || '[]');
+    // Check for upcoming liked events (within next 24 hours) - user specific
+    const likedEventsData = JSON.parse(localStorage.getItem(`crewq_${userProfile.id}_liked`) || '[]');
     const now = new Date();
     const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     
@@ -3545,7 +3594,7 @@ export default function App() {
       loadPendingJoinRequests();
     } catch (error) {
       console.error('Error approving request:', error);
-      alert('Error approving request. Please try again.');
+      showToast('Error approving request. Please try again.', 'error');
     }
   };
 
@@ -3572,21 +3621,24 @@ export default function App() {
           rejection_reason: reason
         }]);
       
-      alert('Request declined.');
+      showToast('Request declined.', 'info');
       setShowJoinRequestReview(null);
       loadPendingJoinRequests();
     } catch (error) {
       console.error('Error rejecting request:', error);
-      alert('Error declining request. Please try again.');
+      showToast('Error declining request. Please try again.', 'error');
     }
   };
 
-  // Track daily app usage
+  // Track daily app usage - user specific
   useEffect(() => {
+    if (!userProfile?.id) return;
+    
     const today = new Date().toDateString();
-    const lastVisit = localStorage.getItem('crewq_last_visit');
-    const daysActive = parseInt(localStorage.getItem('crewq_days_active') || '0');
-    const currentStreak = parseInt(localStorage.getItem('crewq_streak') || '0');
+    const userKey = `crewq_${userProfile.id}`;
+    const lastVisit = localStorage.getItem(`${userKey}_last_visit`);
+    const daysActive = parseInt(localStorage.getItem(`${userKey}_days_active`) || '0');
+    const currentStreak = parseInt(localStorage.getItem(`${userKey}_streak`) || '0');
     
     if (lastVisit !== today) {
       // New day
@@ -3602,20 +3654,21 @@ export default function App() {
         newStreak = 1;
       }
       
-      localStorage.setItem('crewq_last_visit', today);
-      localStorage.setItem('crewq_days_active', newDaysActive.toString());
-      localStorage.setItem('crewq_streak', newStreak.toString());
+      localStorage.setItem(`${userKey}_last_visit`, today);
+      localStorage.setItem(`${userKey}_days_active`, newDaysActive.toString());
+      localStorage.setItem(`${userKey}_streak`, newStreak.toString());
     }
-  }, []);
+  }, [userProfile?.id]);
 
-  // Load liked events from localStorage
+  // Load liked events from localStorage - user specific
   useEffect(() => {
+    if (!userProfile?.id) return;
     const loadLikedEvents = () => {
-      const liked = JSON.parse(localStorage.getItem('crewq_liked') || '[]');
+      const liked = JSON.parse(localStorage.getItem(`crewq_${userProfile.id}_liked`) || '[]');
       setLikedEvents(liked);
     };
     loadLikedEvents();
-  }, [likedEventsRefresh]);
+  }, [likedEventsRefresh, userProfile?.id]);
 
   // Load user badges and stats
   useEffect(() => {
@@ -3667,11 +3720,12 @@ export default function App() {
         }
       });
 
-      // Get local engagement stats
-      const totalSwipes = parseInt(localStorage.getItem('crewq_swipes') || '0');
-      const totalLikes = JSON.parse(localStorage.getItem('crewq_liked') || '[]').length;
-      const daysActive = parseInt(localStorage.getItem('crewq_days_active') || '0');
-      const currentStreak = parseInt(localStorage.getItem('crewq_streak') || '0');
+      // Get local engagement stats - user specific
+      const userKey = `crewq_${userId}`;
+      const totalSwipes = parseInt(localStorage.getItem(`${userKey}_swipes`) || '0');
+      const totalLikes = JSON.parse(localStorage.getItem(`${userKey}_liked`) || '[]').length;
+      const daysActive = parseInt(localStorage.getItem(`${userKey}_days_active`) || '0');
+      const currentStreak = parseInt(localStorage.getItem(`${userKey}_streak`) || '0');
       
       // Check if profile is complete
       const profileComplete = !!(userProfile?.bio && userProfile?.vibes?.length > 0);
@@ -3955,10 +4009,10 @@ export default function App() {
       // Refresh stats to check for new badges
       await loadUserStats(userProfile.id);
       
-      alert("🎉 You're checked in! Your crew will see you're here.");
+      showToast("You're checked in! Your crew will see you're here.", 'success');
     } catch (error) {
       console.error('Error checking in:', error);
-      alert('Error checking in. Please try again.');
+      showToast('Error checking in. Please try again.', 'error');
     }
   };
 
@@ -3997,13 +4051,13 @@ export default function App() {
           user_id: userProfile.id
         }]);
 
-      alert('Squad created! 🎉 Invites will be sent to your friends.');
+      showToast('Squad created! Invites will be sent to your friends.', 'success');
       setShowCreateSquad(false);
       await loadSquads(userProfile.id);
       await loadAllSquads();
     } catch (error) {
       console.error('Error creating squad:', error);
-      alert('Error creating squad. Please try again.');
+      showToast('Error creating squad. Please try again.', 'error');
     }
   };
 
@@ -4021,7 +4075,7 @@ export default function App() {
             status: 'pending'
           }]);
 
-        alert('Request sent! 📨 The squad leader will review your request.');
+        showToast('Request sent! The squad leader will review it.', 'success');
         setShowSquadDetail(false);
       } else {
         // Direct join (no approval required or approved request)
@@ -4037,7 +4091,7 @@ export default function App() {
           .update({ member_count: (squad.member_count || 0) + 1 })
           .eq('id', squad.id);
 
-        alert('You joined the squad! 🎉');
+        showToast('You joined the squad!', 'success');
         setShowSquadDetail(false);
         await loadSquads(userProfile.id);
         await loadAllSquads();
@@ -4045,9 +4099,9 @@ export default function App() {
     } catch (error) {
       console.error('Error joining squad:', error);
       if (error.code === '23505') {
-        alert('You already have a pending request for this squad.');
+        showToast('You already have a pending request for this squad.', 'info');
       } else {
-        alert('Error joining squad. Please try again.');
+        showToast('Error joining squad. Please try again.', 'error');
       }
     }
   };
@@ -4214,10 +4268,13 @@ export default function App() {
 
       if (error) throw error;
       setUserProfile(updatedProfile);
-      alert('Profile updated successfully!');
+      showToast('Profile updated successfully!', 'success');
+      
+      // Refresh stats to check for profile complete badge
+      await loadUserStats(userProfile.id);
     } catch (error) {
       console.error('Error updating profile:', error);
-      alert('Error updating profile. Please try again.');
+      showToast('Error updating profile. Please try again.', 'error');
     }
   };
 
@@ -4351,16 +4408,20 @@ const loadSquads = async (userId) => {
   };
 
   const handleSwipe = async (direction) => {
-    // Track swipes for badges
-    const currentSwipes = parseInt(localStorage.getItem('crewq_swipes') || '0');
-    localStorage.setItem('crewq_swipes', (currentSwipes + 1).toString());
+    if (!userProfile?.id) return;
+    
+    const userKey = `crewq_${userProfile.id}`;
+    
+    // Track swipes for badges - user specific
+    const currentSwipes = parseInt(localStorage.getItem(`${userKey}_swipes`) || '0');
+    localStorage.setItem(`${userKey}_swipes`, (currentSwipes + 1).toString());
     
     if (direction === 'right') {
-      const liked = JSON.parse(localStorage.getItem('crewq_liked') || '[]');
+      const liked = JSON.parse(localStorage.getItem(`${userKey}_liked`) || '[]');
       // Prevent duplicates
       if (!liked.find(e => e.id === events[currentIndex].id)) {
         liked.push(events[currentIndex]);
-        localStorage.setItem('crewq_liked', JSON.stringify(liked));
+        localStorage.setItem(`${userKey}_liked`, JSON.stringify(liked));
         
         // Trigger refresh so Events tab updates
         setLikedEventsRefresh(prev => prev + 1);
@@ -4741,6 +4802,15 @@ const loadSquads = async (userId) => {
             onApprove={() => handleApproveJoinRequest(showJoinRequestReview)}
             onReject={(user, reason) => handleRejectJoinRequest(showJoinRequestReview, reason)}
             rejectionReasons={REJECTION_REASONS}
+          />
+        )}
+
+        {/* Toast Notification */}
+        {toast && (
+          <Toast 
+            message={toast.message} 
+            type={toast.type} 
+            onClose={() => setToast(null)} 
           />
         )}
       </div>
