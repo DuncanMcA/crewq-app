@@ -1195,6 +1195,258 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
   );
 }
 
+// Settings Modal
+function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout }) {
+  const [activeSection, setActiveSection] = useState(null);
+  
+  const settingsSections = [
+    { id: 'account', label: 'Account', icon: User, description: 'Manage your account details' },
+    { id: 'privacy', label: 'Privacy & Social', icon: Shield, description: 'Control who sees your profile' },
+    { id: 'content', label: 'Content & Display', icon: Eye, description: 'Customize your experience' },
+    { id: 'about', label: 'About', icon: Sparkles, description: 'App info and support' }
+  ];
+
+  return (
+    <div className={`fixed inset-0 z-50 ${darkMode ? 'bg-black bg-opacity-90' : 'bg-white bg-opacity-95'}`}>
+      <div className={`h-full max-w-md mx-auto ${darkMode ? 'bg-zinc-950' : 'bg-amber-50'}`}>
+        {/* Header */}
+        <div className={`sticky top-0 z-10 px-4 py-4 border-b ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-amber-50 border-amber-200'}`}>
+          <div className="flex items-center justify-between">
+            <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>Settings</h2>
+            <button onClick={onClose} className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-4 space-y-4">
+          {/* Theme Toggle */}
+          <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {darkMode ? <Moon className="w-5 h-5 text-orange-500" /> : <Sunrise className="w-5 h-5 text-orange-500" />}
+                <div>
+                  <p className={`font-semibold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
+                    {darkMode ? 'Dark Mode' : 'Light Mode'}
+                  </p>
+                  <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                    {darkMode ? 'Easy on the eyes' : 'Bright and clean'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setDarkMode(!darkMode)}
+                className={`relative w-14 h-8 rounded-full transition ${
+                  darkMode ? 'bg-orange-500' : 'bg-zinc-300'
+                }`}
+              >
+                <div
+                  className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full transition-transform shadow ${
+                    darkMode ? 'transform translate-x-6' : ''
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* Settings Sections */}
+          <div className="space-y-2">
+            {settingsSections.map(section => (
+              <button
+                key={section.id}
+                onClick={() => setActiveSection(section.id)}
+                className={`w-full rounded-2xl p-4 text-left transition ${
+                  darkMode ? 'bg-zinc-900 hover:bg-zinc-800' : 'bg-white hover:bg-amber-100'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                    darkMode ? 'bg-zinc-800' : 'bg-amber-100'
+                  }`}>
+                    <section.icon className={`w-5 h-5 ${darkMode ? 'text-orange-500' : 'text-orange-600'}`} />
+                  </div>
+                  <div className="flex-1">
+                    <p className={`font-semibold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>{section.label}</p>
+                    <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>{section.description}</p>
+                  </div>
+                  <ChevronRight className={`w-5 h-5 ${darkMode ? 'text-zinc-600' : 'text-zinc-400'}`} />
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {/* Logout Button */}
+          <button
+            onClick={onLogout}
+            className={`w-full rounded-2xl p-4 text-left ${
+              darkMode ? 'bg-red-500 bg-opacity-10' : 'bg-red-50'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                darkMode ? 'bg-red-500 bg-opacity-20' : 'bg-red-100'
+              }`}>
+                <LogOut className="w-5 h-5 text-red-500" />
+              </div>
+              <p className="font-semibold text-red-500">Log Out</p>
+            </div>
+          </button>
+
+          {/* App Version */}
+          <p className={`text-center text-sm ${darkMode ? 'text-zinc-600' : 'text-zinc-400'}`}>
+            CrewQ v1.0.0 • Dallas Nightlife, Solved
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Notifications Modal
+function NotificationsModal({ 
+  onClose, 
+  darkMode, 
+  notifications, 
+  pendingJoinRequests, 
+  onReviewRequest,
+  onCheckIn
+}) {
+  const totalNotifs = notifications.length + pendingJoinRequests.length;
+
+  return (
+    <div className={`fixed inset-0 z-50 ${darkMode ? 'bg-black bg-opacity-90' : 'bg-white bg-opacity-95'}`}>
+      <div className={`h-full max-w-md mx-auto ${darkMode ? 'bg-zinc-950' : 'bg-amber-50'}`}>
+        {/* Header */}
+        <div className={`sticky top-0 z-10 px-4 py-4 border-b ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-amber-50 border-amber-200'}`}>
+          <div className="flex items-center justify-between">
+            <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>Notifications</h2>
+            <button onClick={onClose} className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-4 space-y-4 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 80px)' }}>
+          {/* Pending Join Requests */}
+          {pendingJoinRequests.length > 0 && (
+            <div>
+              <h3 className={`text-sm font-semibold mb-3 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                Squad Requests ({pendingJoinRequests.length})
+              </h3>
+              <div className="space-y-2">
+                {pendingJoinRequests.map(request => (
+                  <button
+                    key={request.id}
+                    onClick={() => onReviewRequest(request)}
+                    className={`w-full rounded-2xl p-4 text-left transition ${
+                      darkMode ? 'bg-orange-500 bg-opacity-10 border border-orange-500 border-opacity-30' : 'bg-orange-50 border border-orange-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center overflow-hidden ${
+                        darkMode ? 'bg-zinc-800' : 'bg-orange-100'
+                      }`}>
+                        {request.user?.profile_picture ? (
+                          <img src={request.user.profile_picture} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-orange-600'}`}>
+                            {request.user?.name?.charAt(0).toUpperCase() || '?'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <p className={`font-semibold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
+                          {request.user?.name} wants to join
+                        </p>
+                        <p className={`text-sm ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>
+                          {request.squad?.name}
+                        </p>
+                      </div>
+                      <div className="bg-orange-500 text-white text-xs px-2 py-1 rounded-full font-bold">
+                        Review
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Other Notifications */}
+          {notifications.length > 0 && (
+            <div>
+              <h3 className={`text-sm font-semibold mb-3 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                Activity
+              </h3>
+              <div className="space-y-2">
+                {notifications.map(notif => (
+                  <div
+                    key={notif.id}
+                    className={`rounded-2xl p-4 ${
+                      notif.priority 
+                        ? (darkMode ? 'bg-emerald-500 bg-opacity-10 border border-emerald-500 border-opacity-30' : 'bg-emerald-50 border border-emerald-200')
+                        : (darkMode ? 'bg-zinc-900' : 'bg-white')
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                        notif.type === 'checkin_reminder' 
+                          ? 'bg-emerald-500 bg-opacity-20' 
+                          : notif.type === 'event_reminder'
+                          ? 'bg-orange-500 bg-opacity-20'
+                          : 'bg-zinc-800'
+                      }`}>
+                        {notif.type === 'checkin_reminder' ? (
+                          <MapPin className="w-5 h-5 text-emerald-500" />
+                        ) : notif.type === 'event_reminder' ? (
+                          <Calendar className="w-5 h-5 text-orange-500" />
+                        ) : notif.type === 'badge_earned' ? (
+                          <Trophy className="w-5 h-5 text-yellow-500" />
+                        ) : (
+                          <Bell className="w-5 h-5 text-zinc-400" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <p className={`font-semibold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>{notif.title}</p>
+                        <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>{notif.message}</p>
+                        <p className={`text-xs mt-1 ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>{notif.time}</p>
+                        
+                        {notif.type === 'checkin_reminder' && notif.event && (
+                          <button
+                            onClick={() => onCheckIn(notif.event)}
+                            className="mt-2 bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-semibold"
+                          >
+                            Check In Now
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Empty State */}
+          {totalNotifs === 0 && (
+            <div className="text-center py-12">
+              <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${
+                darkMode ? 'bg-zinc-800' : 'bg-amber-100'
+              }`}>
+                <Bell className={`w-8 h-8 ${darkMode ? 'text-zinc-600' : 'text-amber-400'}`} />
+              </div>
+              <p className={`font-semibold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>All caught up!</p>
+              <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                No new notifications right now
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Profile Preview for squad leaders reviewing join requests
 function ProfilePreviewModal({ user, onClose, onApprove, onReject, rejectionReasons }) {
   const [showRejectOptions, setShowRejectOptions] = useState(false);
@@ -3127,6 +3379,16 @@ export default function App() {
   const [userBadges, setUserBadges] = useState([]);
   const [userStats, setUserStats] = useState({});
   const [showBadgeEarned, setShowBadgeEarned] = useState(null);
+  
+  // Settings & Notifications
+  const [showSettings, setShowSettings] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+    return localStorage.getItem('crewq_theme') !== 'light';
+  });
+  const [notifications, setNotifications] = useState([]);
+  const [pendingJoinRequests, setPendingJoinRequests] = useState([]);
+  const [showJoinRequestReview, setShowJoinRequestReview] = useState(null);
 
   // Add CSS for animations and scrollbar hide
   useEffect(() => {
@@ -3145,6 +3407,179 @@ export default function App() {
     document.head.appendChild(style);
     return () => document.head.removeChild(style);
   }, []);
+
+  // Save theme preference
+  useEffect(() => {
+    localStorage.setItem('crewq_theme', darkMode ? 'dark' : 'light');
+  }, [darkMode]);
+
+  // Load notifications and pending join requests
+  useEffect(() => {
+    if (userProfile?.id) {
+      loadNotifications();
+      loadPendingJoinRequests();
+    }
+  }, [userProfile?.id]);
+
+  const loadNotifications = async () => {
+    if (!supabaseClient || !userProfile) return;
+    
+    // Build notifications from various sources
+    const notifs = [];
+    
+    // Check for upcoming liked events (within next 24 hours)
+    const likedEventsData = JSON.parse(localStorage.getItem('crewq_liked') || '[]');
+    const now = new Date();
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    
+    likedEventsData.forEach(event => {
+      const eventDate = new Date(event.date);
+      if (eventDate >= now && eventDate <= tomorrow) {
+        notifs.push({
+          id: `reminder-${event.id}`,
+          type: 'event_reminder',
+          title: 'Upcoming Event!',
+          message: `${event.name} is happening soon`,
+          event: event,
+          time: 'Today',
+          read: false
+        });
+      }
+    });
+    
+    // Check for events happening now (check-in reminder)
+    likedEventsData.forEach(event => {
+      const eventDate = new Date(event.date);
+      const eventStart = new Date(eventDate);
+      
+      // Parse time if available
+      if (event.time) {
+        const timeMatch = event.time.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+        if (timeMatch) {
+          let hours = parseInt(timeMatch[1]);
+          const minutes = parseInt(timeMatch[2]);
+          const period = timeMatch[3].toUpperCase();
+          if (period === 'PM' && hours !== 12) hours += 12;
+          if (period === 'AM' && hours === 12) hours = 0;
+          eventStart.setHours(hours, minutes, 0, 0);
+        }
+      }
+      
+      const checkInWindow = new Date(eventStart.getTime() - 30 * 60 * 1000);
+      const eventEnd = new Date(eventStart.getTime() + 4 * 60 * 60 * 1000);
+      
+      if (now >= checkInWindow && now <= eventEnd && !checkedInEvents.includes(event.id)) {
+        notifs.push({
+          id: `checkin-${event.id}`,
+          type: 'checkin_reminder',
+          title: 'Check In Now!',
+          message: `${event.name} is happening - don't forget to check in!`,
+          event: event,
+          time: 'Now',
+          read: false,
+          priority: true
+        });
+      }
+    });
+    
+    setNotifications(notifs);
+  };
+
+  const loadPendingJoinRequests = async () => {
+    if (!supabaseClient || !userProfile) return;
+    
+    try {
+      // Get squads created by this user
+      const { data: mySquads } = await supabaseClient
+        .from('squads')
+        .select('id')
+        .eq('created_by', userProfile.id);
+      
+      if (!mySquads || mySquads.length === 0) {
+        setPendingJoinRequests([]);
+        return;
+      }
+      
+      const squadIds = mySquads.map(s => s.id);
+      
+      // Get pending requests for those squads
+      const { data: requests } = await supabaseClient
+        .from('squad_join_requests')
+        .select(`
+          *,
+          user:users(*),
+          squad:squads(*)
+        `)
+        .in('squad_id', squadIds)
+        .eq('status', 'pending');
+      
+      setPendingJoinRequests(requests || []);
+    } catch (error) {
+      console.error('Error loading join requests:', error);
+    }
+  };
+
+  const handleApproveJoinRequest = async (request) => {
+    if (!supabaseClient) return;
+    
+    try {
+      // Update request status
+      await supabaseClient
+        .from('squad_join_requests')
+        .update({ status: 'approved', responded_at: new Date().toISOString() })
+        .eq('id', request.id);
+      
+      // Add user to squad
+      await supabaseClient
+        .from('squad_members')
+        .insert([{ squad_id: request.squad_id, user_id: request.user_id }]);
+      
+      // Update member count
+      await supabaseClient
+        .from('squads')
+        .update({ member_count: (request.squad?.member_count || 0) + 1 })
+        .eq('id', request.squad_id);
+      
+      alert('Request approved! They\'ve been added to the squad.');
+      setShowJoinRequestReview(null);
+      loadPendingJoinRequests();
+    } catch (error) {
+      console.error('Error approving request:', error);
+      alert('Error approving request. Please try again.');
+    }
+  };
+
+  const handleRejectJoinRequest = async (request, reason) => {
+    if (!supabaseClient) return;
+    
+    try {
+      // Update request status
+      await supabaseClient
+        .from('squad_join_requests')
+        .update({ 
+          status: 'rejected', 
+          rejection_reason: reason,
+          responded_at: new Date().toISOString() 
+        })
+        .eq('id', request.id);
+      
+      // Track rejection for pattern detection
+      await supabaseClient
+        .from('squad_rejection_stats')
+        .insert([{
+          squad_owner_id: userProfile.id,
+          rejected_user_gender: request.user?.gender,
+          rejection_reason: reason
+        }]);
+      
+      alert('Request declined.');
+      setShowJoinRequestReview(null);
+      loadPendingJoinRequests();
+    } catch (error) {
+      console.error('Error rejecting request:', error);
+      alert('Error declining request. Please try again.');
+    }
+  };
 
   // Track daily app usage
   useEffect(() => {
@@ -3968,10 +4403,10 @@ const loadSquads = async (userId) => {
   const currentEvent = events[currentIndex];
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
-      <div className="w-full max-w-md mx-auto bg-zinc-950 min-h-screen relative flex flex-col">
+    <div className={`min-h-screen ${darkMode ? 'bg-zinc-950 text-white' : 'bg-amber-50 text-zinc-900'}`}>
+      <div className={`w-full max-w-md mx-auto ${darkMode ? 'bg-zinc-950' : 'bg-amber-50'} min-h-screen relative flex flex-col`}>
         {/* Fixed Header */}
-        <div className="sticky top-0 z-40 bg-zinc-900 border-b border-zinc-800 px-4 py-4">
+        <div className={`sticky top-0 z-40 ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-amber-100 border-amber-200'} border-b px-4 py-4`}>
           <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-2xl font-bold">
@@ -3979,28 +4414,35 @@ const loadSquads = async (userId) => {
               </h1>
             </div>
             <div className="flex items-center gap-3">
-              <button className="relative">
-                <Bell className="w-6 h-6 text-zinc-400" />
-                <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
-                  3
-                </span>
+              <button 
+                onClick={() => setShowNotifications(true)}
+                className="relative"
+              >
+                <Bell className={`w-6 h-6 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`} />
+                {(notifications.length + pendingJoinRequests.length) > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
+                    {notifications.length + pendingJoinRequests.length}
+                  </span>
+                )}
               </button>
-              <button>
-                <Settings className="w-6 h-6 text-zinc-400" />
+              <button onClick={() => setShowSettings(true)}>
+                <Settings className={`w-6 h-6 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`} />
               </button>
             </div>
           </div>
 
           <div className="flex flex-col items-center gap-3">
             <div className={`flex gap-2 rounded-full p-1.5 transition-all duration-300 ${
-              mode === 'crew' ? 'bg-zinc-800' : 'bg-orange-500'
+              mode === 'crew' 
+                ? (darkMode ? 'bg-zinc-800' : 'bg-amber-200') 
+                : 'bg-orange-500'
             }`}>
               <button
                 onClick={() => setMode('crew')}
                 className={`px-8 py-2.5 rounded-full text-base font-bold transition-all duration-300 ${
                   mode === 'crew' 
                     ? 'bg-orange-500 text-white' 
-                    : 'bg-transparent text-zinc-900'
+                    : (darkMode ? 'bg-transparent text-zinc-900' : 'bg-transparent text-white')
                 }`}
               >
                 Crew
@@ -4009,7 +4451,7 @@ const loadSquads = async (userId) => {
                 onClick={() => setMode('solo')}
                 className={`px-8 py-2.5 rounded-full text-base font-bold transition-all duration-300 ${
                   mode === 'solo' 
-                    ? 'bg-zinc-900 text-white' 
+                    ? (darkMode ? 'bg-zinc-900 text-white' : 'bg-amber-50 text-zinc-900')
                     : 'bg-transparent text-white'
                 }`}
               >
@@ -4017,7 +4459,7 @@ const loadSquads = async (userId) => {
               </button>
             </div>
             
-            <div className="flex items-center gap-2 text-zinc-400">
+            <div className={`flex items-center gap-2 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
               <MapPin className="w-4 h-4" />
               <span className="text-sm">Dallas, Texas</span>
             </div>
@@ -4132,7 +4574,7 @@ const loadSquads = async (userId) => {
         </div>
 
         {/* Fixed Bottom Navigation */}
-        <div className="fixed bottom-0 left-0 right-0 z-50 bg-zinc-900 border-t border-zinc-800 px-4 py-2 pb-safe">
+        <div className={`fixed bottom-0 left-0 right-0 z-50 ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-amber-200'} border-t px-4 py-2 pb-safe`}>
           <div className="flex justify-around items-center max-w-md mx-auto">
             {[
               { id: 'discover', icon: Home, label: 'Discover' },
@@ -4146,8 +4588,8 @@ const loadSquads = async (userId) => {
                 onClick={() => setCurrentTab(tab.id)}
                 className="flex flex-col items-center gap-0.5 py-1 px-2"
               >
-                <tab.icon className={`w-5 h-5 ${currentTab === tab.id ? 'text-orange-500' : 'text-zinc-500'}`} />
-                <span className={`text-[10px] ${currentTab === tab.id ? 'text-orange-500' : 'text-zinc-500'}`}>
+                <tab.icon className={`w-5 h-5 ${currentTab === tab.id ? 'text-orange-500' : (darkMode ? 'text-zinc-500' : 'text-zinc-400')}`} />
+                <span className={`text-[10px] ${currentTab === tab.id ? 'text-orange-500' : (darkMode ? 'text-zinc-500' : 'text-zinc-400')}`}>
                   {tab.label}
                 </span>
               </button>
@@ -4260,6 +4702,46 @@ const loadSquads = async (userId) => {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Settings Modal */}
+        {showSettings && (
+          <SettingsModal
+            onClose={() => setShowSettings(false)}
+            darkMode={darkMode}
+            setDarkMode={setDarkMode}
+            userProfile={userProfile}
+            onLogout={() => {
+              handleLogout();
+              setShowSettings(false);
+            }}
+          />
+        )}
+
+        {/* Notifications Modal */}
+        {showNotifications && (
+          <NotificationsModal
+            onClose={() => setShowNotifications(false)}
+            darkMode={darkMode}
+            notifications={notifications}
+            pendingJoinRequests={pendingJoinRequests}
+            onReviewRequest={(request) => {
+              setShowNotifications(false);
+              setShowJoinRequestReview(request);
+            }}
+            onCheckIn={handleCheckIn}
+          />
+        )}
+
+        {/* Join Request Review Modal */}
+        {showJoinRequestReview && (
+          <ProfilePreviewModal
+            user={showJoinRequestReview.user}
+            onClose={() => setShowJoinRequestReview(null)}
+            onApprove={() => handleApproveJoinRequest(showJoinRequestReview)}
+            onReject={(user, reason) => handleRejectJoinRequest(showJoinRequestReview, reason)}
+            rejectionReasons={REJECTION_REASONS}
+          />
         )}
       </div>
     </div>
