@@ -455,10 +455,12 @@ const generateBioFromAnswers = (answers, userName) => {
   return bio.trim();
 };
 
-function BioBuilderModal({ onClose, onSaveBio, userName, currentAnswers }) {
+function BioBuilderModal({ onClose, onSaveBio, userName, currentAnswers, currentBio = '' }) {
   const [answers, setAnswers] = useState(currentAnswers || {});
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [showPreview, setShowPreview] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedBio, setEditedBio] = useState('');
 
   const handleAnswer = (answer) => {
     const question = BIO_QUESTIONS[currentQuestionIndex];
@@ -467,6 +469,8 @@ function BioBuilderModal({ onClose, onSaveBio, userName, currentAnswers }) {
     if (currentQuestionIndex < BIO_QUESTIONS.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
     } else {
+      const generated = generateBioFromAnswers({ ...answers, [question.id]: answer }, userName);
+      setEditedBio(generated);
       setShowPreview(true);
     }
   };
@@ -479,6 +483,13 @@ function BioBuilderModal({ onClose, onSaveBio, userName, currentAnswers }) {
 
   const generatedBio = generateBioFromAnswers(answers, userName);
   const progress = ((currentQuestionIndex + 1) / BIO_QUESTIONS.length) * 100;
+
+  // Initialize editedBio when entering preview
+  useEffect(() => {
+    if (showPreview && !editedBio) {
+      setEditedBio(generatedBio);
+    }
+  }, [showPreview, generatedBio]);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
@@ -544,41 +555,91 @@ function BioBuilderModal({ onClose, onSaveBio, userName, currentAnswers }) {
             {/* Preview Header */}
             <div className="p-6 border-b border-zinc-800">
               <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-white">Your Bio Preview</h2>
+                <h2 className="text-xl font-bold text-white">
+                  {isEditing ? 'Edit Your Bio' : 'Your Bio Preview'}
+                </h2>
                 <button onClick={onClose} className="text-zinc-400 hover:text-white">
                   <X className="w-6 h-6" />
                 </button>
               </div>
             </div>
 
-            {/* Bio Preview */}
+            {/* Bio Preview/Edit */}
             <div className="p-6">
-              <div className="bg-zinc-800 rounded-xl p-4 mb-6">
-                <p className="text-white leading-relaxed">{generatedBio}</p>
-              </div>
+              {isEditing ? (
+                <div className="mb-4">
+                  <textarea
+                    value={editedBio}
+                    onChange={(e) => setEditedBio(e.target.value)}
+                    className="w-full bg-zinc-800 text-white rounded-xl p-4 min-h-[150px] outline-none focus:ring-2 focus:ring-orange-500 resize-none"
+                    placeholder="Write your bio here..."
+                  />
+                  <p className="text-zinc-500 text-xs mt-2">{editedBio.length} characters</p>
+                </div>
+              ) : (
+                <div className="bg-zinc-800 rounded-xl p-4 mb-4">
+                  <p className="text-white leading-relaxed">{editedBio || generatedBio}</p>
+                </div>
+              )}
+
+              {/* Edit/Delete buttons when not editing */}
+              {!isEditing && (
+                <div className="flex gap-2 mb-4">
+                  <button
+                    onClick={() => setIsEditing(true)}
+                    className="flex-1 bg-zinc-800 text-zinc-300 py-2 rounded-xl font-semibold hover:bg-zinc-700 transition flex items-center justify-center gap-2"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                    Edit Text
+                  </button>
+                  <button
+                    onClick={() => setEditedBio('')}
+                    className="flex-1 bg-red-500 bg-opacity-20 text-red-400 py-2 rounded-xl font-semibold hover:bg-opacity-30 transition flex items-center justify-center gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Clear Bio
+                  </button>
+                </div>
+              )}
+
+              {/* Done editing button */}
+              {isEditing && (
+                <button
+                  onClick={() => setIsEditing(false)}
+                  className="w-full bg-zinc-800 text-zinc-300 py-2 rounded-xl font-semibold hover:bg-zinc-700 transition mb-4"
+                >
+                  Done Editing
+                </button>
+              )}
 
               <div className="space-y-3">
                 <button
                   onClick={() => {
-                    onSaveBio(generatedBio, answers);
+                    onSaveBio(editedBio || generatedBio, answers);
                     onClose();
                   }}
-                  className="w-full bg-orange-500 text-white py-4 rounded-xl font-bold hover:bg-orange-600 transition"
+                  disabled={!editedBio && !generatedBio}
+                  className="w-full bg-orange-500 text-white py-4 rounded-xl font-bold hover:bg-orange-600 transition disabled:opacity-50"
                 >
-                  Save This Bio
+                  {editedBio ? 'Save This Bio' : 'Save Without Bio'}
                 </button>
                 <button
                   onClick={() => {
                     setCurrentQuestionIndex(0);
                     setAnswers({});
+                    setEditedBio('');
                     setShowPreview(false);
+                    setIsEditing(false);
                   }}
                   className="w-full bg-zinc-800 text-zinc-300 py-4 rounded-xl font-bold hover:bg-zinc-700 transition"
                 >
                   Start Over
                 </button>
                 <button
-                  onClick={() => setShowPreview(false)}
+                  onClick={() => {
+                    setShowPreview(false);
+                    setIsEditing(false);
+                  }}
                   className="w-full text-zinc-500 hover:text-white transition"
                 >
                   ← Go back and edit answers
@@ -3019,7 +3080,7 @@ function AwardsTab({ userProfile, userBadges, userStats }) {
   );
 }
 
-function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], attendedEvents = [], onEventClick }) {
+function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], attendedEvents = [], onEventClick, onNavigate }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedProfile, setEditedProfile] = useState(userProfile);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -3051,10 +3112,11 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
   const loadSquadsCount = async () => {
     if (!supabaseClient) return;
     try {
+      // Count squads the user is a member of
       const { count } = await supabaseClient
-        .from('squads')
+        .from('squad_members')
         .select('*', { count: 'exact', head: true })
-        .eq('created_by', userProfile.id);
+        .eq('user_id', userProfile.id);
       setSquadsCount(count || 0);
     } catch (error) {
       console.error('Error loading squads count:', error);
@@ -3322,14 +3384,22 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
       <div className="bg-zinc-900 rounded-3xl p-6 mb-6">
         <h3 className="text-lg font-bold text-white mb-4">Activity</h3>
         <div className="grid grid-cols-2 gap-4">
-          <div className="bg-zinc-800 rounded-xl p-4 text-center">
+          <button 
+            onClick={() => onNavigate && onNavigate('events')}
+            className="bg-zinc-800 rounded-xl p-4 text-center hover:bg-zinc-700 transition"
+          >
             <div className="text-3xl font-bold text-orange-500 mb-1">{likedEvents.length}</div>
             <div className="text-sm text-zinc-400">Liked Events</div>
-          </div>
-          <div className="bg-zinc-800 rounded-xl p-4 text-center">
+            <div className="text-xs text-orange-500 mt-1">View →</div>
+          </button>
+          <button 
+            onClick={() => onNavigate && onNavigate('crew')}
+            className="bg-zinc-800 rounded-xl p-4 text-center hover:bg-zinc-700 transition"
+          >
             <div className="text-3xl font-bold text-orange-500 mb-1">{squadsCount}</div>
             <div className="text-sm text-zinc-400">Squads</div>
-          </div>
+            <div className="text-xs text-orange-500 mt-1">View →</div>
+          </button>
         </div>
       </div>
 
@@ -3343,31 +3413,30 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
         <div className="space-y-4">
           {/* Toggle Row */}
           <div className="flex items-center justify-between p-4 bg-zinc-800 rounded-xl">
-            <div className="flex-1">
+            <div className="flex-1 pr-4">
               <p className="text-white font-semibold mb-1">Profile Visibility</p>
               <p className="text-zinc-400 text-sm">
-                {(isEditing ? editedProfile.profile_visibility : userProfile.profile_visibility) === 'public' 
+                {userProfile.profile_visibility === 'public' 
                   ? 'Anyone can see your profile in Solo mode' 
-                  : 'Only squad members can see your profile'}
+                  : 'Only squad members and squad leaders you request to join can see your profile'}
               </p>
             </div>
             <button
-              onClick={() => {
-                if (isEditing) {
-                  const currentVisibility = editedProfile.profile_visibility || 'squad_only';
-                  const newVisibility = currentVisibility === 'public' ? 'squad_only' : 'public';
-                  setEditedProfile({ ...editedProfile, profile_visibility: newVisibility });
-                }
+              onClick={async () => {
+                const currentVisibility = userProfile.profile_visibility || 'squad_only';
+                const newVisibility = currentVisibility === 'public' ? 'squad_only' : 'public';
+                const updatedProfile = { ...userProfile, profile_visibility: newVisibility };
+                await onUpdateProfile(updatedProfile);
               }}
-              className={`relative w-14 h-8 rounded-full transition-colors duration-200 ${
-                (isEditing ? editedProfile.profile_visibility : userProfile.profile_visibility) === 'public'
+              className={`relative w-14 h-8 rounded-full transition-colors duration-200 cursor-pointer ${
+                userProfile.profile_visibility === 'public'
                   ? 'bg-orange-500'
                   : 'bg-zinc-600'
-              } ${!isEditing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              }`}
             >
               <div
                 className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow-md transition-all duration-200 ${
-                  (isEditing ? editedProfile.profile_visibility : userProfile.profile_visibility) === 'public'
+                  userProfile.profile_visibility === 'public'
                     ? 'left-7'
                     : 'left-1'
                 }`}
@@ -3377,11 +3446,11 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
 
           {/* Status Indicator */}
           <div className={`flex items-center gap-3 p-4 rounded-xl ${
-            (isEditing ? editedProfile.profile_visibility : userProfile.profile_visibility) === 'public'
+            userProfile.profile_visibility === 'public'
               ? 'bg-emerald-500 bg-opacity-10 border border-emerald-500 border-opacity-30'
               : 'bg-zinc-800'
           }`}>
-            {(isEditing ? editedProfile.profile_visibility : userProfile.profile_visibility) === 'public' ? (
+            {userProfile.profile_visibility === 'public' ? (
               <>
                 <Eye className="w-5 h-5 text-emerald-400" />
                 <div>
@@ -3394,17 +3463,11 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
                 <EyeOff className="w-5 h-5 text-zinc-500" />
                 <div>
                   <p className="text-zinc-300 font-semibold">Squad Only</p>
-                  <p className="text-zinc-500 text-xs">Only your squad members can see you</p>
+                  <p className="text-zinc-500 text-xs">Only squad members and leaders you request to join can see your profile</p>
                 </div>
               </>
             )}
           </div>
-          
-          {!isEditing && (
-            <p className="text-zinc-500 text-xs text-center">
-              Tap the edit button above to change privacy settings
-            </p>
-          )}
         </div>
       </div>
 
@@ -5027,6 +5090,7 @@ const loadSquads = async (userId) => {
               userBadges={userBadges}
               attendedEvents={attendedEvents}
               onEventClick={handleEventClick}
+              onNavigate={setCurrentTab}
             />
           )}
         </div>
