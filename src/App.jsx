@@ -101,7 +101,6 @@ const BADGE_CATEGORIES = [
 const GENDER_OPTIONS = [
   { id: 'woman', label: 'Woman' },
   { id: 'man', label: 'Man' },
-  { id: 'non-binary', label: 'Non-binary' },
   { id: 'prefer-not-to-say', label: 'Prefer not to say' }
 ];
 
@@ -119,8 +118,7 @@ const LIFE_STAGE_OPTIONS = [
 const SQUAD_GENDER_OPTIONS = [
   { id: 'all', label: 'Everyone welcome', icon: '🌈' },
   { id: 'women-only', label: 'Women only', icon: '👩' },
-  { id: 'men-only', label: 'Men only', icon: '👨' },
-  { id: 'women-nb', label: 'Women & Non-binary', icon: '👩‍🤝‍👩' }
+  { id: 'men-only', label: 'Men only', icon: '👨' }
 ];
 
 // Rejection reasons (preset, no free text)
@@ -1330,7 +1328,6 @@ function SoloFriendlySquadsView({ squads, onSquadClick, userProfile }) {
       const userGender = userProfile?.gender;
       if (s.gender_restriction === 'women-only' && userGender !== 'woman') return false;
       if (s.gender_restriction === 'men-only' && userGender !== 'man') return false;
-      if (s.gender_restriction === 'women-nb' && !['woman', 'non-binary'].includes(userGender)) return false;
     }
     
     // Check age restriction
