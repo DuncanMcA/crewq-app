@@ -159,6 +159,17 @@ const REJECTION_REASONS = [
   { id: 'timing', label: 'Timing didn\'t work out' }
 ];
 
+// Intent options for onboarding (What are you here for?)
+const INTENT_OPTIONS = [
+  { id: 'find-spots', label: 'Find new spots', icon: '🍻', description: 'Discover bars, restaurants & venues' },
+  { id: 'meet-people', label: 'Meet new people', icon: '👯', description: 'Connect with others who share my vibe' },
+  { id: 'plan-nights', label: 'Plan nights out', icon: '📅', description: 'Organize outings with friends & crew' },
+  { id: 'stay-informed', label: 'Stay in the loop', icon: '🎉', description: 'Know what\'s happening in Dallas' },
+  { id: 'go-solo', label: 'Go out solo', icon: '🙋', description: 'Find events welcoming to solo attendees' },
+  { id: 'new-to-dallas', label: 'I\'m new to Dallas', icon: '🆕', description: 'Get to know the city\'s nightlife' },
+  { id: 'date-night', label: 'Date night ideas', icon: '💑', description: 'Find romantic or fun spots for couples' }
+];
+
 const VIBE_OPTIONS = [
   { id: 'live-music', label: '🎸 Live Music', icon: '🎸' },
   { id: 'trivia', label: '🧠 Trivia', icon: '🧠' },
@@ -3351,6 +3362,7 @@ function AuthScreen({ onAuth }) {
   const [gender, setGender] = useState('');
   const [phone, setPhone] = useState('');
   const [vibes, setVibes] = useState([]);
+  const [intents, setIntents] = useState([]);
   const [bio, setBio] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -3359,6 +3371,14 @@ function AuthScreen({ onAuth }) {
       prev.includes(vibeId)
         ? prev.filter(v => v !== vibeId)
         : [...prev, vibeId]
+    );
+  };
+
+  const handleIntentToggle = (intentId) => {
+    setIntents(prev =>
+      prev.includes(intentId)
+        ? prev.filter(i => i !== intentId)
+        : [...prev, intentId]
     );
   };
 
@@ -3374,7 +3394,8 @@ function AuthScreen({ onAuth }) {
       age: age ? parseInt(age) : null, 
       gender: gender || null,
       phone, 
-      vibes, 
+      vibes,
+      intents,
       bio, 
       profile_picture: null,
       allow_squad_requests: true,
@@ -3390,6 +3411,18 @@ function AuthScreen({ onAuth }) {
           Crew<span className="text-orange-500">Q</span>
         </h1>
         <p className="text-zinc-400 mb-6">Dallas Nightlife, Solved</p>
+
+        {/* Progress indicator */}
+        <div className="flex gap-2 mb-6">
+          {[1, 2].map(s => (
+            <div
+              key={s}
+              className={`flex-1 h-1 rounded-full ${
+                step >= s ? 'bg-orange-500' : 'bg-zinc-800'
+              }`}
+            />
+          ))}
+        </div>
 
         {step === 1 && (
           <div className="space-y-4">
@@ -3461,9 +3494,37 @@ function AuthScreen({ onAuth }) {
         )}
 
         {step === 2 && (
-          <div className="space-y-4">
+          <div className="space-y-6">
+            {/* What are you here for? */}
             <div>
-              <label className="block text-sm font-semibold text-zinc-300 mb-3">What's your vibe?</label>
+              <label className="block text-sm font-semibold text-zinc-300 mb-2">What are you here for?</label>
+              <p className="text-xs text-zinc-500 mb-3">Select all that apply</p>
+              <div className="space-y-2">
+                {INTENT_OPTIONS.map(intent => (
+                  <button
+                    key={intent.id}
+                    onClick={() => handleIntentToggle(intent.id)}
+                    className={`w-full p-3 rounded-xl text-left transition flex items-center gap-3 ${
+                      intents.includes(intent.id)
+                        ? 'bg-orange-500 bg-opacity-20 border-2 border-orange-500'
+                        : 'bg-zinc-800 border-2 border-transparent hover:border-zinc-700'
+                    }`}
+                  >
+                    <span className="text-2xl">{intent.icon}</span>
+                    <div>
+                      <p className={`font-semibold ${intents.includes(intent.id) ? 'text-orange-400' : 'text-white'}`}>
+                        {intent.label}
+                      </p>
+                      <p className="text-xs text-zinc-500">{intent.description}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* What's your vibe? */}
+            <div>
+              <label className="block text-sm font-semibold text-zinc-300 mb-2">What's your vibe?</label>
               <p className="text-xs text-zinc-500 mb-3">Select all that apply</p>
               <div className="flex flex-wrap gap-2">
                 {VIBE_OPTIONS.map(vibe => (
