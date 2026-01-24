@@ -146,7 +146,7 @@ const LIFE_STAGE_OPTIONS = [
 
 // Squad restriction presets
 const SQUAD_GENDER_OPTIONS = [
-  { id: 'all', label: 'Everyone welcome', icon: '🌈' },
+  { id: 'all', label: 'Everyone welcome', icon: '👥' },
   { id: 'women-only', label: 'Women only', icon: '👩' },
   { id: 'men-only', label: 'Men only', icon: '👨' }
 ];
@@ -233,8 +233,16 @@ const generateBioFromAnswers = (answers, userName) => {
   const yesAnswers = Object.entries(answers).filter(([_, value]) => value === true);
   const tags = yesAnswers.map(([id]) => BIO_QUESTIONS.find(q => q.id === id)?.tag).filter(Boolean);
   
+  // Varied opening phrases for new users
+  const newUserOpenings = [
+    `${userName} is new to the Dallas nightlife scene and ready to explore!`,
+    `${userName} just landed in Dallas and is ready to discover the best spots!`,
+    `${userName} is here to find their new favorite Dallas hangouts!`,
+    `Fresh to the Dallas scene, ${userName} is eager to explore what the city has to offer!`
+  ];
+  
   if (tags.length === 0) {
-    return `${userName} is new to the Dallas nightlife scene and ready to explore!`;
+    return newUserOpenings[Math.floor(Math.random() * newUserOpenings.length)];
   }
   
   // Group similar interests
@@ -248,23 +256,59 @@ const generateBioFromAnswers = (answers, userName) => {
 
   let bio = '';
   
+  // Varied openings based on traits
+  const regularOpenings = [
+    `${userName} is a Dallas nightlife regular who's always down for a good time. `,
+    `${userName} knows the Dallas scene inside and out. `,
+    `A true Dallas local, ${userName} is always in the know about what's happening. `
+  ];
+  
+  const soloOpenings = [
+    `${userName} isn't afraid to explore Dallas solo and loves meeting new people. `,
+    `${userName} embraces solo adventures and is always up for making new connections. `,
+    `Flying solo doesn't faze ${userName} – they're here to explore and connect. `
+  ];
+  
+  const generalOpenings = [
+    `${userName} loves exploring what Dallas has to offer. `,
+    `${userName} is all about discovering Dallas's best kept secrets. `,
+    `${userName} brings good energy wherever they go in Dallas. `,
+    `Always up for something new, ${userName} is exploring the Dallas scene. `
+  ];
+  
   // Opening
   if (social.includes('regular')) {
-    bio = `${userName} is a Dallas nightlife regular who's always down for a good time. `;
+    bio = regularOpenings[Math.floor(Math.random() * regularOpenings.length)];
   } else if (social.includes('solo adventurer')) {
-    bio = `${userName} isn't afraid to explore Dallas solo and loves meeting new people. `;
+    bio = soloOpenings[Math.floor(Math.random() * soloOpenings.length)];
   } else {
-    bio = `${userName} loves exploring what Dallas has to offer. `;
+    bio = generalOpenings[Math.floor(Math.random() * generalOpenings.length)];
   }
 
-  // Drinks preference
+  // Drinks preference with variety
   if (drinks.length > 0) {
+    const cocktailPhrases = [
+      "Craft cocktails are definitely their thing. ",
+      "A well-made cocktail is their love language. ",
+      "They appreciate a bar with a solid cocktail program. "
+    ];
+    const beerPhrases = [
+      "You'll find them checking out the latest craft beer spots. ",
+      "Craft beer is their go-to. ",
+      "They're always on the hunt for new breweries and taprooms. "
+    ];
+    const hhPhrases = [
+      "They know all the best happy hour deals in town. ",
+      "Happy hour? They've got the inside scoop on every deal. ",
+      "Never paying full price – they know every happy hour in Dallas. "
+    ];
+    
     if (drinks.includes('cocktail connoisseur') || drinks.includes('cocktail menu hunter')) {
-      bio += "Craft cocktails are definitely their thing. ";
+      bio += cocktailPhrases[Math.floor(Math.random() * cocktailPhrases.length)];
     } else if (drinks.includes('craft beer lover')) {
-      bio += "You'll find them checking out the latest craft beer spots. ";
+      bio += beerPhrases[Math.floor(Math.random() * beerPhrases.length)];
     } else if (drinks.includes('happy hour hunter')) {
-      bio += "They know all the best happy hour deals in town. ";
+      bio += hhPhrases[Math.floor(Math.random() * hhPhrases.length)];
     }
   }
 
@@ -278,60 +322,134 @@ const generateBioFromAnswers = (answers, userName) => {
     if (vibes.includes('brewery hopper')) vibeList.push('breweries');
     
     if (vibeList.length > 0) {
-      bio += `They're drawn to ${vibeList.slice(0, 2).join(' and ')}. `;
+      const vibePhrases = [
+        `They're drawn to ${vibeList.slice(0, 2).join(' and ')}. `,
+        `${vibeList.slice(0, 2).join(' and ').charAt(0).toUpperCase() + vibeList.slice(0, 2).join(' and ').slice(1)} are their scene. `,
+        `You'll often catch them at ${vibeList.slice(0, 2).join(' or ')}. `
+      ];
+      bio += vibePhrases[Math.floor(Math.random() * vibePhrases.length)];
     }
   }
 
-  // Sports
+  // Sports with variety
   if (sports.length > 0) {
+    const cowboysPhrases = [
+      "Game days mean finding the perfect sports bar for Cowboys action. ",
+      "Sundays are for Cowboys games at the best sports bars. ",
+      "How 'bout them Cowboys? They're always watching. "
+    ];
+    const ufcPhrases = [
+      "They never miss a big UFC fight night. ",
+      "Fight nights are a must – they're always locked in for UFC. ",
+      "Big fights mean big nights out for them. "
+    ];
+    const soccerPhrases = [
+      "Early mornings for Premier League? Count them in. ",
+      "Soccer fans unite – they're watching every match. ",
+      "Whether it's MLS or Premier League, they're there for it. "
+    ];
+    
     if (sports.includes('Cowboys fan')) {
-      bio += "Game days mean finding the perfect sports bar for Cowboys action. ";
+      bio += cowboysPhrases[Math.floor(Math.random() * cowboysPhrases.length)];
     } else if (sports.includes('fight night fan')) {
-      bio += "They never miss a big UFC fight night. ";
+      bio += ufcPhrases[Math.floor(Math.random() * ufcPhrases.length)];
     } else if (sports.includes('soccer fan')) {
-      bio += "Early mornings for Premier League? Count them in. ";
+      bio += soccerPhrases[Math.floor(Math.random() * soccerPhrases.length)];
     }
   }
 
-  // Food
+  // Food with variety
   if (food.length > 0) {
+    const foodiePhrases = [
+      "Always hunting for the next great restaurant to try. ",
+      "Food is an adventure – they're always exploring new spots. ",
+      "Their restaurant list is never-ending (in the best way). "
+    ];
+    const brunchPhrases = [
+      "Weekend brunch is a must. ",
+      "Bottomless mimosas? Say less. ",
+      "Brunch is a lifestyle, not just a meal. "
+    ];
+    const lateNightPhrases = [
+      "Late-night eats after the bars? Absolutely. ",
+      "The night doesn't end until they find good late-night food. ",
+      "Post-bar tacos are a requirement. "
+    ];
+    
     if (food.includes('foodie explorer') || food.includes('culinary curious')) {
-      bio += "Always hunting for the next great restaurant to try. ";
+      bio += foodiePhrases[Math.floor(Math.random() * foodiePhrases.length)];
     }
     if (food.includes('brunch enthusiast')) {
-      bio += "Weekend brunch is a must. ";
+      bio += brunchPhrases[Math.floor(Math.random() * brunchPhrases.length)];
     }
     if (food.includes('late-night snacker')) {
-      bio += "Late-night eats after the bars? Absolutely. ";
+      bio += lateNightPhrases[Math.floor(Math.random() * lateNightPhrases.length)];
     }
   }
 
-  // Entertainment
+  // Entertainment with variety
   if (entertainment.length > 0) {
+    const musicPhrases = [
+      "Live music and DJ nights are their jam. ",
+      "If there's a good DJ or live band, they're there. ",
+      "Music is the vibe – live shows are always on the agenda. "
+    ];
+    const triviaPhrases = [
+      "Trivia nights are a weekly tradition. ",
+      "They take trivia seriously (in a fun way). ",
+      "Quiz night champion in the making. "
+    ];
+    const comedyPhrases = [
+      "Comedy nights and open mics are always on the radar. ",
+      "A good laugh is always on the schedule. ",
+      "Comedy shows are their thing – the funnier, the better. "
+    ];
+    const nightOwlPhrases = [
+      "The party really starts after 10 PM for them. ",
+      "Night owl energy – they come alive when the sun goes down. ",
+      "Early nights? Not in their vocabulary. "
+    ];
+    
     if (entertainment.includes('music lover')) {
-      bio += "Live music and DJ nights are their jam. ";
+      bio += musicPhrases[Math.floor(Math.random() * musicPhrases.length)];
     }
     if (entertainment.includes('trivia buff')) {
-      bio += "Trivia nights are a weekly tradition. ";
+      bio += triviaPhrases[Math.floor(Math.random() * triviaPhrases.length)];
     }
     if (entertainment.includes('comedy fan')) {
-      bio += "Comedy nights and open mics are always on the radar. ";
+      bio += comedyPhrases[Math.floor(Math.random() * comedyPhrases.length)];
     }
     if (entertainment.includes('night owl')) {
-      bio += "The party really starts after 10 PM for them. ";
+      bio += nightOwlPhrases[Math.floor(Math.random() * nightOwlPhrases.length)];
     }
   }
 
   // Lifestyle
   if (lifestyle.includes('dog-friendly fan')) {
-    bio += "Bonus points if the patio is dog-friendly! ";
+    const dogPhrases = [
+      "Bonus points if the patio is dog-friendly! ",
+      "Dogs welcome? Even better. ",
+      "Pup-friendly patios are a major plus. "
+    ];
+    bio += dogPhrases[Math.floor(Math.random() * dogPhrases.length)];
   }
 
   // Social style closing
+  const groupClosings = [
+    "They love bringing the crew together at spots with big tables.",
+    "Squad hangs at spacious spots are their specialty.",
+    "Big tables, bigger groups – that's their style."
+  ];
+  const loyalClosings = [
+    "Once they find a spot they love, they keep coming back.",
+    "Loyalty runs deep – their favorite spots know them by name.",
+    "When they find a gem, they're a regular for life."
+  ];
+  
   if (social.includes('group hangout person')) {
-    bio += "They love bringing the crew together at spots with big tables.";
+    bio += groupClosings[Math.floor(Math.random() * groupClosings.length)];
   } else if (social.includes('loyal regular')) {
-    bio += "Once they find a spot they love, they keep coming back.";
+    bio += loyalClosings[Math.floor(Math.random() * loyalClosings.length)];
   }
 
   return bio.trim();
@@ -1550,9 +1668,24 @@ function ProfilePreviewModal({ user, onClose, onApprove, onReject, rejectionReas
               )}
             </div>
             <h4 className="text-xl font-bold text-white mb-1">{user?.name}</h4>
-            {user?.show_age_to_squads !== false && user?.age && (
-              <p className="text-zinc-400">{user.age} years old</p>
-            )}
+            
+            {/* Gender and Age Info */}
+            <div className="flex items-center justify-center gap-2 text-zinc-400">
+              {user?.gender && (
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                  user.gender === 'woman' ? 'bg-pink-500 bg-opacity-20 text-pink-400' :
+                  user.gender === 'man' ? 'bg-blue-500 bg-opacity-20 text-blue-400' :
+                  'bg-zinc-700 text-zinc-400'
+                }`}>
+                  {user.gender === 'woman' ? '♀ Woman' : 
+                   user.gender === 'man' ? '♂ Man' : 
+                   'Not specified'}
+                </span>
+              )}
+              {user?.show_age_to_squads !== false && user?.age && (
+                <span className="text-sm">{user.age} years old</span>
+              )}
+            </div>
           </div>
 
           {/* Bio */}
@@ -2886,7 +3019,7 @@ function AwardsTab({ userProfile, userBadges, userStats }) {
   );
 }
 
-function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], attendedEvents = [] }) {
+function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], attendedEvents = [], onEventClick }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedProfile, setEditedProfile] = useState(userProfile);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -3124,7 +3257,19 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
 
           {!isEditing && userProfile.bio && (
             <div>
-              <label className="block text-sm font-semibold text-zinc-400 mb-2">Bio</label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-semibold text-zinc-400">Bio</label>
+                <button
+                  onClick={() => {
+                    setIsEditing(true);
+                    setTimeout(() => setShowBioBuilder(true), 100);
+                  }}
+                  className="text-orange-500 hover:text-orange-400 text-xs font-semibold flex items-center gap-1"
+                >
+                  <Edit2 className="w-3 h-3" />
+                  Edit
+                </button>
+              </div>
               <div className="bg-zinc-800 rounded-xl px-4 py-3">
                 <p className="text-white text-sm">{userProfile.bio}</p>
               </div>
@@ -3308,9 +3453,10 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
           </div>
           <div className="space-y-3">
             {attendedEvents.slice(0, 5).map(event => (
-              <div
+              <button
                 key={event.id}
-                className="flex items-center gap-3 bg-zinc-800 rounded-xl p-3"
+                onClick={() => onEventClick && onEventClick(event)}
+                className="w-full flex items-center gap-3 bg-zinc-800 rounded-xl p-3 hover:bg-zinc-700 transition text-left"
               >
                 {event.image_url && (
                   <img
@@ -3323,10 +3469,11 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
                   <p className="text-white font-medium truncate">{event.name}</p>
                   <p className="text-xs text-zinc-400">{event.venue}</p>
                 </div>
-                <div className="text-right">
+                <div className="text-right flex items-center gap-2">
                   <p className="text-xs text-zinc-500">{event.date}</p>
+                  <ChevronRight className="w-4 h-4 text-zinc-600" />
                 </div>
-              </div>
+              </button>
             ))}
             {attendedEvents.length > 5 && (
               <p className="text-xs text-zinc-500 text-center">
@@ -3650,6 +3797,31 @@ export default function App() {
       loadNotifications();
       loadPendingJoinRequests();
     }
+  }, [userProfile?.id]);
+
+  // Auto-refresh data every 30 seconds for real-time updates
+  useEffect(() => {
+    if (!userProfile?.id) return;
+    
+    const refreshInterval = setInterval(() => {
+      // Refresh notifications
+      loadNotifications();
+      loadPendingJoinRequests();
+      
+      // Refresh squads data
+      loadSquads(userProfile.id);
+      loadAllSquads();
+      
+      // Refresh events
+      loadEvents();
+      
+      // Refresh badges and stats
+      loadUserBadges(userProfile.id);
+      loadUserStats(userProfile.id);
+      loadAttendedEvents(userProfile.id);
+    }, 30000); // 30 seconds
+    
+    return () => clearInterval(refreshInterval);
   }, [userProfile?.id]);
 
   const loadNotifications = async () => {
@@ -4854,6 +5026,7 @@ const loadSquads = async (userId) => {
               onUpdateProfile={handleUpdateProfile}
               userBadges={userBadges}
               attendedEvents={attendedEvents}
+              onEventClick={handleEventClick}
             />
           )}
         </div>
