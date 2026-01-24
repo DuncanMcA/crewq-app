@@ -557,7 +557,8 @@ function EventCard({ event, onSwipe, style }) {
       className="absolute w-full cursor-grab active:cursor-grabbing select-none"
     >
       <div className="relative bg-zinc-900 rounded-3xl overflow-hidden shadow-2xl">
-        <div className="relative h-72">
+        {/* Mobile: h-48, Desktop: h-72 */}
+        <div className="relative h-48 sm:h-64 md:h-72">
           <img 
             src={event.image_url} 
             alt={event.name} 
@@ -566,50 +567,51 @@ function EventCard({ event, onSwipe, style }) {
           />
           <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-transparent" />
           
-          <div className="absolute top-4 left-4 flex gap-2">
-            <div className="bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase">
+          <div className="absolute top-3 left-3 sm:top-4 sm:left-4 flex gap-2">
+            <div className="bg-orange-500 text-white px-2 py-1 sm:px-3 rounded-full text-xs font-bold uppercase">
               {event.category?.replace('-', ' ') || 'Event'}
             </div>
             {event.ambience && (() => {
               const amb = AMBIENCE_OPTIONS.find(a => a.id === event.ambience);
               return amb ? (
-                <div className={`${amb.color} text-white px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1`}>
+                <div className={`${amb.color} text-white px-2 py-1 sm:px-3 rounded-full text-xs font-bold flex items-center gap-1`}>
                   <span>{amb.icon}</span>
-                  <span>{amb.label}</span>
+                  <span className="hidden sm:inline">{amb.label}</span>
                 </div>
               ) : null;
             })()}
           </div>
 
           {event.age_restricted && (
-            <div className="absolute top-4 right-4 bg-red-500 text-white px-3 py-1 rounded-full text-xs font-bold">
+            <div className="absolute top-3 right-3 sm:top-4 sm:right-4 bg-red-500 text-white px-2 py-1 sm:px-3 rounded-full text-xs font-bold">
               21+
             </div>
           )}
 
           {dragOffset < -40 && (
             <div className="absolute inset-0 flex items-center justify-center bg-red-500 bg-opacity-30 transition-opacity">
-              <div className="bg-red-500 rounded-full p-4 shadow-lg">
-                <X className="w-12 h-12 text-white" />
+              <div className="bg-red-500 rounded-full p-3 sm:p-4 shadow-lg">
+                <X className="w-8 h-8 sm:w-12 sm:h-12 text-white" />
               </div>
             </div>
           )}
           {dragOffset > 40 && (
             <div className="absolute inset-0 flex items-center justify-center bg-emerald-500 bg-opacity-30 transition-opacity">
-              <div className="bg-emerald-500 rounded-full p-4 shadow-lg">
-                <Heart className="w-12 h-12 text-white" />
+              <div className="bg-emerald-500 rounded-full p-3 sm:p-4 shadow-lg">
+                <Heart className="w-8 h-8 sm:w-12 sm:h-12 text-white" />
               </div>
             </div>
           )}
         </div>
 
-        <div className="p-6 pb-20">
-          <h2 className="text-2xl font-bold text-white mb-2">{event.name}</h2>
-          <p className="text-zinc-400 text-sm mb-4 line-clamp-2">{event.description}</p>
+        {/* Mobile: smaller padding, Desktop: normal padding */}
+        <div className="p-4 pb-16 sm:p-6 sm:pb-20">
+          <h2 className="text-xl sm:text-2xl font-bold text-white mb-1 sm:mb-2">{event.name}</h2>
+          <p className="text-zinc-400 text-xs sm:text-sm mb-2 sm:mb-4 line-clamp-2">{event.description}</p>
           
-          <div className="flex items-center gap-2 text-zinc-400 text-sm mb-2">
-            <MapPin className="w-4 h-4" />
-            <span>{event.venue} • {event.neighborhood}</span>
+          <div className="flex items-center gap-2 text-zinc-400 text-xs sm:text-sm mb-2">
+            <MapPin className="w-3 h-3 sm:w-4 sm:h-4" />
+            <span className="truncate">{event.venue} • {event.neighborhood}</span>
             {event.distance && (
               <>
                 <span className="text-zinc-600">•</span>
@@ -618,14 +620,14 @@ function EventCard({ event, onSwipe, style }) {
             )}
           </div>
 
-          <div className="flex items-center gap-4 text-sm mb-4">
+          <div className="flex items-center gap-4 text-xs sm:text-sm mb-2 sm:mb-4">
             <div className="flex items-center gap-1">
-              <Calendar className="w-4 h-4 text-zinc-400" />
+              <Calendar className="w-3 h-3 sm:w-4 sm:h-4 text-zinc-400" />
               <span className="text-zinc-300">{event.time}</span>
             </div>
           </div>
 
-          <div className="inline-block bg-emerald-500 bg-opacity-20 text-emerald-400 px-3 py-1 rounded-full text-sm font-semibold">
+          <div className="inline-block bg-emerald-500 bg-opacity-20 text-emerald-400 px-2 py-1 sm:px-3 rounded-full text-xs sm:text-sm font-semibold">
             Free Entry
           </div>
         </div>
@@ -4748,9 +4750,9 @@ const loadSquads = async (userId) => {
         </div>
 
         {/* Scrollable Content Area */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden pb-24 -webkit-overflow-scrolling-touch">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden pb-20 sm:pb-24 -webkit-overflow-scrolling-touch">
           {currentTab === 'discover' && (
-            <div className="px-4 py-6">
+            <div className="px-3 py-3 sm:px-4 sm:py-6">
               {currentIndex >= events.length || events.length === 0 ? (
                 <div className="text-center py-16">
                   <div className="w-20 h-20 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -4782,7 +4784,7 @@ const loadSquads = async (userId) => {
                   )}
                 </div>
               ) : (
-                <div className="relative h-[560px]" style={{ touchAction: 'pan-y' }}>
+                <div className="relative h-[420px] sm:h-[480px] md:h-[560px]" style={{ touchAction: 'pan-y' }}>
                   {events.slice(currentIndex, currentIndex + 2).reverse().map((event, idx) => (
                     <EventCard
                       key={event.id}
@@ -4796,26 +4798,26 @@ const loadSquads = async (userId) => {
                     />
                   ))}
 
-                  <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex items-center gap-4 z-20">
+                  <div className="absolute bottom-2 sm:bottom-4 left-1/2 transform -translate-x-1/2 flex items-center gap-3 sm:gap-4 z-20">
                     <button
                       onClick={() => handleSwipe('left')}
-                      className="w-16 h-16 rounded-full bg-zinc-800 bg-opacity-90 backdrop-blur-sm border border-zinc-700 flex items-center justify-center hover:bg-red-500 hover:border-red-500 transition shadow-lg"
+                      className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-zinc-800 bg-opacity-90 backdrop-blur-sm border border-zinc-700 flex items-center justify-center hover:bg-red-500 hover:border-red-500 transition shadow-lg"
                     >
-                      <X className="w-7 h-7 text-white" />
+                      <X className="w-5 h-5 sm:w-7 sm:h-7 text-white" />
                     </button>
 
                     <button
                       onClick={() => setShowShareModal(true)}
-                      className="w-16 h-16 rounded-full bg-zinc-800 bg-opacity-90 backdrop-blur-sm border border-zinc-700 flex items-center justify-center hover:bg-orange-500 hover:border-orange-500 transition shadow-lg"
+                      className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-zinc-800 bg-opacity-90 backdrop-blur-sm border border-zinc-700 flex items-center justify-center hover:bg-orange-500 hover:border-orange-500 transition shadow-lg"
                     >
-                      <Share2 className="w-7 h-7 text-white" />
+                      <Share2 className="w-5 h-5 sm:w-7 sm:h-7 text-white" />
                     </button>
 
                     <button
                       onClick={() => handleSwipe('right')}
-                      className="w-16 h-16 rounded-full bg-zinc-800 bg-opacity-90 backdrop-blur-sm border border-zinc-700 flex items-center justify-center hover:bg-emerald-500 hover:border-emerald-500 transition shadow-lg"
+                      className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-zinc-800 bg-opacity-90 backdrop-blur-sm border border-zinc-700 flex items-center justify-center hover:bg-emerald-500 hover:border-emerald-500 transition shadow-lg"
                     >
-                      <Heart className="w-7 h-7 text-white" />
+                      <Heart className="w-5 h-5 sm:w-7 sm:h-7 text-white" />
                     </button>
                   </div>
                 </div>
