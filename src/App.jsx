@@ -178,6 +178,18 @@ const VIBE_OPTIONS = [
   { id: 'sunsets', label: '🌇 Sunsets', icon: '🌇' }
 ];
 
+// Ambience options for events
+const AMBIENCE_OPTIONS = [
+  { id: 'chill', label: 'Chill', icon: '😌', color: 'bg-blue-500' },
+  { id: 'energetic', label: 'Energetic', icon: '⚡', color: 'bg-yellow-500' },
+  { id: 'loud', label: 'Loud', icon: '🔊', color: 'bg-red-500' },
+  { id: 'intimate', label: 'Intimate', icon: '🕯️', color: 'bg-purple-500' },
+  { id: 'lively', label: 'Lively', icon: '🎉', color: 'bg-orange-500' },
+  { id: 'relaxed', label: 'Relaxed', icon: '🌿', color: 'bg-green-500' },
+  { id: 'upscale', label: 'Upscale', icon: '✨', color: 'bg-amber-500' },
+  { id: 'casual', label: 'Casual', icon: '👋', color: 'bg-teal-500' }
+];
+
 const BIO_QUESTIONS = [
   { id: 'cowboys', question: "Do you go to sports bars to watch Cowboys games?", tag: 'Cowboys fan' },
   { id: 'rooftops', question: "Do you love rooftop bars when it's nice out?", tag: 'rooftop lover' },
@@ -543,8 +555,19 @@ function EventCard({ event, onSwipe, style }) {
           />
           <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-transparent" />
           
-          <div className="absolute top-4 left-4 bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase">
-            {event.category?.replace('-', ' ') || 'Event'}
+          <div className="absolute top-4 left-4 flex gap-2">
+            <div className="bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase">
+              {event.category?.replace('-', ' ') || 'Event'}
+            </div>
+            {event.ambience && (() => {
+              const amb = AMBIENCE_OPTIONS.find(a => a.id === event.ambience);
+              return amb ? (
+                <div className={`${amb.color} text-white px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1`}>
+                  <span>{amb.icon}</span>
+                  <span>{amb.label}</span>
+                </div>
+              ) : null;
+            })()}
           </div>
 
           {event.age_restricted && (
@@ -1696,7 +1719,7 @@ function SoloFriendlySquadsView({ squads, onSquadClick, userProfile }) {
   );
 }
 
-function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount, userProfile }) {
+function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount, userProfile, historicalCount = 0 }) {
   const [checking, setChecking] = useState(false);
 
   const handleCheckIn = async () => {
@@ -1704,6 +1727,9 @@ function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount
     await onCheckIn(event);
     setChecking(false);
   };
+
+  // Get ambience details if available
+  const ambience = event.ambience ? AMBIENCE_OPTIONS.find(a => a.id === event.ambience) : null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
@@ -1718,8 +1744,16 @@ function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount
             <X className="w-6 h-6 text-white" />
           </button>
           
-          <div className="absolute top-4 left-4 bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase">
-            {event.category?.replace('-', ' ') || 'Event'}
+          <div className="absolute top-4 left-4 flex gap-2">
+            <div className="bg-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold uppercase">
+              {event.category?.replace('-', ' ') || 'Event'}
+            </div>
+            {ambience && (
+              <div className={`${ambience.color} text-white px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1`}>
+                <span>{ambience.icon}</span>
+                <span>{ambience.label}</span>
+              </div>
+            )}
           </div>
 
           {event.age_restricted && (
@@ -1744,8 +1778,14 @@ function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount
             </div>
             {checkInCount > 0 && (
               <div className="flex items-center gap-2 text-zinc-300 text-sm">
-                <Users className="w-4 h-4 text-orange-500" />
-                <span>{checkInCount} {checkInCount === 1 ? 'person' : 'people'} checked in</span>
+                <Users className="w-4 h-4 text-emerald-500" />
+                <span>{checkInCount} {checkInCount === 1 ? 'person' : 'people'} checked in now</span>
+              </div>
+            )}
+            {historicalCount > 0 && (
+              <div className="flex items-center gap-2 text-zinc-400 text-sm">
+                <CheckCircle className="w-4 h-4 text-zinc-500" />
+                <span>{historicalCount} {historicalCount === 1 ? 'person has' : 'people have'} attended in the past</span>
               </div>
             )}
           </div>
@@ -2833,14 +2873,17 @@ function AwardsTab({ userProfile, userBadges, userStats }) {
   );
 }
 
-function ProfileTab({ userProfile, onLogout, onUpdateProfile }) {
+function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], attendedEvents = [] }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedProfile, setEditedProfile] = useState(userProfile);
   const [uploadingImage, setUploadingImage] = useState(false);
-  const likedEvents = JSON.parse(localStorage.getItem('crewq_liked') || '[]');
+  const likedEvents = JSON.parse(localStorage.getItem(`crewq_${userProfile?.id}_liked`) || '[]');
   const [squadsCount, setSquadsCount] = useState(0);
   const fileInputRef = useRef(null);
   const [showBioBuilder, setShowBioBuilder] = useState(false);
+
+  // Get earned badge details
+  const earnedBadges = BADGES.filter(b => userBadges.includes(b.id));
 
   useEffect(() => {
     loadSquadsCount();
@@ -3207,6 +3250,80 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile }) {
         </div>
       </div>
 
+      {/* Earned Badges Section */}
+      {earnedBadges.length > 0 && (
+        <div className="bg-zinc-900 rounded-3xl p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <Trophy className="w-5 h-5 text-orange-500" />
+              Earned Badges
+            </h3>
+            <span className="text-sm text-zinc-400">{earnedBadges.length} earned</span>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {earnedBadges.slice(0, 8).map(badge => (
+              <div
+                key={badge.id}
+                className="flex flex-col items-center bg-zinc-800 rounded-xl p-3 min-w-[70px]"
+              >
+                <span className="text-2xl mb-1">{badge.icon}</span>
+                <span className="text-xs text-zinc-400 text-center leading-tight">{badge.name}</span>
+              </div>
+            ))}
+            {earnedBadges.length > 8 && (
+              <div className="flex flex-col items-center justify-center bg-zinc-800 rounded-xl p-3 min-w-[70px]">
+                <span className="text-lg text-orange-500 font-bold">+{earnedBadges.length - 8}</span>
+                <span className="text-xs text-zinc-400">more</span>
+              </div>
+            )}
+          </div>
+          <p className="text-xs text-zinc-500 mt-3 text-center">
+            View all badges in the Awards tab
+          </p>
+        </div>
+      )}
+
+      {/* Previously Attended Events Section */}
+      {attendedEvents.length > 0 && (
+        <div className="bg-zinc-900 rounded-3xl p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-emerald-500" />
+              Previously Attended
+            </h3>
+            <span className="text-sm text-zinc-400">{attendedEvents.length} events</span>
+          </div>
+          <div className="space-y-3">
+            {attendedEvents.slice(0, 5).map(event => (
+              <div
+                key={event.id}
+                className="flex items-center gap-3 bg-zinc-800 rounded-xl p-3"
+              >
+                {event.image_url && (
+                  <img
+                    src={event.image_url}
+                    alt={event.name}
+                    className="w-12 h-12 rounded-lg object-cover"
+                  />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-medium truncate">{event.name}</p>
+                  <p className="text-xs text-zinc-400">{event.venue}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-zinc-500">{event.date}</p>
+                </div>
+              </div>
+            ))}
+            {attendedEvents.length > 5 && (
+              <p className="text-xs text-zinc-500 text-center">
+                + {attendedEvents.length - 5} more events attended
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       <button
         onClick={onLogout}
         className="w-full bg-red-500 bg-opacity-20 text-red-500 py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-opacity-30 transition"
@@ -3402,6 +3519,7 @@ export default function App() {
   const [showSharedEvent, setShowSharedEvent] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showEventDetail, setShowEventDetail] = useState(false);
+  const [selectedEventHistoricalCount, setSelectedEventHistoricalCount] = useState(0);
   const [checkedInEvents, setCheckedInEvents] = useState([]);
   const [showCreateSquad, setShowCreateSquad] = useState(false);
   const [showSquadDetail, setShowSquadDetail] = useState(false);
@@ -3412,6 +3530,7 @@ export default function App() {
   const [userBadges, setUserBadges] = useState([]);
   const [userStats, setUserStats] = useState({});
   const [showBadgeEarned, setShowBadgeEarned] = useState(null);
+  const [attendedEvents, setAttendedEvents] = useState([]);
   
   // Settings & Notifications
   const [showSettings, setShowSettings] = useState(false);
@@ -3675,6 +3794,7 @@ export default function App() {
     if (userProfile?.id) {
       loadUserBadges(userProfile.id);
       loadUserStats(userProfile.id);
+      loadAttendedEvents(userProfile.id);
     }
   }, [userProfile?.id]);
 
@@ -3688,6 +3808,26 @@ export default function App() {
       setUserBadges(data?.map(b => b.badge_id) || []);
     } catch (error) {
       console.error('Error loading badges:', error);
+    }
+  };
+
+  const loadAttendedEvents = async (userId) => {
+    if (!supabaseClient) return;
+    try {
+      const { data } = await supabaseClient
+        .from('event_checkins')
+        .select('event_id, created_at, events(*)')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+      
+      const eventsWithDetails = data?.map(d => ({
+        ...d.events,
+        checkedInAt: d.created_at
+      })).filter(e => e.id) || [];
+      
+      setAttendedEvents(eventsWithDetails);
+    } catch (error) {
+      console.error('Error loading attended events:', error);
     }
   };
 
@@ -3931,16 +4071,34 @@ export default function App() {
     window.history.replaceState({}, document.title, window.location.pathname);
   };
 
-  const handleEventClick = (event) => {
+  const handleEventClick = async (event) => {
     setSelectedEvent(event);
     setShowEventDetail(true);
+    
+    // Load historical attendance count for this event
+    if (supabaseClient) {
+      try {
+        const { count } = await supabaseClient
+          .from('event_checkins')
+          .select('*', { count: 'exact', head: true })
+          .eq('event_id', event.id);
+        setSelectedEventHistoricalCount(count || 0);
+      } catch (error) {
+        console.error('Error loading historical count:', error);
+        setSelectedEventHistoricalCount(0);
+      }
+    }
   };
 
   const handleUnlikeEvent = async (event) => {
+    if (!userProfile?.id) return;
+    
+    const userKey = `crewq_${userProfile.id}_liked`;
+    
     // Remove from localStorage
-    const liked = JSON.parse(localStorage.getItem('crewq_liked') || '[]');
+    const liked = JSON.parse(localStorage.getItem(userKey) || '[]');
     const updatedLiked = liked.filter(e => e.id !== event.id);
-    localStorage.setItem('crewq_liked', JSON.stringify(updatedLiked));
+    localStorage.setItem(userKey, JSON.stringify(updatedLiked));
 
     // Remove from Supabase
     if (supabaseClient && userProfile) {
@@ -3957,6 +4115,7 @@ export default function App() {
 
     // Force re-render by updating refresh counter
     setLikedEventsRefresh(prev => prev + 1);
+    showToast('Event removed from your list', 'info');
   };
 
   const handleCheckIn = async (event) => {
@@ -3988,9 +4147,9 @@ export default function App() {
       const timeUntil = Math.ceil((checkInStart - now) / (1000 * 60));
       if (timeUntil > 60) {
         const hours = Math.floor(timeUntil / 60);
-        alert(`This event hasn't started yet! Check-in opens in ${hours} hour${hours > 1 ? 's' : ''}.`);
+        showToast(`Check-in opens in ${hours} hour${hours > 1 ? 's' : ''}`, 'info');
       } else {
-        alert(`This event hasn't started yet! Check-in opens in ${timeUntil} minutes.`);
+        showToast(`Check-in opens in ${timeUntil} minutes`, 'info');
       }
       return;
     }
@@ -4630,6 +4789,8 @@ const loadSquads = async (userId) => {
               userProfile={userProfile} 
               onLogout={handleLogout}
               onUpdateProfile={handleUpdateProfile}
+              userBadges={userBadges}
+              attendedEvents={attendedEvents}
             />
           )}
         </div>
@@ -4677,11 +4838,15 @@ const loadSquads = async (userId) => {
         {showEventDetail && selectedEvent && (
           <EventDetailModal
             event={selectedEvent}
-            onClose={() => setShowEventDetail(false)}
+            onClose={() => {
+              setShowEventDetail(false);
+              setSelectedEventHistoricalCount(0);
+            }}
             onCheckIn={handleCheckIn}
             isCheckedIn={checkedInEvents.includes(selectedEvent.id)}
             checkInCount={0}
             userProfile={userProfile}
+            historicalCount={selectedEventHistoricalCount}
           />
         )}
 
