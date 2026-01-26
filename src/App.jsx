@@ -3274,7 +3274,12 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
 
   // Initialize Mapbox
   useEffect(() => {
-    if (viewMode !== 'live' || !mapContainerRef.current || mapRef.current) return;
+    console.log('Map useEffect triggered', { viewMode, hasContainer: !!mapContainerRef.current, hasMapRef: !!mapRef.current });
+    
+    if (viewMode !== 'live' || !mapContainerRef.current || mapRef.current) {
+      console.log('Map useEffect early return', { viewMode, hasContainer: !!mapContainerRef.current, hasMapRef: !!mapRef.current });
+      return;
+    }
 
     // Load Mapbox CSS
     if (!document.getElementById('mapbox-css')) {
@@ -3283,15 +3288,24 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
       link.rel = 'stylesheet';
       link.href = 'https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css';
       document.head.appendChild(link);
+      console.log('Mapbox CSS loaded');
     }
 
     // Load Mapbox JS
     if (!window.mapboxgl) {
+      console.log('Loading Mapbox JS script...');
       const script = document.createElement('script');
       script.src = 'https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js';
-      script.onload = () => initializeMap();
+      script.onload = () => {
+        console.log('Mapbox JS script loaded');
+        initializeMap();
+      };
+      script.onerror = (e) => {
+        console.error('Failed to load Mapbox JS script', e);
+      };
       document.head.appendChild(script);
     } else {
+      console.log('Mapbox JS already loaded, initializing map');
       initializeMap();
     }
 
@@ -3304,17 +3318,29 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
   }, [viewMode]);
 
   const initializeMap = () => {
-    if (!window.mapboxgl || !mapContainerRef.current) return;
+    console.log('initializeMap called', { 
+      hasMapboxgl: !!window.mapboxgl, 
+      hasContainer: !!mapContainerRef.current,
+      token: MAPBOX_TOKEN ? 'exists' : 'MISSING'
+    });
+    
+    if (!window.mapboxgl || !mapContainerRef.current) {
+      console.error('Mapbox not ready:', { mapboxgl: !!window.mapboxgl, container: !!mapContainerRef.current });
+      return;
+    }
 
     // Check if token exists
     if (!MAPBOX_TOKEN) {
       console.error('Mapbox token is missing! Check VITE_MAPBOX_TOKEN environment variable.');
+      setMapLoaded(true); // Set to true to hide loading spinner and show error
       return;
     }
 
     window.mapboxgl.accessToken = MAPBOX_TOKEN;
     
     try {
+      console.log('Creating Mapbox map with center:', userLocation ? [userLocation.longitude, userLocation.latitude] : DALLAS_CENTER);
+      
       const map = new window.mapboxgl.Map({
         container: mapContainerRef.current,
         style: 'mapbox://styles/mapbox/dark-v11',
@@ -3323,6 +3349,7 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
       });
 
       map.on('load', () => {
+        console.log('Mapbox map loaded successfully');
         setMapLoaded(true);
         
         // Add user location marker if available
@@ -3345,11 +3372,13 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
 
       map.on('error', (e) => {
         console.error('Mapbox error:', e);
+        setMapLoaded(true); // Hide loading spinner
       });
 
       mapRef.current = map;
     } catch (error) {
       console.error('Error initializing map:', error);
+      setMapLoaded(true); // Hide loading spinner
     }
   };
 
