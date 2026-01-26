@@ -2231,7 +2231,8 @@ function NotificationsModal({
   pendingJoinRequests, 
   onReviewRequest,
   onCheckIn,
-  onEventClick
+  onEventClick,
+  onClearAll
 }) {
   const totalNotifs = notifications.length + pendingJoinRequests.length;
 
@@ -2249,9 +2250,19 @@ function NotificationsModal({
         <div className={`sticky top-0 z-10 px-4 py-4 border-b ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-amber-50 border-amber-200'}`}>
           <div className="flex items-center justify-between">
             <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>Notifications</h2>
-            <button onClick={onClose} className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>
-              <X className="w-6 h-6" />
-            </button>
+            <div className="flex items-center gap-3">
+              {notifications.length > 0 && (
+                <button 
+                  onClick={onClearAll}
+                  className="text-orange-500 text-sm font-semibold hover:text-orange-400 transition"
+                >
+                  Clear All
+                </button>
+              )}
+              <button onClick={onClose} className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>
+                <X className="w-6 h-6" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -6563,7 +6574,7 @@ export default function App() {
     setCurrentTab('discover');
   };
 
-  const loadEvents = async () => {
+  const loadEvents = async (userId = null) => {
     if (!supabaseClient) return;
     
     try {
@@ -6573,7 +6584,19 @@ export default function App() {
         .order('date', { ascending: true });
       
       if (error) throw error;
-      setEvents(data || []);
+      
+      let filteredEvents = data || [];
+      
+      // Filter out seen events if user is logged in
+      const effectiveUserId = userId || userProfile?.id;
+      if (effectiveUserId) {
+        const userKey = `crewq_${effectiveUserId}`;
+        const seenEvents = JSON.parse(localStorage.getItem(`${userKey}_seen`) || '[]');
+        filteredEvents = filteredEvents.filter(event => !seenEvents.includes(event.id));
+      }
+      
+      setEvents(filteredEvents);
+      setCurrentIndex(0); // Reset to first unseen event
     } catch (error) {
       console.error('Error loading events:', error);
     }
@@ -6690,6 +6713,14 @@ const loadSquads = async (userId) => {
     if (!userProfile?.id) return;
     
     const userKey = `crewq_${userProfile.id}`;
+    const currentEvent = events[currentIndex];
+    
+    // Track this event as seen - user specific
+    const seenEvents = JSON.parse(localStorage.getItem(`${userKey}_seen`) || '[]');
+    if (currentEvent && !seenEvents.includes(currentEvent.id)) {
+      seenEvents.push(currentEvent.id);
+      localStorage.setItem(`${userKey}_seen`, JSON.stringify(seenEvents));
+    }
     
     // Track swipes for badges - user specific
     const currentSwipes = parseInt(localStorage.getItem(`${userKey}_swipes`) || '0');
@@ -6698,8 +6729,8 @@ const loadSquads = async (userId) => {
     if (direction === 'right') {
       const liked = JSON.parse(localStorage.getItem(`${userKey}_liked`) || '[]');
       // Prevent duplicates
-      if (!liked.find(e => e.id === events[currentIndex].id)) {
-        liked.push(events[currentIndex]);
+      if (!liked.find(e => e.id === currentEvent.id)) {
+        liked.push(currentEvent);
         localStorage.setItem(`${userKey}_liked`, JSON.stringify(liked));
         
         // Trigger refresh so Events tab updates
@@ -6711,7 +6742,7 @@ const loadSquads = async (userId) => {
               .from('liked_events')
               .insert([{
                 user_id: userProfile.id,
-                event_id: events[currentIndex].id
+                event_id: currentEvent.id
               }]);
           } catch (error) {
             console.error('Error saving liked event:', error);
@@ -6825,18 +6856,35 @@ const loadSquads = async (userId) => {
                   <div className="w-20 h-20 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-6">
                     <Calendar className="w-10 h-10 text-orange-500" />
                   </div>
-                  <h2 className="text-2xl font-bold mb-3">More Events Coming Soon!</h2>
+                  <h2 className="text-2xl font-bold mb-3">You've Seen All Events!</h2>
                   <p className="text-zinc-400 mb-8 px-4">
-                    We're constantly adding new events in Dallas. Check back soon or let us know what you're looking for!
+                    You've swiped through all available events. Check back later for new ones or reset to see them again.
                   </p>
                   
-                  <button
-                    onClick={() => setShowSuggestionModal(true)}
-                    className="bg-gradient-to-r from-orange-500 to-orange-600 text-white px-8 py-4 rounded-xl font-bold hover:shadow-lg transition flex items-center justify-center gap-2 mx-auto"
-                  >
-                    <MessageCircle className="w-5 h-5" />
-                    Can't find an event? Let us know!
-                  </button>
+                  <div className="flex flex-col gap-3 px-8">
+                    <button
+                      onClick={() => {
+                        if (userProfile?.id) {
+                          const userKey = `crewq_${userProfile.id}`;
+                          localStorage.removeItem(`${userKey}_seen`);
+                          loadEvents(userProfile.id);
+                          showToast('Events reset! Swipe away 🎉', 'success');
+                        }
+                      }}
+                      className="bg-gradient-to-r from-orange-500 to-orange-600 text-white px-8 py-4 rounded-xl font-bold hover:shadow-lg transition flex items-center justify-center gap-2 mx-auto w-full"
+                    >
+                      <Zap className="w-5 h-5" />
+                      Reset & See All Events Again
+                    </button>
+                    
+                    <button
+                      onClick={() => setShowSuggestionModal(true)}
+                      className="bg-zinc-800 text-white px-8 py-4 rounded-xl font-bold hover:bg-zinc-700 transition flex items-center justify-center gap-2 mx-auto w-full"
+                    >
+                      <MessageCircle className="w-5 h-5" />
+                      Suggest an Event
+                    </button>
+                  </div>
 
                   {likedEvents.length > 0 && (
                     <div className="mt-8 pt-6 border-t border-zinc-800">
@@ -7121,6 +7169,7 @@ const loadSquads = async (userId) => {
             }}
             onCheckIn={handleCheckIn}
             onEventClick={handleEventClick}
+            onClearAll={() => setNotifications([])}
           />
         )}
 
