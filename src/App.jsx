@@ -6045,13 +6045,16 @@ export default function App() {
 
   const checkAuth = async () => {
     if (!supabaseClient) {
+      console.log('checkAuth: No supabase client');
       setLoading(false);
       return;
     }
 
     try {
       // First check for Supabase auth session (Google OAuth)
-      const { data: { session } } = await supabaseClient.auth.getSession();
+      const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession();
+      
+      console.log('checkAuth: Session check', { session: !!session, error: sessionError });
       
       if (session?.user) {
         // User is logged in via Google OAuth
@@ -6060,20 +6063,26 @@ export default function App() {
         const googleName = session.user.user_metadata?.full_name || session.user.user_metadata?.name || email?.split('@')[0];
         const avatarUrl = session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture;
         
+        console.log('checkAuth: Google user found', { authUserId, email, googleName });
+        
         // Check if we have a profile linked to this auth user
-        let { data: existingProfile, error } = await supabaseClient
+        let { data: existingProfile, error: profileError } = await supabaseClient
           .from('users')
           .select('*')
           .eq('auth_id', authUserId)
-          .single();
+          .maybeSingle();
         
-        if (!existingProfile) {
+        console.log('checkAuth: Profile by auth_id', { existingProfile, profileError });
+        
+        if (!existingProfile && email) {
           // Check by email as fallback
-          const { data: profileByEmail } = await supabaseClient
+          const { data: profileByEmail, error: emailError } = await supabaseClient
             .from('users')
             .select('*')
             .eq('email', email)
-            .single();
+            .maybeSingle();
+          
+          console.log('checkAuth: Profile by email', { profileByEmail, emailError });
           
           if (profileByEmail) {
             // Link existing profile to auth user
@@ -6095,6 +6104,7 @@ export default function App() {
             existingProfile.profile_picture = avatarUrl;
           }
           
+          console.log('checkAuth: Setting existing profile', existingProfile.id);
           setUserProfile(existingProfile);
           localStorage.setItem('crewq_user_id', existingProfile.id);
           await loadEvents();
@@ -6104,6 +6114,7 @@ export default function App() {
           await loadCheckedInEvents(existingProfile.id);
         } else {
           // Create new profile for Google user
+          console.log('checkAuth: Creating new profile for Google user');
           const { data: newUser, error: insertError } = await supabaseClient
             .from('users')
             .insert([{
@@ -6117,10 +6128,14 @@ export default function App() {
             .select()
             .single();
           
+          console.log('checkAuth: New user created', { newUser, insertError });
+          
           if (!insertError && newUser) {
             setUserProfile(newUser);
             localStorage.setItem('crewq_user_id', newUser.id);
             await loadEvents();
+          } else {
+            console.error('checkAuth: Error creating user', insertError);
           }
         }
         setLoading(false);
@@ -6129,6 +6144,8 @@ export default function App() {
       
       // Fallback to localStorage profile ID (guest users)
       const profileId = localStorage.getItem('crewq_user_id');
+      console.log('checkAuth: Checking localStorage', { profileId });
+      
       if (profileId) {
         const { data, error } = await supabaseClient
           .from('users')
@@ -6148,7 +6165,7 @@ export default function App() {
         }
       }
     } catch (error) {
-      console.error('Error checking auth:', error);
+      console.error('checkAuth: Error', error);
     }
     setLoading(false);
   };
