@@ -3564,8 +3564,8 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
           )}
 
           {/* Map Container */}
-          <div className="flex-1 relative min-h-[300px]">
-            <div ref={mapContainerRef} className="absolute inset-0" />
+          <div className="relative" style={{ height: '300px' }}>
+            <div ref={mapContainerRef} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
             
             {!mapLoaded && (
               <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center">
@@ -3577,7 +3577,7 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
             )}
 
             {/* Map Legend */}
-            <div className="absolute bottom-4 left-4 bg-zinc-900 bg-opacity-90 rounded-xl p-3 text-xs">
+            <div className="absolute bottom-4 left-4 bg-zinc-900 bg-opacity-90 rounded-xl p-3 text-xs z-10">
               <div className="flex items-center gap-2 mb-1">
                 <div className="w-3 h-3 bg-orange-500 rounded-full" />
                 <span className="text-zinc-300">{showAllEvents ? 'Event' : 'Live Event'}</span>
