@@ -3220,6 +3220,7 @@ Be friendly, concise, and enthusiastic. Give specific recommendations based on t
 // Events Tab with Live Map and Calendar views
 function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocation, onRequestLocation }) {
   const [viewMode, setViewMode] = useState('live'); // 'live', 'calendar', 'liked'
+  const [showAllEvents, setShowAllEvents] = useState(true); // Toggle between live only vs all events
   const [currentDate, setCurrentDate] = useState(new Date(2026, 0, 1));
   const [selectedDate, setSelectedDate] = useState(null);
   const [distanceFilter, setDistanceFilter] = useState('all'); // 'all', '1', '5', '10'
@@ -3231,6 +3232,9 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
 
   // Get live events (happening right now)
   const liveEvents = events.filter(isEventLive);
+  
+  // Get events to display on map based on toggle
+  const mapEvents = showAllEvents ? events : liveEvents;
   
   // Filter events by distance if user location is available
   const getFilteredEvents = (eventList) => {
@@ -3248,7 +3252,7 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
     });
   };
 
-  const filteredLiveEvents = getFilteredEvents(liveEvents);
+  const filteredMapEvents = getFilteredEvents(mapEvents);
 
   // Add distance to events
   const eventsWithDistance = (eventList) => {
@@ -3322,7 +3326,7 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
       }
 
       // Add event markers
-      updateMarkers(map, filteredLiveEvents);
+      updateMarkers(map, filteredMapEvents);
     });
 
     mapRef.current = map;
@@ -3371,9 +3375,9 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
   // Update markers when events change
   useEffect(() => {
     if (mapRef.current && mapLoaded) {
-      updateMarkers(mapRef.current, filteredLiveEvents);
+      updateMarkers(mapRef.current, filteredMapEvents);
     }
-  }, [filteredLiveEvents, mapLoaded]);
+  }, [filteredMapEvents, mapLoaded, showAllEvents]);
 
   // Calendar functions
   const getDaysInMonth = (date) => {
@@ -3434,7 +3438,32 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
       {viewMode === 'live' && (
         <div className="flex-1 flex flex-col">
           {/* Filter Bar */}
-          <div className="px-4 py-2 flex items-center gap-2">
+          <div className="px-4 py-2 flex items-center gap-2 flex-wrap">
+            {/* Live / All Events Toggle */}
+            <div className="flex bg-zinc-800 rounded-lg p-1">
+              <button
+                onClick={() => setShowAllEvents(false)}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition flex items-center gap-1.5 ${
+                  !showAllEvents 
+                    ? 'bg-red-500 text-white' 
+                    : 'text-zinc-400'
+                }`}
+              >
+                <div className={`w-2 h-2 rounded-full ${!showAllEvents ? 'bg-white' : 'bg-red-500'} ${liveEvents.length > 0 ? 'animate-pulse' : ''}`} />
+                Live ({liveEvents.length})
+              </button>
+              <button
+                onClick={() => setShowAllEvents(true)}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition ${
+                  showAllEvents 
+                    ? 'bg-orange-500 text-white' 
+                    : 'text-zinc-400'
+                }`}
+              >
+                All ({events.length})
+              </button>
+            </div>
+
             <button
               onClick={() => onRequestLocation && onRequestLocation()}
               className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition ${
@@ -3444,7 +3473,7 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
               }`}
             >
               <Navigation className="w-4 h-4" />
-              {userLocation ? 'Located' : 'Enable Location'}
+              {userLocation ? 'Located' : 'Location'}
             </button>
             
             <button
@@ -3456,7 +3485,7 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
               }`}
             >
               <Filter className="w-4 h-4" />
-              {distanceFilter === 'all' ? 'All Dallas' : `Within ${distanceFilter} mi`}
+              {distanceFilter === 'all' ? 'All Dallas' : `${distanceFilter} mi`}
             </button>
           </div>
 
@@ -3501,7 +3530,7 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
             <div className="absolute bottom-4 left-4 bg-zinc-900 bg-opacity-90 rounded-xl p-3 text-xs">
               <div className="flex items-center gap-2 mb-1">
                 <div className="w-3 h-3 bg-orange-500 rounded-full" />
-                <span className="text-zinc-300">Live Event</span>
+                <span className="text-zinc-300">{showAllEvents ? 'Event' : 'Live Event'}</span>
               </div>
               {userLocation && (
                 <div className="flex items-center gap-2">
@@ -3512,36 +3541,45 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
             </div>
           </div>
 
-          {/* Live Events List */}
+          {/* Events List */}
           <div className="bg-zinc-900 border-t border-zinc-800 max-h-[40%] overflow-y-auto">
             <div className="p-4">
               <h3 className="text-sm font-semibold text-zinc-400 mb-3">
-                {filteredLiveEvents.length > 0 
-                  ? `${filteredLiveEvents.length} Live Events Now`
-                  : 'No Live Events Right Now'
+                {filteredMapEvents.length > 0 
+                  ? `${filteredMapEvents.length} ${showAllEvents ? 'Events' : 'Live Events'}`
+                  : showAllEvents ? 'No Events Found' : 'No Live Events Right Now'
                 }
               </h3>
               
-              {filteredLiveEvents.length > 0 ? (
+              {filteredMapEvents.length > 0 ? (
                 <div className="space-y-2">
-                  {eventsWithDistance(filteredLiveEvents).map(event => (
+                  {eventsWithDistance(filteredMapEvents).map(event => {
+                    const isLive = isEventLive(event);
+                    return (
                     <button
                       key={event.id}
                       onClick={() => onEventClick(event)}
                       className="w-full bg-zinc-800 rounded-xl p-3 flex items-center gap-3 text-left hover:bg-zinc-700 transition"
                     >
-                      <img 
-                        src={event.image_url} 
-                        alt={event.name}
-                        className="w-14 h-14 rounded-lg object-cover flex-shrink-0"
-                      />
+                      {event.image_url && (
+                        <img 
+                          src={event.image_url} 
+                          alt={event.name}
+                          className="w-14 h-14 rounded-lg object-cover flex-shrink-0"
+                        />
+                      )}
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                          <span className="text-xs text-red-400 font-semibold">LIVE</span>
-                        </div>
+                        {isLive && (
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                            <span className="text-xs text-red-400 font-semibold">LIVE</span>
+                          </div>
+                        )}
                         <h4 className="text-white font-semibold truncate">{event.name}</h4>
                         <p className="text-zinc-400 text-sm truncate">{event.venue}</p>
+                        {!isLive && (
+                          <p className="text-zinc-500 text-xs">{event.date} • {event.time}</p>
+                        )}
                       </div>
                       {event.distance !== null && (
                         <div className="text-right flex-shrink-0">
@@ -3551,13 +3589,17 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
                         </div>
                       )}
                     </button>
-                  ))}
+                  );})}
                 </div>
               ) : (
                 <div className="text-center py-8">
                   <Map className="w-12 h-12 text-zinc-700 mx-auto mb-3" />
-                  <p className="text-zinc-500 text-sm">No events happening right now</p>
-                  <p className="text-zinc-600 text-xs mt-1">Check back later or view upcoming events</p>
+                  <p className="text-zinc-500 text-sm">
+                    {showAllEvents ? 'No events found' : 'No events happening right now'}
+                  </p>
+                  <p className="text-zinc-600 text-xs mt-1">
+                    {showAllEvents ? 'Events need coordinates to show on map' : 'Toggle to "All" to see upcoming events'}
+                  </p>
                 </div>
               )}
             </div>
