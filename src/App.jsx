@@ -4951,6 +4951,190 @@ function AuthScreen({ onAuth, onGoogleAuth }) {
   );
 }
 
+// Google OAuth Onboarding Modal - for new Google users to complete their profile
+function GoogleOnboardingModal({ pendingUser, onComplete }) {
+  const [step, setStep] = useState(1);
+  const [age, setAge] = useState('');
+  const [gender, setGender] = useState('');
+  const [vibes, setVibes] = useState([]);
+  const [intents, setIntents] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleVibeToggle = (vibeId) => {
+    setVibes(prev =>
+      prev.includes(vibeId)
+        ? prev.filter(v => v !== vibeId)
+        : [...prev, vibeId]
+    );
+  };
+
+  const handleIntentToggle = (intentId) => {
+    setIntents(prev =>
+      prev.includes(intentId)
+        ? prev.filter(i => i !== intentId)
+        : [...prev, intentId]
+    );
+  };
+
+  const handleSubmit = async () => {
+    setIsLoading(true);
+    await onComplete({
+      ...pendingUser,
+      age: age ? parseInt(age) : null,
+      gender: gender || null,
+      vibes,
+      intents,
+      allow_squad_requests: true,
+      show_age_to_squads: true
+    });
+    setIsLoading(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center p-4 z-50">
+      <div className="bg-zinc-900 rounded-3xl p-8 max-w-md w-full max-h-[90vh] overflow-y-auto">
+        {/* Welcome Header */}
+        <div className="text-center mb-6">
+          {pendingUser.profile_picture && (
+            <img 
+              src={pendingUser.profile_picture} 
+              alt={pendingUser.name}
+              className="w-20 h-20 rounded-full mx-auto mb-4 border-4 border-orange-500"
+            />
+          )}
+          <h1 className="text-2xl font-bold text-white mb-1">
+            Welcome, {pendingUser.name}! 👋
+          </h1>
+          <p className="text-zinc-400 text-sm">Let's personalize your experience</p>
+        </div>
+
+        {/* Progress indicator */}
+        <div className="flex gap-2 mb-6">
+          {[1, 2].map(s => (
+            <div
+              key={s}
+              className={`flex-1 h-1 rounded-full ${
+                step >= s ? 'bg-orange-500' : 'bg-zinc-800'
+              }`}
+            />
+          ))}
+        </div>
+
+        {step === 1 && (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-semibold text-zinc-300 mb-2">Age</label>
+              <input
+                type="number"
+                value={age}
+                onChange={(e) => setAge(e.target.value)}
+                className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
+                placeholder="Your age"
+              />
+              <p className="text-xs text-zinc-500 mt-1">Used for 21+ event filtering</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-zinc-300 mb-2">Gender</label>
+              <div className="grid grid-cols-2 gap-2">
+                {GENDER_OPTIONS.map(option => (
+                  <button
+                    key={option.id}
+                    onClick={() => setGender(option.id)}
+                    className={`px-4 py-3 rounded-xl text-sm font-semibold transition ${
+                      gender === option.id
+                        ? 'bg-orange-500 text-white'
+                        : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-zinc-500 mt-1">Helps match you with the right squads</p>
+            </div>
+
+            <button
+              onClick={() => setStep(2)}
+              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold text-lg hover:shadow-lg transition"
+            >
+              Next
+            </button>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="space-y-6">
+            {/* What are you here for? */}
+            <div>
+              <label className="block text-sm font-semibold text-zinc-300 mb-2">What are you here for?</label>
+              <p className="text-xs text-zinc-500 mb-3">Select all that apply</p>
+              <div className="space-y-2">
+                {INTENT_OPTIONS.map(intent => (
+                  <button
+                    key={intent.id}
+                    onClick={() => handleIntentToggle(intent.id)}
+                    className={`w-full p-3 rounded-xl text-left transition flex items-center gap-3 ${
+                      intents.includes(intent.id)
+                        ? 'bg-orange-500 bg-opacity-20 border-2 border-orange-500'
+                        : 'bg-zinc-800 border-2 border-transparent hover:border-zinc-700'
+                    }`}
+                  >
+                    <span className="text-2xl">{intent.icon}</span>
+                    <div>
+                      <p className={`font-semibold ${intents.includes(intent.id) ? 'text-orange-400' : 'text-white'}`}>
+                        {intent.label}
+                      </p>
+                      <p className="text-xs text-zinc-500">{intent.description}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* What's your vibe? */}
+            <div>
+              <label className="block text-sm font-semibold text-zinc-300 mb-2">What's your vibe?</label>
+              <p className="text-xs text-zinc-500 mb-3">Select all that apply</p>
+              <div className="flex flex-wrap gap-2">
+                {VIBE_OPTIONS.map(vibe => (
+                  <button
+                    key={vibe.id}
+                    onClick={() => handleVibeToggle(vibe.id)}
+                    className={`px-3 py-2 rounded-full text-sm font-semibold transition ${
+                      vibes.includes(vibe.id)
+                        ? 'bg-orange-500 text-white'
+                        : 'bg-zinc-800 text-zinc-400'
+                    }`}
+                  >
+                    {vibe.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setStep(1)}
+                className="flex-1 bg-zinc-800 text-white py-4 rounded-xl font-bold hover:bg-zinc-700 transition"
+              >
+                Back
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={isLoading}
+                className="flex-1 bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold text-lg hover:shadow-lg transition disabled:opacity-50"
+              >
+                {isLoading ? 'Setting up...' : 'Let\'s Go! 🎉'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [currentTab, setCurrentTab] = useState('discover');
   const [mode, setMode] = useState('crew');
@@ -4980,6 +5164,7 @@ export default function App() {
   const [attendedEvents, setAttendedEvents] = useState([]);
   const [userLocation, setUserLocation] = useState(null);
   const [locationError, setLocationError] = useState(null);
+  const [pendingGoogleUser, setPendingGoogleUser] = useState(null); // For Google OAuth onboarding
   
   // Settings & Notifications
   const [showSettings, setShowSettings] = useState(false);
@@ -6142,30 +6327,15 @@ export default function App() {
           await loadAllSquads();
           await loadCheckedInEvents(existingProfile.id);
         } else {
-          // Create new profile for Google user
-          console.log('checkAuth: Creating new profile for Google user');
-          const { data: newUser, error: insertError } = await supabaseClient
-            .from('users')
-            .insert([{
-              name: googleName,
-              email: email,
-              auth_id: authUserId,
-              profile_picture: avatarUrl,
-              allow_squad_requests: true,
-              show_age_to_squads: true
-            }])
-            .select()
-            .single();
-          
-          console.log('checkAuth: New user created', { newUser, insertError });
-          
-          if (!insertError && newUser) {
-            setUserProfile(newUser);
-            localStorage.setItem('crewq_user_id', newUser.id);
-            await loadEvents();
-          } else {
-            console.error('checkAuth: Error creating user', insertError);
-          }
+          // New Google user - store their info and show onboarding
+          console.log('checkAuth: New Google user, showing onboarding');
+          setPendingGoogleUser({
+            name: googleName,
+            email: email,
+            auth_id: authUserId,
+            profile_picture: avatarUrl
+          });
+          await loadEvents(); // Load events so they're ready after onboarding
         }
         setLoading(false);
         return;
@@ -6218,6 +6388,45 @@ export default function App() {
     } catch (error) {
       console.error('Google auth error:', error);
       showToast('Error signing in with Google. Please try again.', 'error');
+    }
+  };
+
+  // Handle Google onboarding completion
+  const handleGoogleOnboardingComplete = async (profileData) => {
+    if (!supabaseClient) return;
+    
+    try {
+      const { data: newUser, error } = await supabaseClient
+        .from('users')
+        .insert([{
+          name: profileData.name,
+          email: profileData.email,
+          auth_id: profileData.auth_id,
+          profile_picture: profileData.profile_picture,
+          age: profileData.age,
+          gender: profileData.gender,
+          vibes: profileData.vibes,
+          intents: profileData.intents,
+          allow_squad_requests: true,
+          show_age_to_squads: true
+        }])
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      if (newUser) {
+        setUserProfile(newUser);
+        localStorage.setItem('crewq_user_id', newUser.id);
+        setPendingGoogleUser(null);
+        showToast('Welcome to CrewQ! 🎉', 'success');
+        await loadCrewMembers(newUser.id);
+        await loadSquads(newUser.id);
+        await loadAllSquads();
+      }
+    } catch (error) {
+      console.error('Error completing Google onboarding:', error);
+      showToast('Error creating profile. Please try again.', 'error');
     }
   };
 
@@ -6495,6 +6704,16 @@ const loadSquads = async (userId) => {
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
         <div className="text-white text-xl">Loading...</div>
       </div>
+    );
+  }
+
+  // Show Google onboarding for new Google users
+  if (pendingGoogleUser) {
+    return (
+      <GoogleOnboardingModal 
+        pendingUser={pendingGoogleUser} 
+        onComplete={handleGoogleOnboardingComplete} 
+      />
     );
   }
 
