@@ -62,7 +62,13 @@ let supabaseClient = null;
 
 const initSupabase = () => {
   if (typeof window !== 'undefined' && window.supabase) {
-    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true
+      }
+    });
   }
 };
 
@@ -5565,9 +5571,32 @@ export default function App() {
   useEffect(() => {
     const script = document.createElement('script');
     script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
-    script.onload = () => {
+    script.onload = async () => {
       initSupabase();
-      checkAuth();
+      
+      if (!supabaseClient) {
+        console.error('Failed to initialize Supabase client');
+        setLoading(false);
+        return;
+      }
+      
+      // Check if this is an OAuth callback (URL has hash with access_token or error)
+      const hash = window.location.hash;
+      if (hash && (hash.includes('access_token') || hash.includes('error'))) {
+        console.log('OAuth callback detected');
+        
+        // Supabase should automatically process the hash
+        // Give it a moment to do so
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Clear the hash from URL for cleaner UX
+        if (window.history.replaceState) {
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+      }
+      
+      // Now check auth
+      await checkAuth();
       checkForSharedEvent();
     };
     document.body.appendChild(script);
