@@ -2053,14 +2053,31 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
 }
 
 // Settings Modal
-function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, onLinkGoogle }) {
+function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, onLinkGoogle, onUpdateProfile, onResetEvents }) {
   const [activeSection, setActiveSection] = useState(null);
   const [isLinkingGoogle, setIsLinkingGoogle] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   
+  // Editable states for Account section
+  const [editName, setEditName] = useState(userProfile?.name || '');
+  const [editAge, setEditAge] = useState(userProfile?.age || '');
+  const [editGender, setEditGender] = useState(userProfile?.gender || '');
+  const [editBio, setEditBio] = useState(userProfile?.bio || '');
+  
+  // Privacy settings
+  const [allowSquadRequests, setAllowSquadRequests] = useState(userProfile?.allow_squad_requests !== false);
+  const [showAgeToSquads, setShowAgeToSquads] = useState(userProfile?.show_age_to_squads !== false);
+  const [showProfilePublicly, setShowProfilePublicly] = useState(userProfile?.show_profile_publicly !== false);
+  
+  // Content preferences
+  const [showOver21Only, setShowOver21Only] = useState(localStorage.getItem('crewq_show_21_only') === 'true');
+  const [notificationsEnabled, setNotificationsEnabled] = useState(localStorage.getItem('crewq_notifications') !== 'false');
+
   const settingsSections = [
-    { id: 'account', label: 'Account', icon: User, description: 'Manage your account details' },
+    { id: 'account', label: 'Account', icon: User, description: 'Manage your profile details' },
     { id: 'privacy', label: 'Privacy & Social', icon: Shield, description: 'Control who sees your profile' },
     { id: 'content', label: 'Content & Display', icon: Eye, description: 'Customize your experience' },
+    { id: 'data', label: 'Data & Storage', icon: Trash2, description: 'Manage your data' },
     { id: 'about', label: 'About', icon: Sparkles, description: 'App info and support' }
   ];
 
@@ -2074,8 +2091,605 @@ function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, 
     setIsLinkingGoogle(false);
   };
 
+  const handleSaveAccount = async () => {
+    setIsSaving(true);
+    try {
+      await onUpdateProfile({
+        name: editName,
+        age: editAge ? parseInt(editAge) : null,
+        gender: editGender,
+        bio: editBio
+      });
+      setActiveSection(null);
+    } catch (error) {
+      console.error('Error saving account:', error);
+    }
+    setIsSaving(false);
+  };
+
+  const handleSavePrivacy = async () => {
+    setIsSaving(true);
+    try {
+      await onUpdateProfile({
+        allow_squad_requests: allowSquadRequests,
+        show_age_to_squads: showAgeToSquads,
+        show_profile_publicly: showProfilePublicly
+      });
+      setActiveSection(null);
+    } catch (error) {
+      console.error('Error saving privacy settings:', error);
+    }
+    setIsSaving(false);
+  };
+
+  const handleSaveContent = () => {
+    localStorage.setItem('crewq_show_21_only', showOver21Only.toString());
+    localStorage.setItem('crewq_notifications', notificationsEnabled.toString());
+    setActiveSection(null);
+  };
+
   const isGoogleLinked = !!userProfile?.auth_id || !!userProfile?.email;
 
+  // Render sub-pages
+  if (activeSection === 'account') {
+    return (
+      <div className={`fixed inset-0 z-50 ${darkMode ? 'bg-black bg-opacity-90' : 'bg-white bg-opacity-95'}`}>
+        <div className={`h-full max-w-md mx-auto ${darkMode ? 'bg-zinc-950' : 'bg-amber-50'}`}>
+          <div className={`sticky top-0 z-10 px-4 py-4 border-b ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-amber-50 border-amber-200'}`}>
+            <div className="flex items-center gap-3">
+              <button onClick={() => setActiveSection(null)} className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+              <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>Account</h2>
+            </div>
+          </div>
+          
+          <div className="p-4 space-y-4">
+            {/* Profile Picture */}
+            <div className="flex justify-center mb-6">
+              <div className="relative">
+                <div className={`w-24 h-24 rounded-full overflow-hidden ${darkMode ? 'bg-zinc-800' : 'bg-amber-100'}`}>
+                  {userProfile?.profile_picture ? (
+                    <img src={userProfile.profile_picture} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <User className={`w-10 h-10 ${darkMode ? 'text-zinc-600' : 'text-amber-400'}`} />
+                    </div>
+                  )}
+                </div>
+                <p className={`text-center text-xs mt-2 ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                  {isGoogleLinked ? 'Photo from Google' : 'No photo'}
+                </p>
+              </div>
+            </div>
+
+            {/* Name */}
+            <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
+              <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                Display Name
+              </label>
+              <input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className={`w-full rounded-xl px-4 py-3 outline-none ${
+                  darkMode ? 'bg-zinc-800 text-white' : 'bg-amber-50 text-zinc-900'
+                }`}
+                placeholder="Your name"
+              />
+            </div>
+
+            {/* Age */}
+            <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
+              <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                Age
+              </label>
+              <input
+                type="number"
+                value={editAge}
+                onChange={(e) => setEditAge(e.target.value)}
+                className={`w-full rounded-xl px-4 py-3 outline-none ${
+                  darkMode ? 'bg-zinc-800 text-white' : 'bg-amber-50 text-zinc-900'
+                }`}
+                placeholder="Your age"
+              />
+              <p className={`text-xs mt-2 ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                Used for 21+ event filtering
+              </p>
+            </div>
+
+            {/* Gender */}
+            <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
+              <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                Gender
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {GENDER_OPTIONS.map(option => (
+                  <button
+                    key={option.id}
+                    onClick={() => setEditGender(option.id)}
+                    className={`px-4 py-3 rounded-xl text-sm font-semibold transition ${
+                      editGender === option.id
+                        ? 'bg-orange-500 text-white'
+                        : darkMode ? 'bg-zinc-800 text-zinc-400' : 'bg-amber-50 text-zinc-600'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Bio */}
+            <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
+              <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                Bio
+              </label>
+              <textarea
+                value={editBio}
+                onChange={(e) => setEditBio(e.target.value)}
+                className={`w-full rounded-xl px-4 py-3 outline-none resize-none ${
+                  darkMode ? 'bg-zinc-800 text-white' : 'bg-amber-50 text-zinc-900'
+                }`}
+                placeholder="Tell people about yourself..."
+                rows={3}
+                maxLength={150}
+              />
+              <p className={`text-xs text-right ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                {editBio.length}/150
+              </p>
+            </div>
+
+            {/* Email (read-only) */}
+            {userProfile?.email && (
+              <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
+                <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                  Email
+                </label>
+                <p className={darkMode ? 'text-white' : 'text-zinc-900'}>{userProfile.email}</p>
+                <p className={`text-xs mt-1 ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                  Connected via Google
+                </p>
+              </div>
+            )}
+
+            {/* Save Button */}
+            <button
+              onClick={handleSaveAccount}
+              disabled={isSaving}
+              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold hover:shadow-lg transition disabled:opacity-50"
+            >
+              {isSaving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeSection === 'privacy') {
+    return (
+      <div className={`fixed inset-0 z-50 ${darkMode ? 'bg-black bg-opacity-90' : 'bg-white bg-opacity-95'}`}>
+        <div className={`h-full max-w-md mx-auto ${darkMode ? 'bg-zinc-950' : 'bg-amber-50'}`}>
+          <div className={`sticky top-0 z-10 px-4 py-4 border-b ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-amber-50 border-amber-200'}`}>
+            <div className="flex items-center gap-3">
+              <button onClick={() => setActiveSection(null)} className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+              <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>Privacy & Social</h2>
+            </div>
+          </div>
+          
+          <div className="p-4 space-y-4">
+            {/* Allow Squad Requests */}
+            <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <p className={`font-semibold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
+                    Allow Squad Invites
+                  </p>
+                  <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                    Let others invite you to their squads
+                  </p>
+                </div>
+                <button
+                  onClick={() => setAllowSquadRequests(!allowSquadRequests)}
+                  className={`relative w-14 h-8 rounded-full transition ${
+                    allowSquadRequests ? 'bg-orange-500' : darkMode ? 'bg-zinc-700' : 'bg-zinc-300'
+                  }`}
+                >
+                  <div className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full transition-transform shadow ${
+                    allowSquadRequests ? 'transform translate-x-6' : ''
+                  }`} />
+                </button>
+              </div>
+            </div>
+
+            {/* Show Age to Squads */}
+            <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <p className={`font-semibold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
+                    Show Age to Squad Leaders
+                  </p>
+                  <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                    Display your age when requesting to join squads
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowAgeToSquads(!showAgeToSquads)}
+                  className={`relative w-14 h-8 rounded-full transition ${
+                    showAgeToSquads ? 'bg-orange-500' : darkMode ? 'bg-zinc-700' : 'bg-zinc-300'
+                  }`}
+                >
+                  <div className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full transition-transform shadow ${
+                    showAgeToSquads ? 'transform translate-x-6' : ''
+                  }`} />
+                </button>
+              </div>
+            </div>
+
+            {/* Show Profile Publicly */}
+            <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <p className={`font-semibold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
+                    Public Profile
+                  </p>
+                  <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                    Allow others to see your profile when browsing squads
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowProfilePublicly(!showProfilePublicly)}
+                  className={`relative w-14 h-8 rounded-full transition ${
+                    showProfilePublicly ? 'bg-orange-500' : darkMode ? 'bg-zinc-700' : 'bg-zinc-300'
+                  }`}
+                >
+                  <div className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full transition-transform shadow ${
+                    showProfilePublicly ? 'transform translate-x-6' : ''
+                  }`} />
+                </button>
+              </div>
+            </div>
+
+            {/* Info Box */}
+            <div className={`rounded-2xl p-4 ${darkMode ? 'bg-blue-500 bg-opacity-10' : 'bg-blue-50'}`}>
+              <div className="flex gap-3">
+                <Shield className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className={`font-semibold ${darkMode ? 'text-blue-400' : 'text-blue-700'}`}>Your Privacy Matters</p>
+                  <p className={`text-sm ${darkMode ? 'text-blue-300' : 'text-blue-600'}`}>
+                    We never share your personal information with third parties. Your data stays within CrewQ.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Save Button */}
+            <button
+              onClick={handleSavePrivacy}
+              disabled={isSaving}
+              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold hover:shadow-lg transition disabled:opacity-50"
+            >
+              {isSaving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeSection === 'content') {
+    return (
+      <div className={`fixed inset-0 z-50 ${darkMode ? 'bg-black bg-opacity-90' : 'bg-white bg-opacity-95'}`}>
+        <div className={`h-full max-w-md mx-auto ${darkMode ? 'bg-zinc-950' : 'bg-amber-50'}`}>
+          <div className={`sticky top-0 z-10 px-4 py-4 border-b ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-amber-50 border-amber-200'}`}>
+            <div className="flex items-center gap-3">
+              <button onClick={() => setActiveSection(null)} className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+              <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>Content & Display</h2>
+            </div>
+          </div>
+          
+          <div className="p-4 space-y-4">
+            {/* Theme Toggle */}
+            <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  {darkMode ? <Moon className="w-5 h-5 text-orange-500" /> : <Sunrise className="w-5 h-5 text-orange-500" />}
+                  <div>
+                    <p className={`font-semibold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
+                      {darkMode ? 'Dark Mode' : 'Light Mode'}
+                    </p>
+                    <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                      {darkMode ? 'Easy on the eyes at night' : 'Bright and clean look'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setDarkMode(!darkMode)}
+                  className={`relative w-14 h-8 rounded-full transition ${
+                    darkMode ? 'bg-orange-500' : 'bg-zinc-300'
+                  }`}
+                >
+                  <div className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full transition-transform shadow ${
+                    darkMode ? 'transform translate-x-6' : ''
+                  }`} />
+                </button>
+              </div>
+            </div>
+
+            {/* 21+ Events Only */}
+            <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Beer className="w-5 h-5 text-orange-500" />
+                  <div>
+                    <p className={`font-semibold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
+                      21+ Events Only
+                    </p>
+                    <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                      Only show events at bars and clubs
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowOver21Only(!showOver21Only)}
+                  className={`relative w-14 h-8 rounded-full transition ${
+                    showOver21Only ? 'bg-orange-500' : darkMode ? 'bg-zinc-700' : 'bg-zinc-300'
+                  }`}
+                >
+                  <div className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full transition-transform shadow ${
+                    showOver21Only ? 'transform translate-x-6' : ''
+                  }`} />
+                </button>
+              </div>
+            </div>
+
+            {/* Push Notifications */}
+            <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Bell className="w-5 h-5 text-orange-500" />
+                  <div>
+                    <p className={`font-semibold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
+                      Notifications
+                    </p>
+                    <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                      Get notified about events and squads
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setNotificationsEnabled(!notificationsEnabled)}
+                  className={`relative w-14 h-8 rounded-full transition ${
+                    notificationsEnabled ? 'bg-orange-500' : darkMode ? 'bg-zinc-700' : 'bg-zinc-300'
+                  }`}
+                >
+                  <div className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full transition-transform shadow ${
+                    notificationsEnabled ? 'transform translate-x-6' : ''
+                  }`} />
+                </button>
+              </div>
+            </div>
+
+            {/* Save Button */}
+            <button
+              onClick={handleSaveContent}
+              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold hover:shadow-lg transition"
+            >
+              Save Preferences
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeSection === 'data') {
+    return (
+      <div className={`fixed inset-0 z-50 ${darkMode ? 'bg-black bg-opacity-90' : 'bg-white bg-opacity-95'}`}>
+        <div className={`h-full max-w-md mx-auto ${darkMode ? 'bg-zinc-950' : 'bg-amber-50'}`}>
+          <div className={`sticky top-0 z-10 px-4 py-4 border-b ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-amber-50 border-amber-200'}`}>
+            <div className="flex items-center gap-3">
+              <button onClick={() => setActiveSection(null)} className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+              <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>Data & Storage</h2>
+            </div>
+          </div>
+          
+          <div className="p-4 space-y-4">
+            {/* Reset Seen Events */}
+            <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${darkMode ? 'bg-zinc-800' : 'bg-amber-100'}`}>
+                  <Zap className="w-5 h-5 text-orange-500" />
+                </div>
+                <div>
+                  <p className={`font-semibold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>Reset Event Feed</p>
+                  <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                    See all events again from the beginning
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  if (onResetEvents) onResetEvents();
+                  setActiveSection(null);
+                }}
+                className={`w-full py-3 rounded-xl font-semibold transition ${
+                  darkMode ? 'bg-zinc-800 text-white hover:bg-zinc-700' : 'bg-amber-100 text-zinc-900 hover:bg-amber-200'
+                }`}
+              >
+                Reset Event Feed
+              </button>
+            </div>
+
+            {/* Clear Liked Events */}
+            <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${darkMode ? 'bg-zinc-800' : 'bg-amber-100'}`}>
+                  <Heart className="w-5 h-5 text-orange-500" />
+                </div>
+                <div>
+                  <p className={`font-semibold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>Clear Liked Events</p>
+                  <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                    Remove all events from your liked list
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  if (confirm('Are you sure you want to clear all liked events?')) {
+                    const userKey = `crewq_${userProfile?.id}`;
+                    localStorage.removeItem(`${userKey}_liked`);
+                    window.location.reload();
+                  }
+                }}
+                className={`w-full py-3 rounded-xl font-semibold transition ${
+                  darkMode ? 'bg-zinc-800 text-white hover:bg-zinc-700' : 'bg-amber-100 text-zinc-900 hover:bg-amber-200'
+                }`}
+              >
+                Clear Liked Events
+              </button>
+            </div>
+
+            {/* Storage Info */}
+            <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
+              <h3 className={`font-semibold mb-3 ${darkMode ? 'text-white' : 'text-zinc-900'}`}>Storage Usage</h3>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>Seen Events</span>
+                  <span className={darkMode ? 'text-white' : 'text-zinc-900'}>
+                    {JSON.parse(localStorage.getItem(`crewq_${userProfile?.id}_seen`) || '[]').length} events
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>Liked Events</span>
+                  <span className={darkMode ? 'text-white' : 'text-zinc-900'}>
+                    {JSON.parse(localStorage.getItem(`crewq_${userProfile?.id}_liked`) || '[]').length} events
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>Total Swipes</span>
+                  <span className={darkMode ? 'text-white' : 'text-zinc-900'}>
+                    {localStorage.getItem(`crewq_${userProfile?.id}_swipes`) || '0'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Danger Zone */}
+            <div className={`rounded-2xl p-4 ${darkMode ? 'bg-red-500 bg-opacity-10' : 'bg-red-50'}`}>
+              <h3 className="font-semibold text-red-500 mb-3">Danger Zone</h3>
+              <button
+                onClick={() => {
+                  if (confirm('Are you sure you want to delete your account? This cannot be undone.')) {
+                    alert('Please contact support@crewq.app to delete your account.');
+                  }
+                }}
+                className="w-full py-3 rounded-xl font-semibold bg-red-500 bg-opacity-20 text-red-500 hover:bg-opacity-30 transition"
+              >
+                Delete Account
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeSection === 'about') {
+    return (
+      <div className={`fixed inset-0 z-50 ${darkMode ? 'bg-black bg-opacity-90' : 'bg-white bg-opacity-95'}`}>
+        <div className={`h-full max-w-md mx-auto ${darkMode ? 'bg-zinc-950' : 'bg-amber-50'}`}>
+          <div className={`sticky top-0 z-10 px-4 py-4 border-b ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-amber-50 border-amber-200'}`}>
+            <div className="flex items-center gap-3">
+              <button onClick={() => setActiveSection(null)} className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+              <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>About</h2>
+            </div>
+          </div>
+          
+          <div className="p-4 space-y-4">
+            {/* App Info */}
+            <div className={`rounded-2xl p-6 text-center ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
+              <div className="w-20 h-20 bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <span className="text-3xl font-bold text-white">CQ</span>
+              </div>
+              <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>CrewQ</h3>
+              <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>Dallas Nightlife, Solved</p>
+              <p className={`text-xs mt-2 ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>Version 1.0.0</p>
+            </div>
+
+            {/* Mission */}
+            <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
+              <h3 className={`font-semibold mb-2 ${darkMode ? 'text-white' : 'text-zinc-900'}`}>Our Mission</h3>
+              <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                CrewQ helps you discover the best nightlife events in Dallas and connect with people who share your vibe. 
+                Whether you're looking for a chill rooftop happy hour or an all-night dance party, we've got you covered.
+              </p>
+            </div>
+
+            {/* Links */}
+            <div className={`rounded-2xl overflow-hidden ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
+              <button className={`w-full p-4 text-left flex items-center justify-between border-b ${
+                darkMode ? 'border-zinc-800 hover:bg-zinc-800' : 'border-amber-100 hover:bg-amber-50'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <Globe className="w-5 h-5 text-orange-500" />
+                  <span className={darkMode ? 'text-white' : 'text-zinc-900'}>Website</span>
+                </div>
+                <ExternalLink className={`w-4 h-4 ${darkMode ? 'text-zinc-600' : 'text-zinc-400'}`} />
+              </button>
+              
+              <button className={`w-full p-4 text-left flex items-center justify-between border-b ${
+                darkMode ? 'border-zinc-800 hover:bg-zinc-800' : 'border-amber-100 hover:bg-amber-50'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <Mail className="w-5 h-5 text-orange-500" />
+                  <span className={darkMode ? 'text-white' : 'text-zinc-900'}>Contact Support</span>
+                </div>
+                <ExternalLink className={`w-4 h-4 ${darkMode ? 'text-zinc-600' : 'text-zinc-400'}`} />
+              </button>
+              
+              <button className={`w-full p-4 text-left flex items-center justify-between border-b ${
+                darkMode ? 'border-zinc-800 hover:bg-zinc-800' : 'border-amber-100 hover:bg-amber-50'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <Shield className="w-5 h-5 text-orange-500" />
+                  <span className={darkMode ? 'text-white' : 'text-zinc-900'}>Privacy Policy</span>
+                </div>
+                <ExternalLink className={`w-4 h-4 ${darkMode ? 'text-zinc-600' : 'text-zinc-400'}`} />
+              </button>
+              
+              <button className={`w-full p-4 text-left flex items-center justify-between ${
+                darkMode ? 'hover:bg-zinc-800' : 'hover:bg-amber-50'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <Star className="w-5 h-5 text-orange-500" />
+                  <span className={darkMode ? 'text-white' : 'text-zinc-900'}>Rate the App</span>
+                </div>
+                <ExternalLink className={`w-4 h-4 ${darkMode ? 'text-zinc-600' : 'text-zinc-400'}`} />
+              </button>
+            </div>
+
+            {/* Credits */}
+            <div className={`text-center py-4 ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>
+              <p className="text-sm">Made with ❤️ in Dallas</p>
+              <p className="text-xs mt-1">© 2026 CrewQ. All rights reserved.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Main Settings Page
   return (
     <div className={`fixed inset-0 z-50 ${darkMode ? 'bg-black bg-opacity-90' : 'bg-white bg-opacity-95'}`}>
       <div className={`h-full max-w-md mx-auto ${darkMode ? 'bg-zinc-950' : 'bg-amber-50'}`}>
@@ -2089,7 +2703,7 @@ function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, 
           </div>
         </div>
 
-        <div className="p-4 space-y-4">
+        <div className="p-4 space-y-4 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 80px)' }}>
           {/* Google Account Status */}
           <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
             <div className="flex items-center gap-3 mb-3">
@@ -2139,35 +2753,6 @@ function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, 
                 {isLinkingGoogle ? 'Linking...' : 'Link with Google'}
               </button>
             )}
-          </div>
-
-          {/* Theme Toggle */}
-          <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                {darkMode ? <Moon className="w-5 h-5 text-orange-500" /> : <Sunrise className="w-5 h-5 text-orange-500" />}
-                <div>
-                  <p className={`font-semibold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
-                    {darkMode ? 'Dark Mode' : 'Light Mode'}
-                  </p>
-                  <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
-                    {darkMode ? 'Easy on the eyes' : 'Bright and clean'}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setDarkMode(!darkMode)}
-                className={`relative w-14 h-8 rounded-full transition ${
-                  darkMode ? 'bg-orange-500' : 'bg-zinc-300'
-                }`}
-              >
-                <div
-                  className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full transition-transform shadow ${
-                    darkMode ? 'transform translate-x-6' : ''
-                  }`}
-                />
-              </button>
-            </div>
           </div>
 
           {/* Settings Sections */}
@@ -6717,14 +7302,16 @@ const loadSquads = async (userId) => {
     
     // Track this event as seen - user specific
     const seenEvents = JSON.parse(localStorage.getItem(`${userKey}_seen`) || '[]');
-    if (currentEvent && !seenEvents.includes(currentEvent.id)) {
+    const isNewSwipe = currentEvent && !seenEvents.includes(currentEvent.id);
+    
+    if (isNewSwipe) {
       seenEvents.push(currentEvent.id);
       localStorage.setItem(`${userKey}_seen`, JSON.stringify(seenEvents));
+      
+      // Only count UNIQUE swipes for badges
+      const currentSwipes = parseInt(localStorage.getItem(`${userKey}_swipes`) || '0');
+      localStorage.setItem(`${userKey}_swipes`, (currentSwipes + 1).toString());
     }
-    
-    // Track swipes for badges - user specific
-    const currentSwipes = parseInt(localStorage.getItem(`${userKey}_swipes`) || '0');
-    localStorage.setItem(`${userKey}_swipes`, (currentSwipes + 1).toString());
     
     if (direction === 'right') {
       const liked = JSON.parse(localStorage.getItem(`${userKey}_liked`) || '[]');
@@ -7153,6 +7740,32 @@ const loadSquads = async (userId) => {
               setShowSettings(false);
             }}
             onLinkGoogle={handleGoogleAuth}
+            onUpdateProfile={async (updates) => {
+              if (!supabaseClient || !userProfile?.id) return;
+              try {
+                const { data, error } = await supabaseClient
+                  .from('users')
+                  .update(updates)
+                  .eq('id', userProfile.id)
+                  .select()
+                  .single();
+                
+                if (error) throw error;
+                if (data) {
+                  setUserProfile(data);
+                  showToast('Settings saved!', 'success');
+                }
+              } catch (error) {
+                console.error('Error updating profile:', error);
+                showToast('Error saving settings', 'error');
+              }
+            }}
+            onResetEvents={() => {
+              const userKey = `crewq_${userProfile?.id}`;
+              localStorage.removeItem(`${userKey}_seen`);
+              loadEvents(userProfile?.id);
+              showToast('Events reset! Swipe away 🎉', 'success');
+            }}
           />
         )}
 
