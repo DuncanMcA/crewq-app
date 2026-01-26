@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Heart, X, Share2, Bell, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle, Trash2, Eye, EyeOff, Shield, Sparkles, ExternalLink, Globe, UtensilsCrossed, Award, Trophy, Star, Flame, Music, Mic, Beer, Coffee, Utensils, Sunrise, Moon, Key, Crown, Zap, Target } from 'lucide-react';
+import { Heart, X, Share2, Bell, BellOff, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle, Trash2, Eye, EyeOff, Shield, Sparkles, ExternalLink, Globe, UtensilsCrossed, Award, Trophy, Star, Flame, Music, Mic, Beer, Coffee, Utensils, Sunrise, Moon, Key, Crown, Zap, Target } from 'lucide-react';
 
 // Toast Notification Component
 function Toast({ message, type = 'success', onClose }) {
@@ -831,6 +831,11 @@ function CreateSquadModal({ onClose, onCreate, userProfile, events }) {
   const [maxAge, setMaxAge] = useState('');
   const [minBadges, setMinBadges] = useState(0);
   const [requiresApproval, setRequiresApproval] = useState(true);
+  
+  // New fields
+  const [maxMembers, setMaxMembers] = useState('');
+  const [meetingSpot, setMeetingSpot] = useState('');
+  const [meetingInstructions, setMeetingInstructions] = useState('');
 
   // Filter events to today and upcoming
   const today = new Date();
@@ -863,15 +868,22 @@ function CreateSquadModal({ onClose, onCreate, userProfile, events }) {
       invited_members: invitedMembers,
       is_solo_friendly: isSoloFriendly,
       created_by: userProfile.id,
-      // New restriction fields
+      // Restriction fields
       gender_restriction: isSoloFriendly ? genderRestriction : 'all',
       min_age: isSoloFriendly && minAge ? parseInt(minAge) : null,
       max_age: isSoloFriendly && maxAge ? parseInt(maxAge) : null,
       min_badges: isSoloFriendly ? minBadges : 0,
-      requires_approval: isSoloFriendly ? requiresApproval : false
+      requires_approval: isSoloFriendly ? requiresApproval : false,
+      // New fields
+      max_members: maxMembers ? parseInt(maxMembers) : null,
+      meeting_spot: meetingSpot,
+      meeting_instructions: meetingInstructions
     });
     setIsCreating(false);
   };
+
+  // Calculate total steps based on settings
+  const totalSteps = isSoloFriendly ? 5 : 4;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
@@ -885,7 +897,7 @@ function CreateSquadModal({ onClose, onCreate, userProfile, events }) {
           </div>
           
           <div className="flex gap-2 mt-4">
-            {[1, 2, 3, 4].map(s => (
+            {Array.from({ length: totalSteps }, (_, i) => i + 1).map(s => (
               <div
                 key={s}
                 className={`flex-1 h-1 rounded-full ${
@@ -923,6 +935,31 @@ function CreateSquadModal({ onClose, onCreate, userProfile, events }) {
                   className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500 resize-none"
                   rows="3"
                 />
+              </div>
+
+              {/* Member Cap */}
+              <div>
+                <label className="block text-sm font-semibold text-zinc-300 mb-2">
+                  Maximum Members (Optional)
+                </label>
+                <div className="flex gap-2">
+                  {[null, 4, 6, 8, 10, 15].map(num => (
+                    <button
+                      key={num || 'unlimited'}
+                      onClick={() => setMaxMembers(num ? num.toString() : '')}
+                      className={`flex-1 py-3 rounded-xl text-sm font-semibold transition ${
+                        (maxMembers === '' && num === null) || (parseInt(maxMembers) === num)
+                          ? 'bg-orange-500 text-white'
+                          : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                      }`}
+                    >
+                      {num === null ? '∞' : num}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-zinc-500 mt-1">
+                  Squad will auto-close when limit is reached
+                </p>
               </div>
 
               <div className="bg-zinc-800 rounded-xl p-4 border-2 border-zinc-700">
@@ -1025,7 +1062,7 @@ function CreateSquadModal({ onClose, onCreate, userProfile, events }) {
                   disabled={!selectedEvent}
                   className="flex-1 bg-orange-500 text-white py-4 rounded-xl font-bold hover:bg-orange-600 transition disabled:opacity-50"
                 >
-                  {isSoloFriendly ? 'Next: Set Rules' : 'Next: Invite Friends'}
+                  {isSoloFriendly ? 'Next: Set Rules' : 'Next: Meeting Details'}
                 </button>
               </div>
             </div>
@@ -1149,13 +1186,90 @@ function CreateSquadModal({ onClose, onCreate, userProfile, events }) {
                   onClick={() => setStep(4)}
                   className="flex-1 bg-orange-500 text-white py-4 rounded-xl font-bold hover:bg-orange-600 transition"
                 >
-                  Next: Invite Friends
+                  Next: Meeting Details
                 </button>
               </div>
             </div>
           )}
 
           {step === 4 && (
+            <div className="space-y-4">
+              <div>
+                <h4 className="text-lg font-bold text-white mb-3">Meeting Details</h4>
+                <p className="text-sm text-zinc-400 mb-4">
+                  How will your squad find each other?
+                </p>
+              </div>
+
+              {/* Meeting Spot */}
+              <div>
+                <label className="block text-sm font-semibold text-zinc-300 mb-2">
+                  Meeting Spot
+                </label>
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  {['At the bar', 'Near the entrance', 'At a table', 'Outside/Patio', 'Near the stage', 'Other'].map(spot => (
+                    <button
+                      key={spot}
+                      onClick={() => setMeetingSpot(spot === 'Other' ? '' : spot)}
+                      className={`p-3 rounded-xl text-sm font-semibold transition ${
+                        meetingSpot === spot || (spot === 'Other' && !['At the bar', 'Near the entrance', 'At a table', 'Outside/Patio', 'Near the stage'].includes(meetingSpot) && meetingSpot !== '')
+                          ? 'bg-orange-500 text-white'
+                          : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                      }`}
+                    >
+                      {spot}
+                    </button>
+                  ))}
+                </div>
+                {!['At the bar', 'Near the entrance', 'At a table', 'Outside/Patio', 'Near the stage', ''].includes(meetingSpot) || meetingSpot === '' && (
+                  <input
+                    type="text"
+                    value={meetingSpot}
+                    onChange={(e) => setMeetingSpot(e.target.value)}
+                    placeholder="Enter custom meeting spot..."
+                    className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                )}
+              </div>
+
+              {/* Meeting Instructions */}
+              <div>
+                <label className="block text-sm font-semibold text-zinc-300 mb-2">
+                  How will they recognize you? (Optional)
+                </label>
+                <textarea
+                  value={meetingInstructions}
+                  onChange={(e) => setMeetingInstructions(e.target.value)}
+                  placeholder="e.g., I'll be wearing a red jacket, Look for the table with the CrewQ sign"
+                  className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500 resize-none"
+                  rows="3"
+                />
+              </div>
+
+              <div className="bg-zinc-800 rounded-xl p-4">
+                <p className="text-sm text-zinc-400">
+                  💡 <strong className="text-white">Tip:</strong> Clear meeting details help solo members feel confident joining!
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setStep(isSoloFriendly ? 3 : 2)}
+                  className="flex-1 bg-zinc-800 text-white py-4 rounded-xl font-bold hover:bg-zinc-700 transition"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={() => setStep(5)}
+                  className="flex-1 bg-orange-500 text-white py-4 rounded-xl font-bold hover:bg-orange-600 transition"
+                >
+                  Next: Invite Friends
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === 5 && (
             <div className="space-y-4">
               <div>
                 <h4 className="text-lg font-bold text-white mb-3">Invite Friends</h4>
@@ -1218,7 +1332,7 @@ function CreateSquadModal({ onClose, onCreate, userProfile, events }) {
 
               <div className="flex gap-3">
                 <button
-                  onClick={() => setStep(isSoloFriendly ? 3 : 2)}
+                  onClick={() => setStep(4)}
                   className="flex-1 bg-zinc-800 text-white py-4 rounded-xl font-bold hover:bg-zinc-700 transition"
                 >
                   Back
@@ -1239,7 +1353,236 @@ function CreateSquadModal({ onClose, onCreate, userProfile, events }) {
   );
 }
 
-function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile, isMember, onEventClick }) {
+// Edit Squad Modal
+function EditSquadModal({ squad, onClose, onSave }) {
+  const [name, setName] = useState(squad.name || '');
+  const [description, setDescription] = useState(squad.description || '');
+  const [maxMembers, setMaxMembers] = useState(squad.max_members ? squad.max_members.toString() : '');
+  const [meetingSpot, setMeetingSpot] = useState(squad.meeting_spot || '');
+  const [meetingInstructions, setMeetingInstructions] = useState(squad.meeting_instructions || '');
+  const [isSoloFriendly, setIsSoloFriendly] = useState(squad.is_solo_friendly || false);
+  const [genderRestriction, setGenderRestriction] = useState(squad.gender_restriction || 'all');
+  const [minAge, setMinAge] = useState(squad.min_age ? squad.min_age.toString() : '');
+  const [maxAge, setMaxAge] = useState(squad.max_age ? squad.max_age.toString() : '');
+  const [minBadges, setMinBadges] = useState(squad.min_badges || 0);
+  const [requiresApproval, setRequiresApproval] = useState(squad.requires_approval !== false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!name) return;
+    setIsSaving(true);
+    await onSave({
+      ...squad,
+      name,
+      description,
+      max_members: maxMembers ? parseInt(maxMembers) : null,
+      meeting_spot: meetingSpot,
+      meeting_instructions: meetingInstructions,
+      is_solo_friendly: isSoloFriendly,
+      gender_restriction: isSoloFriendly ? genderRestriction : 'all',
+      min_age: isSoloFriendly && minAge ? parseInt(minAge) : null,
+      max_age: isSoloFriendly && maxAge ? parseInt(maxAge) : null,
+      min_badges: isSoloFriendly ? minBadges : 0,
+      requires_approval: isSoloFriendly ? requiresApproval : false
+    });
+    setIsSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+      <div className="bg-zinc-900 rounded-3xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-zinc-900 border-b border-zinc-800 p-6 z-10">
+          <div className="flex justify-between items-center">
+            <h3 className="text-2xl font-bold text-white">Edit Squad</h3>
+            <button onClick={onClose} className="text-zinc-400 hover:text-white">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-semibold text-zinc-300 mb-2">Squad Name *</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-zinc-300 mb-2">Description</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500 resize-none"
+              rows="2"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-zinc-300 mb-2">Maximum Members</label>
+            <div className="flex gap-2">
+              {[null, 4, 6, 8, 10, 15].map(num => (
+                <button
+                  key={num || 'unlimited'}
+                  onClick={() => setMaxMembers(num ? num.toString() : '')}
+                  className={`flex-1 py-2 rounded-xl text-sm font-semibold transition ${
+                    (maxMembers === '' && num === null) || (parseInt(maxMembers) === num)
+                      ? 'bg-orange-500 text-white'
+                      : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                  }`}
+                >
+                  {num === null ? '∞' : num}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-zinc-300 mb-2">Meeting Spot</label>
+            <input
+              type="text"
+              value={meetingSpot}
+              onChange={(e) => setMeetingSpot(e.target.value)}
+              placeholder="e.g., At the bar, Near the entrance"
+              className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-zinc-300 mb-2">Meeting Instructions</label>
+            <textarea
+              value={meetingInstructions}
+              onChange={(e) => setMeetingInstructions(e.target.value)}
+              placeholder="How will they recognize you?"
+              className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500 resize-none"
+              rows="2"
+            />
+          </div>
+
+          <div className="bg-zinc-800 rounded-xl p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-white font-semibold">Open to Solo Members</p>
+                <p className="text-xs text-zinc-400">Let strangers request to join</p>
+              </div>
+              <button
+                onClick={() => setIsSoloFriendly(!isSoloFriendly)}
+                className={`relative w-12 h-7 rounded-full transition ${
+                  isSoloFriendly ? 'bg-orange-500' : 'bg-zinc-700'
+                }`}
+              >
+                <div className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform ${
+                  isSoloFriendly ? 'transform translate-x-5' : ''
+                }`} />
+              </button>
+            </div>
+          </div>
+
+          {isSoloFriendly && (
+            <>
+              <div>
+                <label className="block text-sm font-semibold text-zinc-300 mb-2">Who can join?</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {SQUAD_GENDER_OPTIONS.map(option => (
+                    <button
+                      key={option.id}
+                      onClick={() => setGenderRestriction(option.id)}
+                      className={`p-2 rounded-xl text-xs font-semibold transition ${
+                        genderRestriction === option.id
+                          ? 'bg-orange-500 text-white'
+                          : 'bg-zinc-800 text-zinc-400'
+                      }`}
+                    >
+                      {option.icon} {option.label.split(' ')[0]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-zinc-300 mb-2">Age Range</label>
+                <div className="flex gap-3 items-center">
+                  <input
+                    type="number"
+                    value={minAge}
+                    onChange={(e) => setMinAge(e.target.value)}
+                    placeholder="Min"
+                    className="flex-1 bg-zinc-800 text-white rounded-xl px-4 py-2 outline-none text-sm"
+                  />
+                  <span className="text-zinc-500">to</span>
+                  <input
+                    type="number"
+                    value={maxAge}
+                    onChange={(e) => setMaxAge(e.target.value)}
+                    placeholder="Max"
+                    className="flex-1 bg-zinc-800 text-white rounded-xl px-4 py-2 outline-none text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-zinc-300 mb-2">Min Badges</label>
+                <div className="flex gap-2">
+                  {[0, 1, 3, 5, 10].map(num => (
+                    <button
+                      key={num}
+                      onClick={() => setMinBadges(num)}
+                      className={`flex-1 py-2 rounded-xl text-sm font-semibold transition ${
+                        minBadges === num ? 'bg-orange-500 text-white' : 'bg-zinc-800 text-zinc-400'
+                      }`}
+                    >
+                      {num === 0 ? 'Any' : `${num}+`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-zinc-800 rounded-xl p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-white font-semibold text-sm">Require Approval</p>
+                    <p className="text-xs text-zinc-400">Review requests before joining</p>
+                  </div>
+                  <button
+                    onClick={() => setRequiresApproval(!requiresApproval)}
+                    className={`relative w-12 h-7 rounded-full transition ${
+                      requiresApproval ? 'bg-orange-500' : 'bg-zinc-700'
+                    }`}
+                  >
+                    <div className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform ${
+                      requiresApproval ? 'transform translate-x-5' : ''
+                    }`} />
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+
+          <div className="flex gap-3 pt-4">
+            <button
+              onClick={onClose}
+              className="flex-1 bg-zinc-800 text-white py-3 rounded-xl font-bold hover:bg-zinc-700 transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={!name || isSaving}
+              className="flex-1 bg-gradient-to-r from-orange-500 to-orange-600 text-white py-3 rounded-xl font-bold hover:shadow-lg transition disabled:opacity-50"
+            >
+              {isSaving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile, isMember, onEventClick, onEdit, onDelete, onMute }) {
   const [hasVoted, setHasVoted] = useState(false);
   const [vote, setVote] = useState(null);
   const [squadMembers, setSquadMembers] = useState([]);
@@ -1457,11 +1800,49 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
             )}
           </div>
 
+          {/* Meeting Spot */}
+          {(squad.meeting_spot || squad.meeting_instructions) && (
+            <div className="bg-emerald-500 bg-opacity-10 border border-emerald-500 border-opacity-30 rounded-xl p-4 mb-4">
+              <p className="text-emerald-400 text-xs font-semibold uppercase mb-2">📍 Meeting Details</p>
+              {squad.meeting_spot && (
+                <p className="text-white font-semibold mb-1">{squad.meeting_spot}</p>
+              )}
+              {squad.meeting_instructions && (
+                <p className="text-emerald-300 text-sm">{squad.meeting_instructions}</p>
+              )}
+            </div>
+          )}
+
+          {/* Member Cap Status */}
+          {squad.max_members && (
+            <div className={`rounded-xl p-3 mb-4 ${
+              (squad.member_count || 0) >= squad.max_members
+                ? 'bg-red-500 bg-opacity-10 border border-red-500 border-opacity-30'
+                : 'bg-zinc-800'
+            }`}>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-zinc-400">Squad Capacity</span>
+                <span className={`text-sm font-semibold ${
+                  (squad.member_count || 0) >= squad.max_members ? 'text-red-400' : 'text-white'
+                }`}>
+                  {squad.member_count || 0} / {squad.max_members}
+                </span>
+              </div>
+              {(squad.member_count || 0) >= squad.max_members && (
+                <p className="text-red-400 text-xs mt-1">🔒 Squad is full</p>
+              )}
+            </div>
+          )}
+
           {/* Action Buttons */}
           {!isMember ? (
-            squad.requires_approval ? (
+            squad.max_members && (squad.member_count || 0) >= squad.max_members ? (
+              <div className="w-full bg-zinc-800 text-zinc-500 py-4 rounded-xl font-bold text-center">
+                Squad is Full
+              </div>
+            ) : squad.requires_approval ? (
               <button
-                onClick={() => onJoin(squad, true)} // true = request to join
+                onClick={() => onJoin(squad, true)}
                 className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold hover:shadow-lg transition"
               >
                 Request to Join
@@ -1475,12 +1856,43 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
               </button>
             )
           ) : (
-            <button
-              onClick={() => onLeave(squad)}
-              className="w-full bg-zinc-800 text-zinc-400 py-4 rounded-xl font-bold hover:bg-zinc-700 transition"
-            >
-              Leave Squad
-            </button>
+            <div className="space-y-2">
+              <button
+                onClick={() => onLeave(squad)}
+                className="w-full bg-zinc-800 text-zinc-400 py-3 rounded-xl font-bold hover:bg-zinc-700 transition"
+              >
+                Leave Squad
+              </button>
+              
+              {/* Squad Creator Options */}
+              {squad.created_by === userProfile?.id && (
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-zinc-800">
+                  <button
+                    onClick={() => onEdit && onEdit(squad)}
+                    className="flex items-center justify-center gap-2 bg-zinc-800 text-orange-400 py-3 rounded-xl font-semibold hover:bg-zinc-700 transition"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                    Edit Squad
+                  </button>
+                  <button
+                    onClick={() => onDelete && onDelete(squad)}
+                    className="flex items-center justify-center gap-2 bg-red-500 bg-opacity-20 text-red-400 py-3 rounded-xl font-semibold hover:bg-opacity-30 transition"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete
+                  </button>
+                </div>
+              )}
+              
+              {/* Mute notifications option for all members */}
+              <button
+                onClick={() => onMute && onMute(squad)}
+                className="w-full flex items-center justify-center gap-2 text-zinc-500 py-2 hover:text-zinc-300 transition text-sm"
+              >
+                <BellOff className="w-4 h-4" />
+                Mute Notifications
+              </button>
+            </div>
           )}
 
           {/* Show restrictions if any */}
@@ -1629,9 +2041,17 @@ function NotificationsModal({
   notifications, 
   pendingJoinRequests, 
   onReviewRequest,
-  onCheckIn
+  onCheckIn,
+  onEventClick
 }) {
   const totalNotifs = notifications.length + pendingJoinRequests.length;
+
+  const handleNotificationClick = (notif) => {
+    if (notif.event && onEventClick) {
+      onEventClick(notif.event);
+      onClose();
+    }
+  };
 
   return (
     <div className={`fixed inset-0 z-50 ${darkMode ? 'bg-black bg-opacity-90' : 'bg-white bg-opacity-95'}`}>
@@ -1700,13 +2120,15 @@ function NotificationsModal({
               </h3>
               <div className="space-y-2">
                 {notifications.map(notif => (
-                  <div
+                  <button
                     key={notif.id}
-                    className={`rounded-2xl p-4 ${
+                    onClick={() => handleNotificationClick(notif)}
+                    disabled={!notif.event}
+                    className={`w-full rounded-2xl p-4 text-left transition ${
                       notif.priority 
                         ? (darkMode ? 'bg-emerald-500 bg-opacity-10 border border-emerald-500 border-opacity-30' : 'bg-emerald-50 border border-emerald-200')
                         : (darkMode ? 'bg-zinc-900' : 'bg-white')
-                    }`}
+                    } ${notif.event ? 'hover:bg-opacity-80 cursor-pointer' : ''}`}
                   >
                     <div className="flex items-start gap-3">
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
@@ -1714,6 +2136,10 @@ function NotificationsModal({
                           ? 'bg-emerald-500 bg-opacity-20' 
                           : notif.type === 'event_reminder'
                           ? 'bg-orange-500 bg-opacity-20'
+                          : notif.type === 'squad_request_approved'
+                          ? 'bg-emerald-500 bg-opacity-20'
+                          : notif.type === 'squad_request_declined'
+                          ? 'bg-red-500 bg-opacity-20'
                           : 'bg-zinc-800'
                       }`}>
                         {notif.type === 'checkin_reminder' ? (
@@ -1722,6 +2148,10 @@ function NotificationsModal({
                           <Calendar className="w-5 h-5 text-orange-500" />
                         ) : notif.type === 'badge_earned' ? (
                           <Trophy className="w-5 h-5 text-yellow-500" />
+                        ) : notif.type === 'squad_request_approved' ? (
+                          <CheckCircle className="w-5 h-5 text-emerald-500" />
+                        ) : notif.type === 'squad_request_declined' ? (
+                          <X className="w-5 h-5 text-red-500" />
                         ) : (
                           <Bell className="w-5 h-5 text-zinc-400" />
                         )}
@@ -1733,15 +2163,22 @@ function NotificationsModal({
                         
                         {notif.type === 'checkin_reminder' && notif.event && (
                           <button
-                            onClick={() => onCheckIn(notif.event)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onCheckIn(notif.event);
+                            }}
                             className="mt-2 bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-semibold"
                           >
                             Check In Now
                           </button>
                         )}
+                        
+                        {notif.event && notif.type !== 'checkin_reminder' && (
+                          <p className="text-xs text-orange-500 mt-2">Tap to view event →</p>
+                        )}
                       </div>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
@@ -4712,13 +5149,110 @@ export default function App() {
         .update({ member_count: Math.max((squad.member_count || 1) - 1, 0) })
         .eq('id', squad.id);
 
-      alert('You left the squad');
+      showToast('You left the squad', 'info');
       setShowSquadDetail(false);
       await loadSquads(userProfile.id);
       await loadAllSquads();
     } catch (error) {
       console.error('Error leaving squad:', error);
-      alert('Error leaving squad. Please try again.');
+      showToast('Error leaving squad. Please try again.', 'error');
+    }
+  };
+
+  const handleDeleteSquad = async (squad) => {
+    if (!supabaseClient || !userProfile) return;
+    
+    if (!confirm(`Are you sure you want to delete "${squad.name}"? This cannot be undone.`)) {
+      return;
+    }
+    
+    try {
+      // Delete squad members first
+      await supabaseClient
+        .from('squad_members')
+        .delete()
+        .eq('squad_id', squad.id);
+      
+      // Delete join requests
+      await supabaseClient
+        .from('squad_join_requests')
+        .delete()
+        .eq('squad_id', squad.id);
+      
+      // Delete squad votes
+      await supabaseClient
+        .from('squad_votes')
+        .delete()
+        .eq('squad_id', squad.id);
+      
+      // Delete the squad
+      await supabaseClient
+        .from('squads')
+        .delete()
+        .eq('id', squad.id);
+
+      showToast('Squad deleted', 'success');
+      setShowSquadDetail(false);
+      await loadSquads(userProfile.id);
+      await loadAllSquads();
+    } catch (error) {
+      console.error('Error deleting squad:', error);
+      showToast('Error deleting squad. Please try again.', 'error');
+    }
+  };
+
+  const [showEditSquad, setShowEditSquad] = useState(null);
+
+  const handleEditSquad = (squad) => {
+    setShowSquadDetail(false);
+    setShowEditSquad(squad);
+  };
+
+  const handleSaveSquadEdit = async (updatedSquad) => {
+    if (!supabaseClient) return;
+    
+    try {
+      await supabaseClient
+        .from('squads')
+        .update({
+          name: updatedSquad.name,
+          description: updatedSquad.description,
+          max_members: updatedSquad.max_members,
+          meeting_spot: updatedSquad.meeting_spot,
+          meeting_instructions: updatedSquad.meeting_instructions,
+          is_solo_friendly: updatedSquad.is_solo_friendly,
+          gender_restriction: updatedSquad.gender_restriction,
+          min_age: updatedSquad.min_age,
+          max_age: updatedSquad.max_age,
+          min_badges: updatedSquad.min_badges,
+          requires_approval: updatedSquad.requires_approval
+        })
+        .eq('id', updatedSquad.id);
+
+      showToast('Squad updated!', 'success');
+      setShowEditSquad(null);
+      await loadSquads(userProfile.id);
+      await loadAllSquads();
+    } catch (error) {
+      console.error('Error updating squad:', error);
+      showToast('Error updating squad. Please try again.', 'error');
+    }
+  };
+
+  const handleMuteSquad = async (squad) => {
+    // For now, store muted squads in localStorage
+    const mutedSquads = JSON.parse(localStorage.getItem(`crewq_${userProfile.id}_muted_squads`) || '[]');
+    
+    if (mutedSquads.includes(squad.id)) {
+      // Unmute
+      const updated = mutedSquads.filter(id => id !== squad.id);
+      localStorage.setItem(`crewq_${userProfile.id}_muted_squads`, JSON.stringify(updated));
+      showToast('Notifications enabled for this squad', 'success');
+    } else {
+      // Mute
+      mutedSquads.push(squad.id);
+      localStorage.setItem(`crewq_${userProfile.id}_muted_squads`, JSON.stringify(mutedSquads));
+      showToast('Notifications muted for this squad', 'info');
     }
   };
 
@@ -5306,6 +5840,17 @@ const loadSquads = async (userId) => {
               setShowSquadDetail(false);
               handleEventClick(event);
             }}
+            onEdit={handleEditSquad}
+            onDelete={handleDeleteSquad}
+            onMute={handleMuteSquad}
+          />
+        )}
+
+        {showEditSquad && (
+          <EditSquadModal
+            squad={showEditSquad}
+            onClose={() => setShowEditSquad(null)}
+            onSave={handleSaveSquadEdit}
           />
         )}
 
@@ -5394,6 +5939,7 @@ const loadSquads = async (userId) => {
               setShowJoinRequestReview(request);
             }}
             onCheckIn={handleCheckIn}
+            onEventClick={handleEventClick}
           />
         )}
 
