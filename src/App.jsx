@@ -81,6 +81,7 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
 };
 
 const formatDistance = (miles) => {
+  if (miles === null || miles === undefined || isNaN(miles)) return '';
   if (miles < 0.1) return 'Here';
   if (miles < 1) return `${(miles * 5280 / 1000).toFixed(1)}k ft`;
   return `${miles.toFixed(1)} mi`;
@@ -3581,7 +3582,7 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
                           <p className="text-zinc-500 text-xs">{event.date} • {event.time}</p>
                         )}
                       </div>
-                      {event.distance !== null && (
+                      {event.distance != null && typeof event.distance === 'number' && (
                         <div className="text-right flex-shrink-0">
                           <p className="text-orange-400 font-semibold text-sm">
                             {formatDistance(event.distance)}
@@ -3726,7 +3727,7 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
                       <span>{event.date}</span>
                       <span>•</span>
                       <span>{event.time}</span>
-                      {event.distance !== null && (
+                      {event.distance != null && typeof event.distance === 'number' && (
                         <>
                           <span>•</span>
                           <span className="text-orange-400">{formatDistance(event.distance)}</span>
