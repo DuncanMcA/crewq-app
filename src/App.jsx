@@ -3300,37 +3300,51 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
   const initializeMap = () => {
     if (!window.mapboxgl || !mapContainerRef.current) return;
 
+    // Check if token exists
+    if (!MAPBOX_TOKEN) {
+      console.error('Mapbox token is missing! Check VITE_MAPBOX_TOKEN environment variable.');
+      return;
+    }
+
     window.mapboxgl.accessToken = MAPBOX_TOKEN;
     
-    const map = new window.mapboxgl.Map({
-      container: mapContainerRef.current,
-      style: 'mapbox://styles/mapbox/dark-v11',
-      center: userLocation ? [userLocation.longitude, userLocation.latitude] : DALLAS_CENTER,
-      zoom: userLocation ? 13 : DEFAULT_ZOOM
-    });
+    try {
+      const map = new window.mapboxgl.Map({
+        container: mapContainerRef.current,
+        style: 'mapbox://styles/mapbox/dark-v11',
+        center: userLocation ? [userLocation.longitude, userLocation.latitude] : DALLAS_CENTER,
+        zoom: userLocation ? 13 : DEFAULT_ZOOM
+      });
 
-    map.on('load', () => {
-      setMapLoaded(true);
-      
-      // Add user location marker if available
-      if (userLocation) {
-        const userMarker = document.createElement('div');
-        userMarker.className = 'user-location-marker';
-        userMarker.innerHTML = `
-          <div style="width: 20px; height: 20px; background: #3b82f6; border: 3px solid white; border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.3);"></div>
-          <div style="width: 40px; height: 40px; background: rgba(59, 130, 246, 0.2); border-radius: 50%; position: absolute; top: -10px; left: -10px; animation: pulse 2s infinite;"></div>
-        `;
+      map.on('load', () => {
+        setMapLoaded(true);
         
-        new window.mapboxgl.Marker({ element: userMarker })
-          .setLngLat([userLocation.longitude, userLocation.latitude])
-          .addTo(map);
-      }
+        // Add user location marker if available
+        if (userLocation) {
+          const userMarker = document.createElement('div');
+          userMarker.className = 'user-location-marker';
+          userMarker.innerHTML = `
+            <div style="width: 20px; height: 20px; background: #3b82f6; border: 3px solid white; border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.3);"></div>
+            <div style="width: 40px; height: 40px; background: rgba(59, 130, 246, 0.2); border-radius: 50%; position: absolute; top: -10px; left: -10px; animation: pulse 2s infinite;"></div>
+          `;
+          
+          new window.mapboxgl.Marker({ element: userMarker })
+            .setLngLat([userLocation.longitude, userLocation.latitude])
+            .addTo(map);
+        }
 
-      // Add event markers
-      updateMarkers(map, filteredMapEvents);
-    });
+        // Add event markers
+        updateMarkers(map, filteredMapEvents);
+      });
 
-    mapRef.current = map;
+      map.on('error', (e) => {
+        console.error('Mapbox error:', e);
+      });
+
+      mapRef.current = map;
+    } catch (error) {
+      console.error('Error initializing map:', error);
+    }
   };
 
   const updateMarkers = (map, eventList) => {
@@ -5329,20 +5343,35 @@ export default function App() {
   const loadAttendedEvents = async (userId) => {
     if (!supabaseClient) return;
     try {
-      const { data } = await supabaseClient
+      // First get check-in event IDs
+      const { data: checkins, error: checkinsError } = await supabaseClient
         .from('event_checkins')
-        .select('event_id, created_at, events(*)')
+        .select('event_id, created_at')
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
       
-      const eventsWithDetails = data?.map(d => ({
-        ...d.events,
-        checkedInAt: d.created_at
-      })).filter(e => e.id) || [];
+      if (checkinsError || !checkins?.length) {
+        setAttendedEvents([]);
+        return;
+      }
+
+      // Then get event details
+      const eventIds = checkins.map(c => c.event_id);
+      const { data: events } = await supabaseClient
+        .from('events')
+        .select('*')
+        .in('id', eventIds);
+
+      // Combine check-in data with event details
+      const eventsWithDetails = checkins.map(checkin => {
+        const event = events?.find(e => e.id === checkin.event_id);
+        return event ? { ...event, checkedInAt: checkin.created_at } : null;
+      }).filter(Boolean);
       
       setAttendedEvents(eventsWithDetails);
     } catch (error) {
       console.error('Error loading attended events:', error);
+      setAttendedEvents([]);
     }
   };
 
@@ -5361,19 +5390,26 @@ export default function App() {
         .select('*', { count: 'exact', head: true })
         .eq('created_by', userId);
 
-      // Get category check-ins
+      // Get category check-ins - separate queries to avoid relationship issues
       const { data: checkinData } = await supabaseClient
         .from('event_checkins')
-        .select('event_id, events(category)')
+        .select('event_id')
         .eq('user_id', userId);
 
-      const categoryCheckins = {};
-      checkinData?.forEach(c => {
-        const cat = c.events?.category;
-        if (cat) {
-          categoryCheckins[cat] = (categoryCheckins[cat] || 0) + 1;
-        }
-      });
+      let categoryCheckins = {};
+      if (checkinData?.length) {
+        const eventIds = checkinData.map(c => c.event_id);
+        const { data: eventsData } = await supabaseClient
+          .from('events')
+          .select('id, category')
+          .in('id', eventIds);
+        
+        eventsData?.forEach(e => {
+          if (e.category) {
+            categoryCheckins[e.category] = (categoryCheckins[e.category] || 0) + 1;
+          }
+        });
+      }
 
       // Get local engagement stats - user specific
       const userKey = `crewq_${userId}`;
