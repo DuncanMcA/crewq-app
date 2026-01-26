@@ -34,9 +34,9 @@ function Toast({ message, type = 'success', onClose }) {
 const SUPABASE_URL = 'https://nwrglwfobtvqqrdemoag.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im53cmdsd2ZvYnR2cXFyZGVtb2FnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkwMDYyMDUsImV4cCI6MjA4NDU4MjIwNX0.tNwEmzXnes_r7HrOhD3iO3YgN7rP9LW4nmGM46cfI8M';
 
-// API Keys
-const MAPBOX_TOKEN = 'pk.eyJ1IjoiZHVuY2FubWNhIiwiYSI6ImNta3ZrcGw2bzAxY3MzZHB5OTFzdHJydTUifQ.0W9GRzUtkrZE2rSkXchebg';
-const GOOGLE_PLACES_API_KEY = 'AIzaSyDronP5Jig2lj9bGEynofn1QAtZBG3sJKE';
+// API Keys - Use environment variables in production
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || '';
+const GOOGLE_PLACES_API_KEY = import.meta.env.VITE_GOOGLE_PLACES_API_KEY || '';
 
 // Dallas Neighborhoods with approximate center coordinates
 const DALLAS_NEIGHBORHOODS = [
