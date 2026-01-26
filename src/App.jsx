@@ -1105,13 +1105,13 @@ function CreateSquadModal({ onClose, onCreate, userProfile, events }) {
                 <label className="block text-sm font-semibold text-zinc-300 mb-2">
                   Age Range (Optional)
                 </label>
-                <div className="flex gap-3 items-center">
+                <div className="flex gap-2 items-center">
                   <input
                     type="number"
                     value={minAge}
                     onChange={(e) => setMinAge(e.target.value)}
                     placeholder="Min"
-                    className="flex-1 bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
+                    className="w-24 bg-zinc-800 text-white rounded-xl px-3 py-3 outline-none focus:ring-2 focus:ring-orange-500 text-center"
                   />
                   <span className="text-zinc-500">to</span>
                   <input
@@ -1119,7 +1119,7 @@ function CreateSquadModal({ onClose, onCreate, userProfile, events }) {
                     value={maxAge}
                     onChange={(e) => setMaxAge(e.target.value)}
                     placeholder="Max"
-                    className="flex-1 bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
+                    className="w-24 bg-zinc-800 text-white rounded-xl px-3 py-3 outline-none focus:ring-2 focus:ring-orange-500 text-center"
                   />
                 </div>
               </div>
@@ -1207,12 +1207,12 @@ function CreateSquadModal({ onClose, onCreate, userProfile, events }) {
                   Meeting Spot
                 </label>
                 <div className="grid grid-cols-2 gap-2 mb-3">
-                  {['At the bar', 'Near the entrance', 'At a table', 'Outside/Patio', 'Near the stage', 'Other'].map(spot => (
+                  {['At the bar', 'Near the entrance', 'At a table', 'Outside/Patio', 'Near the stage'].map(spot => (
                     <button
                       key={spot}
-                      onClick={() => setMeetingSpot(spot === 'Other' ? '' : spot)}
+                      onClick={() => setMeetingSpot(spot)}
                       className={`p-3 rounded-xl text-sm font-semibold transition ${
-                        meetingSpot === spot || (spot === 'Other' && !['At the bar', 'Near the entrance', 'At a table', 'Outside/Patio', 'Near the stage'].includes(meetingSpot) && meetingSpot !== '')
+                        meetingSpot === spot
                           ? 'bg-orange-500 text-white'
                           : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
                       }`}
@@ -1221,15 +1221,14 @@ function CreateSquadModal({ onClose, onCreate, userProfile, events }) {
                     </button>
                   ))}
                 </div>
-                {!['At the bar', 'Near the entrance', 'At a table', 'Outside/Patio', 'Near the stage', ''].includes(meetingSpot) || meetingSpot === '' && (
-                  <input
-                    type="text"
-                    value={meetingSpot}
-                    onChange={(e) => setMeetingSpot(e.target.value)}
-                    placeholder="Enter custom meeting spot..."
-                    className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                )}
+                <input
+                  type="text"
+                  value={['At the bar', 'Near the entrance', 'At a table', 'Outside/Patio', 'Near the stage'].includes(meetingSpot) ? '' : meetingSpot}
+                  onChange={(e) => setMeetingSpot(e.target.value)}
+                  placeholder="Or type a custom meeting spot (up to 50 chars)..."
+                  maxLength={50}
+                  className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
+                />
               </div>
 
               {/* Meeting Instructions */}
@@ -1504,21 +1503,21 @@ function EditSquadModal({ squad, onClose, onSave }) {
 
               <div>
                 <label className="block text-sm font-semibold text-zinc-300 mb-2">Age Range</label>
-                <div className="flex gap-3 items-center">
+                <div className="flex gap-2 items-center">
                   <input
                     type="number"
                     value={minAge}
                     onChange={(e) => setMinAge(e.target.value)}
                     placeholder="Min"
-                    className="flex-1 bg-zinc-800 text-white rounded-xl px-4 py-2 outline-none text-sm"
+                    className="w-20 bg-zinc-800 text-white rounded-xl px-3 py-2 outline-none text-sm text-center"
                   />
-                  <span className="text-zinc-500">to</span>
+                  <span className="text-zinc-500 text-sm">to</span>
                   <input
                     type="number"
                     value={maxAge}
                     onChange={(e) => setMaxAge(e.target.value)}
                     placeholder="Max"
-                    className="flex-1 bg-zinc-800 text-white rounded-xl px-4 py-2 outline-none text-sm"
+                    className="w-20 bg-zinc-800 text-white rounded-xl px-3 py-2 outline-none text-sm text-center"
                   />
                 </div>
               </div>
@@ -2240,25 +2239,30 @@ function ProfilePreviewModal({ user, onClose, onApprove, onReject, rejectionReas
                 </span>
               )}
             </div>
-            <h4 className="text-xl font-bold text-white mb-1">{user?.name}</h4>
+            <h4 className="text-xl font-bold text-white mb-2">{user?.name}</h4>
             
-            {/* Gender and Age Info */}
-            <div className="flex items-center justify-center gap-2 text-zinc-400">
-              {user?.gender && (
-                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                  user.gender === 'woman' ? 'bg-pink-500 bg-opacity-20 text-pink-400' :
-                  user.gender === 'man' ? 'bg-blue-500 bg-opacity-20 text-blue-400' :
-                  'bg-zinc-700 text-zinc-400'
-                }`}>
-                  {user.gender === 'woman' ? '♀ Woman' : 
-                   user.gender === 'man' ? '♂ Man' : 
+            {/* Gender - More Prominent */}
+            {user?.gender && (
+              <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold mb-2 ${
+                user.gender === 'woman' ? 'bg-pink-500 bg-opacity-20 text-pink-400 border border-pink-500 border-opacity-30' :
+                user.gender === 'man' ? 'bg-blue-500 bg-opacity-20 text-blue-400 border border-blue-500 border-opacity-30' :
+                'bg-zinc-700 text-zinc-400'
+              }`}>
+                <span className="text-lg">
+                  {user.gender === 'woman' ? '♀' : user.gender === 'man' ? '♂' : ''}
+                </span>
+                <span>
+                  {user.gender === 'woman' ? 'Woman' : 
+                   user.gender === 'man' ? 'Man' : 
                    'Not specified'}
                 </span>
-              )}
-              {user?.show_age_to_squads !== false && user?.age && (
-                <span className="text-sm">{user.age} years old</span>
-              )}
-            </div>
+              </div>
+            )}
+            
+            {/* Age */}
+            {user?.show_age_to_squads !== false && user?.age && (
+              <p className="text-zinc-400 text-sm">{user.age} years old</p>
+            )}
           </div>
 
           {/* Bio */}
@@ -3227,7 +3231,7 @@ function CalendarView({ likedEvents, onEventClick, onUnlikeEvent }) {
   );
 }
 
-function CrewTab({ squads, onCreateSquad }) {
+function CrewTab({ squads, onCreateSquad, onSquadClick }) {
   return (
     <div className="p-4">
       <h2 className="text-2xl font-bold text-white mb-6">Your Squads</h2>
@@ -3235,7 +3239,11 @@ function CrewTab({ squads, onCreateSquad }) {
       {squads.length > 0 ? (
         <div className="space-y-4">
           {squads.map(squad => (
-            <div key={squad.id} className="bg-zinc-900 rounded-2xl p-5">
+            <button 
+              key={squad.id} 
+              onClick={() => onSquadClick && onSquadClick(squad)}
+              className="w-full bg-zinc-900 rounded-2xl p-5 text-left hover:bg-zinc-800 transition"
+            >
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
@@ -3247,11 +3255,19 @@ function CrewTab({ squads, onCreateSquad }) {
                     )}
                   </div>
                   <p className="text-zinc-400 text-sm mb-3">{squad.description}</p>
-                  <div className="flex items-center gap-2 text-zinc-500 text-sm">
-                    <Users className="w-4 h-4" />
-                    <span>{squad.member_count || 0} members</span>
+                  <div className="flex items-center gap-4 text-zinc-500 text-sm">
+                    <div className="flex items-center gap-2">
+                      <Users className="w-4 h-4" />
+                      <span>{squad.member_count || 0} members</span>
+                    </div>
+                    {squad.max_members && (
+                      <span className={`text-xs ${(squad.member_count || 0) >= squad.max_members ? 'text-red-400' : 'text-zinc-600'}`}>
+                        (max {squad.max_members})
+                      </span>
+                    )}
                   </div>
                 </div>
+                <ChevronRight className="w-5 h-5 text-zinc-600" />
               </div>
 
               {squad.members && squad.members.length > 0 && (
@@ -3267,9 +3283,11 @@ function CrewTab({ squads, onCreateSquad }) {
                       </div>
                     </div>
                   ))}
-                  <button className="flex-shrink-0 w-10 h-10 rounded-full border-2 border-dashed border-zinc-700 flex items-center justify-center text-zinc-500 hover:border-orange-500 hover:text-orange-500 transition">
-                    <UserPlus className="w-5 h-5" />
-                  </button>
+                  {(squad.member_count || 0) > 5 && (
+                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 text-xs font-semibold">
+                      +{(squad.member_count || 0) - 5}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -3294,7 +3312,15 @@ function CrewTab({ squads, onCreateSquad }) {
                   </div>
                 </div>
               )}
-            </div>
+
+              {/* Meeting spot preview */}
+              {squad.meeting_spot && (
+                <div className="mt-3 flex items-center gap-2 text-emerald-400 text-xs">
+                  <MapPin className="w-3 h-3" />
+                  <span>Meeting: {squad.meeting_spot}</span>
+                </div>
+              )}
+            </button>
           ))}
         </div>
       ) : (
@@ -4990,6 +5016,12 @@ export default function App() {
   const handleCheckIn = async (event) => {
     if (!supabaseClient || !userProfile) return;
 
+    // Check if already checked in
+    if (checkedInEvents.includes(event.id)) {
+      showToast("You've already checked in to this event!", 'info');
+      return;
+    }
+
     // Check if event has started (time-based check)
     const now = new Date();
     const eventDate = new Date(event.date);
@@ -5009,8 +5041,9 @@ export default function App() {
       }
     }
     
-    // Allow check-in starting 30 minutes before event
+    // Allow check-in starting 30 minutes before event and up to 6 hours after start
     const checkInStart = new Date(eventDate.getTime() - 30 * 60 * 1000);
+    const checkInEnd = new Date(eventDate.getTime() + 6 * 60 * 60 * 1000);
     
     if (now < checkInStart) {
       const timeUntil = Math.ceil((checkInStart - now) / (1000 * 60));
@@ -5023,7 +5056,26 @@ export default function App() {
       return;
     }
 
+    if (now > checkInEnd) {
+      showToast('Check-in window has closed for this event', 'info');
+      return;
+    }
+
     try {
+      // Check for duplicate in database
+      const { data: existing } = await supabaseClient
+        .from('event_checkins')
+        .select('id')
+        .eq('user_id', userProfile.id)
+        .eq('event_id', event.id)
+        .single();
+
+      if (existing) {
+        setCheckedInEvents(prev => [...new Set([...prev, event.id])]);
+        showToast("You've already checked in to this event!", 'info');
+        return;
+      }
+
       await supabaseClient
         .from('event_checkins')
         .insert([{
@@ -5032,15 +5084,22 @@ export default function App() {
           event_category: event.category || null
         }]);
 
-      setCheckedInEvents(prev => [...prev, event.id]);
+      setCheckedInEvents(prev => [...new Set([...prev, event.id])]);
       
-      // Refresh stats to check for new badges
+      // Refresh stats and attended events to check for new badges
       await loadUserStats(userProfile.id);
+      await loadAttendedEvents(userProfile.id);
       
-      showToast("You're checked in! Your crew will see you're here.", 'success');
+      showToast("You're checked in! 🎉 Your crew will see you're here.", 'success');
     } catch (error) {
       console.error('Error checking in:', error);
-      showToast('Error checking in. Please try again.', 'error');
+      if (error.code === '23505') {
+        // Duplicate key error
+        setCheckedInEvents(prev => [...new Set([...prev, event.id])]);
+        showToast("You've already checked in to this event!", 'info');
+      } else {
+        showToast('Error checking in. Please try again.', 'error');
+      }
     }
   };
 
@@ -5060,12 +5119,16 @@ export default function App() {
           invited_members: squadData.invited_members,
           votes_yes: 0,
           votes_no: 0,
-          // New restriction fields
+          // Restriction fields
           gender_restriction: squadData.gender_restriction || 'all',
           min_age: squadData.min_age || null,
           max_age: squadData.max_age || null,
           min_badges: squadData.min_badges || 0,
-          requires_approval: squadData.requires_approval || false
+          requires_approval: squadData.requires_approval || false,
+          // New fields
+          max_members: squadData.max_members || null,
+          meeting_spot: squadData.meeting_spot || null,
+          meeting_instructions: squadData.meeting_instructions || null
         }])
         .select()
         .single();
@@ -5731,7 +5794,14 @@ const loadSquads = async (userId) => {
           {currentTab === 'search' && <AIChat userProfile={userProfile} />}
           {currentTab === 'events' && <CalendarView likedEvents={likedEvents} onEventClick={handleEventClick} onUnlikeEvent={handleUnlikeEvent} />}
           {currentTab === 'crew' && mode === 'crew' && (
-            <CrewTab squads={squads} onCreateSquad={() => setShowCreateSquad(true)} />
+            <CrewTab 
+              squads={squads} 
+              onCreateSquad={() => setShowCreateSquad(true)}
+              onSquadClick={(squad) => {
+                setSelectedSquad(squad);
+                setShowSquadDetail(true);
+              }}
+            />
           )}
           {currentTab === 'crew' && mode === 'solo' && (
             <SoloFriendlySquadsView 
