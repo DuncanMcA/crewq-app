@@ -1239,9 +1239,33 @@ function CreateSquadModal({ onClose, onCreate, userProfile, events }) {
   );
 }
 
-function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile, isMember }) {
+function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile, isMember, onEventClick }) {
   const [hasVoted, setHasVoted] = useState(false);
   const [vote, setVote] = useState(null);
+  const [squadMembers, setSquadMembers] = useState([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
+
+  // Load squad members when modal opens
+  useEffect(() => {
+    const loadMembers = async () => {
+      if (!supabaseClient || !squad?.id) return;
+      setLoadingMembers(true);
+      try {
+        const { data } = await supabaseClient
+          .from('squad_members')
+          .select('user_id, users(*)')
+          .eq('squad_id', squad.id);
+        
+        const members = (data || []).map(m => m.users).filter(Boolean);
+        setSquadMembers(members);
+      } catch (error) {
+        console.error('Error loading members:', error);
+      }
+      setLoadingMembers(false);
+    };
+    
+    loadMembers();
+  }, [squad?.id]);
 
   const handleVote = async (voteType) => {
     setVote(voteType);
@@ -1251,6 +1275,9 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
 
   const totalVotes = (squad.votes_yes || 0) + (squad.votes_no || 0);
   const yesPercentage = totalVotes > 0 ? Math.round(((squad.votes_yes || 0) / totalVotes) * 100) : 0;
+
+  // Use loaded members or fallback to squad.members
+  const displayMembers = squadMembers.length > 0 ? squadMembers : (squad.members || []);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
@@ -1292,7 +1319,10 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
           </div>
 
           {squad.event && (
-            <div className="bg-zinc-800 rounded-xl p-4 mb-4">
+            <button
+              onClick={() => onEventClick && onEventClick(squad.event)}
+              className="w-full bg-zinc-800 rounded-xl p-4 mb-4 text-left hover:bg-zinc-700 transition"
+            >
               <p className="text-orange-500 text-xs font-semibold uppercase mb-2">Squad Event</p>
               <h4 className="text-white font-semibold mb-2">{squad.event.name}</h4>
               <div className="space-y-1 text-sm text-zinc-400">
@@ -1305,7 +1335,8 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
                   <span>{squad.event.date} • {squad.event.time}</span>
                 </div>
               </div>
-            </div>
+              <p className="text-orange-500 text-xs mt-2">Tap to view event details →</p>
+            </button>
           )}
 
           {isMember && !hasVoted && (
@@ -1358,31 +1389,75 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
             </div>
           )}
 
+          {/* Squad Members Section */}
           <div className="mb-4">
             <p className="text-sm font-semibold text-zinc-400 mb-3">
-              Members ({squad.member_count || 0})
+              Members ({squad.member_count || displayMembers.length || 0})
             </p>
-            <div className="flex items-center gap-2">
-              {squad.members?.slice(0, 6).map(member => (
-                <div
-                  key={member.id}
-                  className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-white text-sm font-semibold overflow-hidden"
-                >
-                  {member.profile_picture ? (
-                    <img src={member.profile_picture} alt={member.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <span>{member.name?.charAt(0).toUpperCase() || '?'}</span>
-                  )}
-                </div>
-              ))}
-              {(squad.member_count || 0) > 6 && (
-                <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 text-xs font-semibold">
-                  +{squad.member_count - 6}
-                </div>
-              )}
-            </div>
+            {loadingMembers ? (
+              <div className="flex items-center gap-2 text-zinc-500 text-sm">
+                <div className="animate-spin w-4 h-4 border-2 border-zinc-500 border-t-transparent rounded-full"></div>
+                Loading members...
+              </div>
+            ) : isMember && displayMembers.length > 0 ? (
+              // Show detailed member list for squad members
+              <div className="space-y-2">
+                {displayMembers.map(member => (
+                  <div
+                    key={member.id}
+                    className="flex items-center gap-3 bg-zinc-800 rounded-xl p-3"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-zinc-700 flex items-center justify-center text-white text-sm font-semibold overflow-hidden">
+                      {member.profile_picture ? (
+                        <img src={member.profile_picture} alt={member.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <span>{member.name?.charAt(0).toUpperCase() || '?'}</span>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-white font-medium">{member.name}</p>
+                      {member.gender && (
+                        <span className={`text-xs ${
+                          member.gender === 'woman' ? 'text-pink-400' :
+                          member.gender === 'man' ? 'text-blue-400' :
+                          'text-zinc-500'
+                        }`}>
+                          {member.gender === 'woman' ? '♀ Woman' : 
+                           member.gender === 'man' ? '♂ Man' : ''}
+                        </span>
+                      )}
+                    </div>
+                    {member.id === userProfile?.id && (
+                      <span className="text-xs text-orange-500 bg-orange-500 bg-opacity-20 px-2 py-1 rounded-full">You</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              // Show avatars for non-members
+              <div className="flex items-center gap-2">
+                {displayMembers.slice(0, 6).map(member => (
+                  <div
+                    key={member.id}
+                    className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-white text-sm font-semibold overflow-hidden"
+                  >
+                    {member.profile_picture ? (
+                      <img src={member.profile_picture} alt={member.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <span>{member.name?.charAt(0).toUpperCase() || '?'}</span>
+                    )}
+                  </div>
+                ))}
+                {(squad.member_count || 0) > 6 && (
+                  <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 text-xs font-semibold">
+                    +{squad.member_count - 6}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
+          {/* Action Buttons */}
           {!isMember ? (
             squad.requires_approval ? (
               <button
@@ -3473,7 +3548,10 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
 
       {/* Earned Badges Section */}
       {earnedBadges.length > 0 && (
-        <div className="bg-zinc-900 rounded-3xl p-6 mb-6">
+        <button 
+          onClick={() => onNavigate && onNavigate('awards')}
+          className="w-full bg-zinc-900 rounded-3xl p-6 mb-6 text-left hover:bg-zinc-800 transition"
+        >
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-bold text-white flex items-center gap-2">
               <Trophy className="w-5 h-5 text-orange-500" />
@@ -3498,10 +3576,10 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
               </div>
             )}
           </div>
-          <p className="text-xs text-zinc-500 mt-3 text-center">
-            View all badges in the Awards tab
+          <p className="text-xs text-orange-500 mt-3 text-center">
+            Tap to view all badges in Awards →
           </p>
-        </div>
+        </button>
       )}
 
       {/* Previously Attended Events Section */}
@@ -3979,7 +4057,24 @@ export default function App() {
         .in('squad_id', squadIds)
         .eq('status', 'pending');
       
-      setPendingJoinRequests(requests || []);
+      // Fetch accurate badge counts for each user
+      const requestsWithBadges = await Promise.all(
+        (requests || []).map(async (request) => {
+          if (request.user?.id) {
+            const { count } = await supabaseClient
+              .from('user_badges')
+              .select('*', { count: 'exact', head: true })
+              .eq('user_id', request.user.id);
+            return {
+              ...request,
+              user: { ...request.user, badge_count: count || 0 }
+            };
+          }
+          return request;
+        })
+      );
+      
+      setPendingJoinRequests(requestsWithBadges);
     } catch (error) {
       console.error('Error loading join requests:', error);
     }
@@ -4006,9 +4101,27 @@ export default function App() {
         .update({ member_count: (request.squad?.member_count || 0) + 1 })
         .eq('id', request.squad_id);
       
-      alert('Request approved! They\'ve been added to the squad.');
+      // Send notification to the approved user
+      try {
+        await supabaseClient
+          .from('notifications')
+          .insert([{
+            user_id: request.user_id,
+            type: 'squad_request_approved',
+            title: 'Squad Request Approved! 🎉',
+            message: `You've been approved to join "${request.squad?.name}"!`,
+            squad_id: request.squad_id,
+            read: false
+          }]);
+      } catch (notifError) {
+        console.log('Notification table may not exist:', notifError);
+      }
+      
+      showToast('Request approved! They\'ve been added to the squad.', 'success');
       setShowJoinRequestReview(null);
       loadPendingJoinRequests();
+      await loadSquads(userProfile.id);
+      await loadAllSquads();
     } catch (error) {
       console.error('Error approving request:', error);
       showToast('Error approving request. Please try again.', 'error');
@@ -4030,13 +4143,34 @@ export default function App() {
         .eq('id', request.id);
       
       // Track rejection for pattern detection
-      await supabaseClient
-        .from('squad_rejection_stats')
-        .insert([{
-          squad_owner_id: userProfile.id,
-          rejected_user_gender: request.user?.gender,
-          rejection_reason: reason
-        }]);
+      try {
+        await supabaseClient
+          .from('squad_rejection_stats')
+          .insert([{
+            squad_owner_id: userProfile.id,
+            rejected_user_gender: request.user?.gender,
+            rejection_reason: reason
+          }]);
+      } catch (statsError) {
+        console.log('Rejection stats table may not exist:', statsError);
+      }
+      
+      // Send notification to the rejected user
+      const reasonLabel = REJECTION_REASONS.find(r => r.id === reason)?.label || 'No reason provided';
+      try {
+        await supabaseClient
+          .from('notifications')
+          .insert([{
+            user_id: request.user_id,
+            type: 'squad_request_declined',
+            title: 'Squad Request Update',
+            message: `Your request to join "${request.squad?.name}" wasn't approved. Reason: ${reasonLabel}`,
+            squad_id: request.squad_id,
+            read: false
+          }]);
+      } catch (notifError) {
+        console.log('Notification table may not exist:', notifError);
+      }
       
       showToast('Request declined.', 'info');
       setShowJoinRequestReview(null);
@@ -5167,7 +5301,11 @@ const loadSquads = async (userId) => {
             onLeave={handleLeaveSquad}
             onVote={handleVote}
             userProfile={userProfile}
-            isMember={selectedSquad.members?.some(m => m.id === userProfile.id)}
+            isMember={selectedSquad.members?.some(m => m.id === userProfile.id) || squads.some(s => s.id === selectedSquad.id)}
+            onEventClick={(event) => {
+              setShowSquadDetail(false);
+              handleEventClick(event);
+            }}
           />
         )}
 
