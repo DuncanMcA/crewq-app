@@ -1927,8 +1927,9 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
 }
 
 // Settings Modal
-function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout }) {
+function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, onLinkGoogle }) {
   const [activeSection, setActiveSection] = useState(null);
+  const [isLinkingGoogle, setIsLinkingGoogle] = useState(false);
   
   const settingsSections = [
     { id: 'account', label: 'Account', icon: User, description: 'Manage your account details' },
@@ -1936,6 +1937,18 @@ function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout }
     { id: 'content', label: 'Content & Display', icon: Eye, description: 'Customize your experience' },
     { id: 'about', label: 'About', icon: Sparkles, description: 'App info and support' }
   ];
+
+  const handleLinkGoogle = async () => {
+    setIsLinkingGoogle(true);
+    try {
+      await onLinkGoogle();
+    } catch (error) {
+      console.error('Error linking Google:', error);
+    }
+    setIsLinkingGoogle(false);
+  };
+
+  const isGoogleLinked = !!userProfile?.auth_id || !!userProfile?.email;
 
   return (
     <div className={`fixed inset-0 z-50 ${darkMode ? 'bg-black bg-opacity-90' : 'bg-white bg-opacity-95'}`}>
@@ -1951,6 +1964,57 @@ function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout }
         </div>
 
         <div className="p-4 space-y-4">
+          {/* Google Account Status */}
+          <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
+            <div className="flex items-center gap-3 mb-3">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                isGoogleLinked 
+                  ? 'bg-emerald-500 bg-opacity-20' 
+                  : 'bg-zinc-800'
+              }`}>
+                {isGoogleLinked ? (
+                  <CheckCircle className="w-5 h-5 text-emerald-500" />
+                ) : (
+                  <svg className="w-5 h-5" viewBox="0 0 24 24">
+                    <path fill={darkMode ? '#9CA3AF' : '#6B7280'} d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path fill={darkMode ? '#9CA3AF' : '#6B7280'} d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill={darkMode ? '#9CA3AF' : '#6B7280'} d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                    <path fill={darkMode ? '#9CA3AF' : '#6B7280'} d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                  </svg>
+                )}
+              </div>
+              <div className="flex-1">
+                <p className={`font-semibold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
+                  {isGoogleLinked ? 'Google Account Linked' : 'Link Google Account'}
+                </p>
+                <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                  {isGoogleLinked 
+                    ? `Signed in as ${userProfile?.email || 'Google User'}`
+                    : 'Sync your profile across devices'}
+                </p>
+              </div>
+            </div>
+            {!isGoogleLinked && (
+              <button
+                onClick={handleLinkGoogle}
+                disabled={isLinkingGoogle}
+                className="w-full bg-white text-zinc-800 py-3 rounded-xl font-semibold hover:bg-zinc-100 transition disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isLinkingGoogle ? (
+                  <div className="w-4 h-4 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <svg className="w-4 h-4" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                  </svg>
+                )}
+                {isLinkingGoogle ? 'Linking...' : 'Link with Google'}
+              </button>
+            )}
+          </div>
+
           {/* Theme Toggle */}
           <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
             <div className="flex items-center justify-between">
@@ -4108,8 +4172,8 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
   );
 }
 
-function AuthScreen({ onAuth }) {
-  const [step, setStep] = useState(1);
+function AuthScreen({ onAuth, onGoogleAuth }) {
+  const [step, setStep] = useState(0); // 0 = welcome/login choice, 1 = basic info, 2 = vibes
   const [name, setName] = useState('');
   const [age, setAge] = useState('');
   const [gender, setGender] = useState('');
@@ -4118,6 +4182,7 @@ function AuthScreen({ onAuth }) {
   const [intents, setIntents] = useState([]);
   const [bio, setBio] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
   const handleVibeToggle = (vibeId) => {
     setVibes(prev =>
@@ -4133,6 +4198,16 @@ function AuthScreen({ onAuth }) {
         ? prev.filter(i => i !== intentId)
         : [...prev, intentId]
     );
+  };
+
+  const handleGoogleSignIn = async () => {
+    setIsGoogleLoading(true);
+    try {
+      await onGoogleAuth();
+    } catch (error) {
+      console.error('Google sign in error:', error);
+    }
+    setIsGoogleLoading(false);
   };
 
   const handleSubmit = async () => {
@@ -4165,17 +4240,75 @@ function AuthScreen({ onAuth }) {
         </h1>
         <p className="text-zinc-400 mb-6">Dallas Nightlife, Solved</p>
 
-        {/* Progress indicator */}
-        <div className="flex gap-2 mb-6">
-          {[1, 2].map(s => (
-            <div
-              key={s}
-              className={`flex-1 h-1 rounded-full ${
-                step >= s ? 'bg-orange-500' : 'bg-zinc-800'
-              }`}
-            />
-          ))}
-        </div>
+        {step === 0 && (
+          <div className="space-y-4">
+            <div className="text-center mb-8">
+              <div className="w-24 h-24 bg-gradient-to-br from-orange-500 to-orange-600 rounded-full mx-auto mb-6 flex items-center justify-center">
+                <Users className="w-12 h-12 text-white" />
+              </div>
+              <h2 className="text-xl font-bold text-white mb-2">Welcome to CrewQ</h2>
+              <p className="text-zinc-400 text-sm">
+                Discover events, build your crew, and experience Dallas nightlife like never before.
+              </p>
+            </div>
+
+            {/* Google Sign In Button */}
+            <button
+              onClick={handleGoogleSignIn}
+              disabled={isGoogleLoading}
+              className="w-full bg-white text-zinc-800 py-4 rounded-xl font-bold text-lg hover:bg-zinc-100 transition disabled:opacity-50 flex items-center justify-center gap-3"
+            >
+              {isGoogleLoading ? (
+                <div className="w-5 h-5 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <svg className="w-5 h-5" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+              )}
+              {isGoogleLoading ? 'Signing in...' : 'Continue with Google'}
+            </button>
+
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-zinc-800"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-4 bg-zinc-900 text-zinc-500">or</span>
+              </div>
+            </div>
+
+            {/* Continue without account */}
+            <button
+              onClick={() => setStep(1)}
+              className="w-full bg-zinc-800 text-white py-4 rounded-xl font-bold text-lg hover:bg-zinc-700 transition"
+            >
+              Continue as Guest
+            </button>
+
+            <p className="text-xs text-zinc-500 text-center mt-4">
+              Sign in with Google to sync your profile across devices
+            </p>
+          </div>
+        )}
+
+        {step >= 1 && (
+          <>
+            {/* Progress indicator */}
+            <div className="flex gap-2 mb-6">
+              {[1, 2].map(s => (
+                <div
+                  key={s}
+                  className={`flex-1 h-1 rounded-full ${
+                    step >= s ? 'bg-orange-500' : 'bg-zinc-800'
+                  }`}
+                />
+              ))}
+            </div>
+          </>
+        )}
 
         {step === 1 && (
           <div className="space-y-4">
@@ -4236,13 +4369,21 @@ function AuthScreen({ onAuth }) {
               <p className="text-xs text-zinc-500 mt-1">For squad invites from friends</p>
             </div>
 
-            <button
-              onClick={() => setStep(2)}
-              disabled={!name}
-              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold text-lg hover:shadow-lg transition disabled:opacity-50"
-            >
-              Next
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setStep(0)}
+                className="flex-1 bg-zinc-800 text-white py-4 rounded-xl font-bold hover:bg-zinc-700 transition"
+              >
+                Back
+              </button>
+              <button
+                onClick={() => setStep(2)}
+                disabled={!name}
+                className="flex-1 bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold text-lg hover:shadow-lg transition disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
           </div>
         )}
 
@@ -5370,9 +5511,92 @@ export default function App() {
   };
 
   const checkAuth = async () => {
-    const profileId = localStorage.getItem('crewq_user_id');
-    if (profileId && supabaseClient) {
-      try {
+    if (!supabaseClient) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      // First check for Supabase auth session (Google OAuth)
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      
+      if (session?.user) {
+        // User is logged in via Google OAuth
+        const authUserId = session.user.id;
+        const email = session.user.email;
+        const googleName = session.user.user_metadata?.full_name || session.user.user_metadata?.name || email?.split('@')[0];
+        const avatarUrl = session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture;
+        
+        // Check if we have a profile linked to this auth user
+        let { data: existingProfile, error } = await supabaseClient
+          .from('users')
+          .select('*')
+          .eq('auth_id', authUserId)
+          .single();
+        
+        if (!existingProfile) {
+          // Check by email as fallback
+          const { data: profileByEmail } = await supabaseClient
+            .from('users')
+            .select('*')
+            .eq('email', email)
+            .single();
+          
+          if (profileByEmail) {
+            // Link existing profile to auth user
+            await supabaseClient
+              .from('users')
+              .update({ auth_id: authUserId })
+              .eq('id', profileByEmail.id);
+            existingProfile = profileByEmail;
+          }
+        }
+        
+        if (existingProfile) {
+          // Update profile picture from Google if not set
+          if (!existingProfile.profile_picture && avatarUrl) {
+            await supabaseClient
+              .from('users')
+              .update({ profile_picture: avatarUrl })
+              .eq('id', existingProfile.id);
+            existingProfile.profile_picture = avatarUrl;
+          }
+          
+          setUserProfile(existingProfile);
+          localStorage.setItem('crewq_user_id', existingProfile.id);
+          await loadEvents();
+          await loadCrewMembers(existingProfile.id);
+          await loadSquads(existingProfile.id);
+          await loadAllSquads();
+          await loadCheckedInEvents(existingProfile.id);
+        } else {
+          // Create new profile for Google user
+          const { data: newUser, error: insertError } = await supabaseClient
+            .from('users')
+            .insert([{
+              name: googleName,
+              email: email,
+              auth_id: authUserId,
+              profile_picture: avatarUrl,
+              allow_squad_requests: true,
+              show_age_to_squads: true
+            }])
+            .select()
+            .single();
+          
+          if (!insertError && newUser) {
+            setUserProfile(newUser);
+            localStorage.setItem('crewq_user_id', newUser.id);
+            await loadEvents();
+          }
+        }
+        setLoading(false);
+        return;
+      }
+      
+      // Fallback to localStorage profile ID (guest users)
+      const profileId = localStorage.getItem('crewq_user_id');
+      if (profileId) {
         const { data, error } = await supabaseClient
           .from('users')
           .select('*')
@@ -5389,12 +5613,51 @@ export default function App() {
         } else {
           localStorage.removeItem('crewq_user_id');
         }
-      } catch (error) {
-        console.error('Error checking auth:', error);
       }
+    } catch (error) {
+      console.error('Error checking auth:', error);
     }
     setLoading(false);
   };
+
+  // Handle Google OAuth sign in
+  const handleGoogleAuth = async () => {
+    if (!supabaseClient) {
+      showToast('Database connection error. Please refresh the page.', 'error');
+      return;
+    }
+    
+    try {
+      const { data, error } = await supabaseClient.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin
+        }
+      });
+      
+      if (error) throw error;
+    } catch (error) {
+      console.error('Google auth error:', error);
+      showToast('Error signing in with Google. Please try again.', 'error');
+    }
+  };
+
+  // Listen for auth state changes
+  useEffect(() => {
+    if (!supabaseClient) return;
+    
+    const { data: { subscription } } = supabaseClient.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        // User just signed in, refresh the page to load profile
+        await checkAuth();
+      } else if (event === 'SIGNED_OUT') {
+        setUserProfile(null);
+        localStorage.removeItem('crewq_user_id');
+      }
+    });
+    
+    return () => subscription?.unsubscribe();
+  }, []);
 
   const handleAuth = async (profile) => {
     if (!supabaseClient) {
@@ -5408,8 +5671,10 @@ export default function App() {
       };
 
       if (profile.age) newUserData.age = profile.age;
+      if (profile.gender) newUserData.gender = profile.gender;
       if (profile.phone) newUserData.phone = profile.phone;
       if (profile.vibes && profile.vibes.length > 0) newUserData.vibes = profile.vibes;
+      if (profile.intents && profile.intents.length > 0) newUserData.intents = profile.intents;
       if (profile.bio) newUserData.bio = profile.bio;
 
       const { data: newUser, error } = await supabaseClient
@@ -5466,7 +5731,16 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Sign out from Supabase auth if signed in
+    if (supabaseClient) {
+      try {
+        await supabaseClient.auth.signOut();
+      } catch (error) {
+        console.error('Error signing out:', error);
+      }
+    }
+    
     localStorage.removeItem('crewq_user_id');
     setUserProfile(null);
     setCurrentTab('discover');
@@ -5646,7 +5920,7 @@ const loadSquads = async (userId) => {
   }
 
   if (!userProfile) {
-    return <AuthScreen onAuth={handleAuth} />;
+    return <AuthScreen onAuth={handleAuth} onGoogleAuth={handleGoogleAuth} />;
   }
 
   const currentEvent = events[currentIndex];
@@ -5994,6 +6268,7 @@ const loadSquads = async (userId) => {
               handleLogout();
               setShowSettings(false);
             }}
+            onLinkGoogle={handleGoogleAuth}
           />
         )}
 
