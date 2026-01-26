@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Heart, X, Share2, Bell, BellOff, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle, Trash2, Eye, EyeOff, Shield, Sparkles, ExternalLink, Globe, UtensilsCrossed, Award, Trophy, Star, Flame, Music, Mic, Beer, Coffee, Utensils, Sunrise, Moon, Key, Crown, Zap, Target } from 'lucide-react';
+import { Heart, X, Share2, Bell, BellOff, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle, Trash2, Eye, EyeOff, Shield, Sparkles, ExternalLink, Globe, UtensilsCrossed, Award, Trophy, Star, Flame, Music, Mic, Beer, Coffee, Utensils, Sunrise, Moon, Key, Crown, Zap, Target, Navigation, Map, Filter, Car } from 'lucide-react';
 
 // Toast Notification Component
 function Toast({ message, type = 'success', onClose }) {
@@ -34,11 +34,130 @@ function Toast({ message, type = 'success', onClose }) {
 const SUPABASE_URL = 'https://nwrglwfobtvqqrdemoag.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im53cmdsd2ZvYnR2cXFyZGVtb2FnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkwMDYyMDUsImV4cCI6MjA4NDU4MjIwNX0.tNwEmzXnes_r7HrOhD3iO3YgN7rP9LW4nmGM46cfI8M';
 
+// API Keys
+const MAPBOX_TOKEN = 'pk.eyJ1IjoiZHVuY2FubWNhIiwiYSI6ImNta3ZrcGw2bzAxY3MzZHB5OTFzdHJydTUifQ.0W9GRzUtkrZE2rSkXchebg';
+const GOOGLE_PLACES_API_KEY = 'AIzaSyDronP5Jig2lj9bGEynofn1QAtZBG3sJKE';
+
+// Dallas Neighborhoods with approximate center coordinates
+const DALLAS_NEIGHBORHOODS = [
+  { id: 'deep-ellum', name: 'Deep Ellum', center: [-96.7836, 32.7842], color: '#f97316' },
+  { id: 'uptown', name: 'Uptown', center: [-96.8022, 32.8021], color: '#3b82f6' },
+  { id: 'lower-greenville', name: 'Lower Greenville', center: [-96.7700, 32.8250], color: '#22c55e' },
+  { id: 'bishop-arts', name: 'Bishop Arts', center: [-96.8269, 32.7468], color: '#a855f7' },
+  { id: 'design-district', name: 'Design District', center: [-96.8194, 32.7903], color: '#ec4899' },
+  { id: 'downtown', name: 'Downtown', center: [-96.7970, 32.7767], color: '#eab308' },
+  { id: 'knox-henderson', name: 'Knox/Henderson', center: [-96.7858, 32.8172], color: '#14b8a6' },
+  { id: 'oak-lawn', name: 'Oak Lawn', center: [-96.8106, 32.8089], color: '#f43f5e' },
+  { id: 'trinity-groves', name: 'Trinity Groves', center: [-96.8389, 32.7783], color: '#8b5cf6' },
+  { id: 'victory-park', name: 'Victory Park', center: [-96.8097, 32.7875], color: '#06b6d4' },
+  { id: 'lakewood', name: 'Lakewood', center: [-96.7350, 32.8150], color: '#84cc16' },
+  { id: 'oak-cliff', name: 'Oak Cliff', center: [-96.8450, 32.7350], color: '#f59e0b' }
+];
+
+// Dallas center for default map view
+const DALLAS_CENTER = [-96.7970, 32.7767];
+const DEFAULT_ZOOM = 12;
+
 let supabaseClient = null;
 
 const initSupabase = () => {
   if (typeof window !== 'undefined' && window.supabase) {
     supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }
+};
+
+// Location utilities
+const calculateDistance = (lat1, lon1, lat2, lon2) => {
+  // Haversine formula for distance in miles
+  const R = 3959; // Earth's radius in miles
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+};
+
+const formatDistance = (miles) => {
+  if (miles < 0.1) return 'Here';
+  if (miles < 1) return `${(miles * 5280 / 1000).toFixed(1)}k ft`;
+  return `${miles.toFixed(1)} mi`;
+};
+
+const isEventLive = (event) => {
+  const now = new Date();
+  const eventDate = new Date(event.date);
+  
+  // Check if it's the same day
+  if (eventDate.toDateString() !== now.toDateString()) return false;
+  
+  // Parse event time
+  if (!event.time) return false;
+  
+  const timeMatch = event.time.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  if (!timeMatch) return false;
+  
+  let startHours = parseInt(timeMatch[1]);
+  const startMinutes = parseInt(timeMatch[2]);
+  const period = timeMatch[3].toUpperCase();
+  
+  if (period === 'PM' && startHours !== 12) startHours += 12;
+  if (period === 'AM' && startHours === 12) startHours = 0;
+  
+  const eventStart = new Date(eventDate);
+  eventStart.setHours(startHours, startMinutes, 0, 0);
+  
+  // Event is live if it started within the last 4 hours
+  const eventEnd = new Date(eventStart.getTime() + 4 * 60 * 60 * 1000);
+  
+  return now >= eventStart && now <= eventEnd;
+};
+
+// Get user's current location (one-time)
+const getUserLocation = () => {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('Geolocation not supported'));
+      return;
+    }
+    
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy
+        });
+      },
+      (error) => {
+        reject(error);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 300000 // Cache for 5 minutes
+      }
+    );
+  });
+};
+
+// Validate check-in location (within 250 meters)
+const validateCheckInLocation = async (eventLat, eventLng) => {
+  try {
+    const userLocation = await getUserLocation();
+    const distance = calculateDistance(
+      userLocation.latitude, 
+      userLocation.longitude, 
+      eventLat, 
+      eventLng
+    );
+    // 250 meters = ~0.155 miles
+    return distance <= 0.155;
+  } catch (error) {
+    console.error('Location validation error:', error);
+    return null; // null means couldn't verify
   }
 };
 
@@ -3098,20 +3217,174 @@ Be friendly, concise, and enthusiastic. Give specific recommendations based on t
   );
 }
 
-function CalendarView({ likedEvents, onEventClick, onUnlikeEvent }) {
+// Events Tab with Live Map and Calendar views
+function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocation, onRequestLocation }) {
+  const [viewMode, setViewMode] = useState('live'); // 'live', 'calendar', 'liked'
   const [currentDate, setCurrentDate] = useState(new Date(2026, 0, 1));
   const [selectedDate, setSelectedDate] = useState(null);
-  const [showAllLiked, setShowAllLiked] = useState(false);
+  const [distanceFilter, setDistanceFilter] = useState('all'); // 'all', '1', '5', '10'
+  const [showFilters, setShowFilters] = useState(false);
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const mapContainerRef = useRef(null);
+  const mapRef = useRef(null);
+  const markersRef = useRef([]);
 
+  // Get live events (happening right now)
+  const liveEvents = events.filter(isEventLive);
+  
+  // Filter events by distance if user location is available
+  const getFilteredEvents = (eventList) => {
+    if (!userLocation || distanceFilter === 'all') return eventList;
+    
+    return eventList.filter(event => {
+      if (!event.latitude || !event.longitude) return true; // Include events without coordinates
+      const distance = calculateDistance(
+        userLocation.latitude,
+        userLocation.longitude,
+        event.latitude,
+        event.longitude
+      );
+      return distance <= parseInt(distanceFilter);
+    });
+  };
+
+  const filteredLiveEvents = getFilteredEvents(liveEvents);
+
+  // Add distance to events
+  const eventsWithDistance = (eventList) => {
+    if (!userLocation) return eventList;
+    return eventList.map(event => ({
+      ...event,
+      distance: event.latitude && event.longitude
+        ? calculateDistance(userLocation.latitude, userLocation.longitude, event.latitude, event.longitude)
+        : null
+    }));
+  };
+
+  // Initialize Mapbox
+  useEffect(() => {
+    if (viewMode !== 'live' || !mapContainerRef.current || mapRef.current) return;
+
+    // Load Mapbox CSS
+    if (!document.getElementById('mapbox-css')) {
+      const link = document.createElement('link');
+      link.id = 'mapbox-css';
+      link.rel = 'stylesheet';
+      link.href = 'https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css';
+      document.head.appendChild(link);
+    }
+
+    // Load Mapbox JS
+    if (!window.mapboxgl) {
+      const script = document.createElement('script');
+      script.src = 'https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js';
+      script.onload = () => initializeMap();
+      document.head.appendChild(script);
+    } else {
+      initializeMap();
+    }
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+    };
+  }, [viewMode]);
+
+  const initializeMap = () => {
+    if (!window.mapboxgl || !mapContainerRef.current) return;
+
+    window.mapboxgl.accessToken = MAPBOX_TOKEN;
+    
+    const map = new window.mapboxgl.Map({
+      container: mapContainerRef.current,
+      style: 'mapbox://styles/mapbox/dark-v11',
+      center: userLocation ? [userLocation.longitude, userLocation.latitude] : DALLAS_CENTER,
+      zoom: userLocation ? 13 : DEFAULT_ZOOM
+    });
+
+    map.on('load', () => {
+      setMapLoaded(true);
+      
+      // Add user location marker if available
+      if (userLocation) {
+        const userMarker = document.createElement('div');
+        userMarker.className = 'user-location-marker';
+        userMarker.innerHTML = `
+          <div style="width: 20px; height: 20px; background: #3b82f6; border: 3px solid white; border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.3);"></div>
+          <div style="width: 40px; height: 40px; background: rgba(59, 130, 246, 0.2); border-radius: 50%; position: absolute; top: -10px; left: -10px; animation: pulse 2s infinite;"></div>
+        `;
+        
+        new window.mapboxgl.Marker({ element: userMarker })
+          .setLngLat([userLocation.longitude, userLocation.latitude])
+          .addTo(map);
+      }
+
+      // Add event markers
+      updateMarkers(map, filteredLiveEvents);
+    });
+
+    mapRef.current = map;
+  };
+
+  const updateMarkers = (map, eventList) => {
+    // Clear existing markers
+    markersRef.current.forEach(marker => marker.remove());
+    markersRef.current = [];
+
+    // Add new markers
+    eventList.forEach(event => {
+      if (!event.latitude || !event.longitude) return;
+
+      const el = document.createElement('div');
+      el.className = 'event-marker';
+      el.innerHTML = `
+        <div style="
+          width: 36px; 
+          height: 36px; 
+          background: linear-gradient(135deg, #f97316, #ea580c); 
+          border-radius: 50% 50% 50% 0; 
+          transform: rotate(-45deg);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 3px 10px rgba(249, 115, 22, 0.4);
+          cursor: pointer;
+        ">
+          <span style="transform: rotate(45deg); font-size: 14px;">🎵</span>
+        </div>
+      `;
+      
+      el.addEventListener('click', () => {
+        onEventClick(event);
+      });
+
+      const marker = new window.mapboxgl.Marker({ element: el })
+        .setLngLat([event.longitude, event.latitude])
+        .addTo(map);
+
+      markersRef.current.push(marker);
+    });
+  };
+
+  // Update markers when events change
+  useEffect(() => {
+    if (mapRef.current && mapLoaded) {
+      updateMarkers(mapRef.current, filteredLiveEvents);
+    }
+  }, [filteredLiveEvents, mapLoaded]);
+
+  // Calendar functions
   const getDaysInMonth = (date) => {
     const year = date.getFullYear();
     const month = date.getMonth();
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
-    const daysInMonth = lastDay.getDate();
-    const startingDayOfWeek = firstDay.getDay();
-
-    return { daysInMonth, startingDayOfWeek };
+    return { 
+      daysInMonth: lastDay.getDate(), 
+      startingDayOfWeek: firstDay.getDay() 
+    };
   };
 
   const getEventsForDate = (day) => {
@@ -3123,29 +3396,178 @@ function CalendarView({ likedEvents, onEventClick, onUnlikeEvent }) {
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
   return (
-    <div className="p-4">
-      {/* Toggle between Calendar and All Liked Events */}
-      <div className="flex gap-2 mb-6">
-        <button
-          onClick={() => setShowAllLiked(false)}
-          className={`flex-1 py-2 rounded-xl font-semibold transition ${
-            !showAllLiked ? 'bg-orange-500 text-white' : 'bg-zinc-800 text-zinc-400'
-          }`}
-        >
-          Calendar
-        </button>
-        <button
-          onClick={() => setShowAllLiked(true)}
-          className={`flex-1 py-2 rounded-xl font-semibold transition ${
-            showAllLiked ? 'bg-orange-500 text-white' : 'bg-zinc-800 text-zinc-400'
-          }`}
-        >
-          All Liked ({likedEvents.length})
-        </button>
+    <div className="flex flex-col h-full">
+      {/* View Mode Toggle */}
+      <div className="px-4 pt-4 pb-2">
+        <div className="flex gap-1 bg-zinc-900 p-1 rounded-xl">
+          <button
+            onClick={() => setViewMode('live')}
+            className={`flex-1 py-2 px-3 rounded-lg font-semibold text-sm transition flex items-center justify-center gap-2 ${
+              viewMode === 'live' ? 'bg-orange-500 text-white' : 'text-zinc-400'
+            }`}
+          >
+            <div className={`w-2 h-2 rounded-full ${viewMode === 'live' ? 'bg-white' : 'bg-red-500'} ${liveEvents.length > 0 ? 'animate-pulse' : ''}`} />
+            Live ({liveEvents.length})
+          </button>
+          <button
+            onClick={() => setViewMode('calendar')}
+            className={`flex-1 py-2 px-3 rounded-lg font-semibold text-sm transition flex items-center justify-center gap-2 ${
+              viewMode === 'calendar' ? 'bg-orange-500 text-white' : 'text-zinc-400'
+            }`}
+          >
+            <Calendar className="w-4 h-4" />
+            Calendar
+          </button>
+          <button
+            onClick={() => setViewMode('liked')}
+            className={`flex-1 py-2 px-3 rounded-lg font-semibold text-sm transition flex items-center justify-center gap-2 ${
+              viewMode === 'liked' ? 'bg-orange-500 text-white' : 'text-zinc-400'
+            }`}
+          >
+            <Heart className="w-4 h-4" />
+            Liked ({likedEvents.length})
+          </button>
+        </div>
       </div>
 
-      {!showAllLiked ? (
-        <>
+      {/* Live Map View */}
+      {viewMode === 'live' && (
+        <div className="flex-1 flex flex-col">
+          {/* Filter Bar */}
+          <div className="px-4 py-2 flex items-center gap-2">
+            <button
+              onClick={() => onRequestLocation && onRequestLocation()}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition ${
+                userLocation 
+                  ? 'bg-emerald-500 bg-opacity-20 text-emerald-400' 
+                  : 'bg-zinc-800 text-zinc-400'
+              }`}
+            >
+              <Navigation className="w-4 h-4" />
+              {userLocation ? 'Located' : 'Enable Location'}
+            </button>
+            
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition ${
+                distanceFilter !== 'all' 
+                  ? 'bg-orange-500 bg-opacity-20 text-orange-400' 
+                  : 'bg-zinc-800 text-zinc-400'
+              }`}
+            >
+              <Filter className="w-4 h-4" />
+              {distanceFilter === 'all' ? 'All Dallas' : `Within ${distanceFilter} mi`}
+            </button>
+          </div>
+
+          {/* Distance Filter Dropdown */}
+          {showFilters && (
+            <div className="px-4 pb-2">
+              <div className="bg-zinc-800 rounded-xl p-2 flex gap-2">
+                {['all', '1', '5', '10'].map(distance => (
+                  <button
+                    key={distance}
+                    onClick={() => {
+                      setDistanceFilter(distance);
+                      setShowFilters(false);
+                    }}
+                    className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${
+                      distanceFilter === distance
+                        ? 'bg-orange-500 text-white'
+                        : 'text-zinc-400 hover:bg-zinc-700'
+                    }`}
+                  >
+                    {distance === 'all' ? 'All' : `${distance} mi`}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Map Container */}
+          <div className="flex-1 relative min-h-[300px]">
+            <div ref={mapContainerRef} className="absolute inset-0" />
+            
+            {!mapLoaded && (
+              <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center">
+                <div className="text-center">
+                  <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                  <p className="text-zinc-400 text-sm">Loading map...</p>
+                </div>
+              </div>
+            )}
+
+            {/* Map Legend */}
+            <div className="absolute bottom-4 left-4 bg-zinc-900 bg-opacity-90 rounded-xl p-3 text-xs">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-3 h-3 bg-orange-500 rounded-full" />
+                <span className="text-zinc-300">Live Event</span>
+              </div>
+              {userLocation && (
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-blue-500 rounded-full" />
+                  <span className="text-zinc-300">You</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Live Events List */}
+          <div className="bg-zinc-900 border-t border-zinc-800 max-h-[40%] overflow-y-auto">
+            <div className="p-4">
+              <h3 className="text-sm font-semibold text-zinc-400 mb-3">
+                {filteredLiveEvents.length > 0 
+                  ? `${filteredLiveEvents.length} Live Events Now`
+                  : 'No Live Events Right Now'
+                }
+              </h3>
+              
+              {filteredLiveEvents.length > 0 ? (
+                <div className="space-y-2">
+                  {eventsWithDistance(filteredLiveEvents).map(event => (
+                    <button
+                      key={event.id}
+                      onClick={() => onEventClick(event)}
+                      className="w-full bg-zinc-800 rounded-xl p-3 flex items-center gap-3 text-left hover:bg-zinc-700 transition"
+                    >
+                      <img 
+                        src={event.image_url} 
+                        alt={event.name}
+                        className="w-14 h-14 rounded-lg object-cover flex-shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                          <span className="text-xs text-red-400 font-semibold">LIVE</span>
+                        </div>
+                        <h4 className="text-white font-semibold truncate">{event.name}</h4>
+                        <p className="text-zinc-400 text-sm truncate">{event.venue}</p>
+                      </div>
+                      {event.distance !== null && (
+                        <div className="text-right flex-shrink-0">
+                          <p className="text-orange-400 font-semibold text-sm">
+                            {formatDistance(event.distance)}
+                          </p>
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <Map className="w-12 h-12 text-zinc-700 mx-auto mb-3" />
+                  <p className="text-zinc-500 text-sm">No events happening right now</p>
+                  <p className="text-zinc-600 text-xs mt-1">Check back later or view upcoming events</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Calendar View */}
+      {viewMode === 'calendar' && (
+        <div className="flex-1 overflow-y-auto p-4">
           <div className="flex items-center justify-between mb-6">
             <button
               onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1))}
@@ -3179,8 +3601,8 @@ function CalendarView({ likedEvents, onEventClick, onUnlikeEvent }) {
             
             {Array.from({ length: daysInMonth }).map((_, idx) => {
               const day = idx + 1;
-              const events = getEventsForDate(day);
-              const hasEvents = events.length > 0;
+              const dayEvents = getEventsForDate(day);
+              const hasEvents = dayEvents.length > 0;
               const today = new Date();
               const isToday = today.getDate() === day && 
                              today.getMonth() === currentDate.getMonth() && 
@@ -3199,7 +3621,7 @@ function CalendarView({ likedEvents, onEventClick, onUnlikeEvent }) {
                   <span className="text-sm font-semibold">{day}</span>
                   {hasEvents && (
                     <div className="flex gap-0.5 mt-1">
-                      {events.slice(0, 3).map((_, i) => (
+                      {dayEvents.slice(0, 3).map((_, i) => (
                         <div key={i} className="w-1 h-1 rounded-full bg-orange-500" />
                       ))}
                     </div>
@@ -3216,14 +3638,8 @@ function CalendarView({ likedEvents, onEventClick, onUnlikeEvent }) {
               </h3>
               <div className="space-y-3">
                 {getEventsForDate(selectedDate).map((event, idx) => (
-                  <div
-                    key={idx}
-                    className="bg-zinc-800 rounded-2xl p-4 flex items-center gap-3"
-                  >
-                    <button
-                      onClick={() => onEventClick(event)}
-                      className="flex-1 text-left"
-                    >
+                  <div key={idx} className="bg-zinc-800 rounded-2xl p-4 flex items-center gap-3">
+                    <button onClick={() => onEventClick(event)} className="flex-1 text-left">
                       <h4 className="text-white font-semibold mb-1">{event.name}</h4>
                       <p className="text-zinc-400 text-sm mb-2">{event.venue}</p>
                       <div className="flex items-center gap-2 text-xs text-zinc-500">
@@ -3250,38 +3666,41 @@ function CalendarView({ likedEvents, onEventClick, onUnlikeEvent }) {
               <p className="text-zinc-600 text-sm mt-2">Like events to add them to your calendar</p>
             </div>
           )}
-        </>
-      ) : (
-        /* All Liked Events List View */
-        <div className="space-y-3">
+        </div>
+      )}
+
+      {/* Liked Events View */}
+      {viewMode === 'liked' && (
+        <div className="flex-1 overflow-y-auto p-4">
           <h3 className="text-lg font-bold text-white mb-3">All Liked Events</h3>
           {likedEvents.length > 0 ? (
-            likedEvents.map((event, idx) => (
-              <div
-                key={idx}
-                className="bg-zinc-800 rounded-2xl p-4 flex items-center gap-3"
-              >
-                <button
-                  onClick={() => onEventClick(event)}
-                  className="flex-1 text-left"
-                >
-                  <h4 className="text-white font-semibold mb-1">{event.name}</h4>
-                  <p className="text-zinc-400 text-sm mb-1">{event.venue}</p>
-                  <div className="flex items-center gap-3 text-xs text-zinc-500">
-                    <span>{event.date}</span>
-                    <span>•</span>
-                    <span>{event.time}</span>
-                  </div>
-                </button>
-                <button
-                  onClick={() => onUnlikeEvent(event)}
-                  className="p-2 bg-red-500 bg-opacity-20 rounded-full hover:bg-opacity-40 transition"
-                  title="Remove from liked"
-                >
-                  <Trash2 className="w-4 h-4 text-red-500" />
-                </button>
-              </div>
-            ))
+            <div className="space-y-3">
+              {eventsWithDistance(likedEvents).map((event, idx) => (
+                <div key={idx} className="bg-zinc-800 rounded-2xl p-4 flex items-center gap-3">
+                  <button onClick={() => onEventClick(event)} className="flex-1 text-left">
+                    <h4 className="text-white font-semibold mb-1">{event.name}</h4>
+                    <p className="text-zinc-400 text-sm mb-1">{event.venue}</p>
+                    <div className="flex items-center gap-3 text-xs text-zinc-500">
+                      <span>{event.date}</span>
+                      <span>•</span>
+                      <span>{event.time}</span>
+                      {event.distance !== null && (
+                        <>
+                          <span>•</span>
+                          <span className="text-orange-400">{formatDistance(event.distance)}</span>
+                        </>
+                      )}
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => onUnlikeEvent(event)}
+                    className="p-2 bg-red-500 bg-opacity-20 rounded-full hover:bg-opacity-40 transition"
+                  >
+                    <Trash2 className="w-4 h-4 text-red-500" />
+                  </button>
+                </div>
+              ))}
+            </div>
           ) : (
             <div className="text-center py-12">
               <Heart className="w-16 h-16 text-zinc-700 mx-auto mb-4" />
@@ -3293,6 +3712,16 @@ function CalendarView({ likedEvents, onEventClick, onUnlikeEvent }) {
       )}
     </div>
   );
+}
+
+// Keep old CalendarView for backwards compatibility but redirect to EventsTab
+function CalendarView({ likedEvents, onEventClick, onUnlikeEvent }) {
+  return <EventsTab 
+    events={[]} 
+    likedEvents={likedEvents} 
+    onEventClick={onEventClick} 
+    onUnlikeEvent={onUnlikeEvent}
+  />;
 }
 
 function CrewTab({ squads, onCreateSquad, onSquadClick }) {
@@ -4486,6 +4915,8 @@ export default function App() {
   const [userStats, setUserStats] = useState({});
   const [showBadgeEarned, setShowBadgeEarned] = useState(null);
   const [attendedEvents, setAttendedEvents] = useState([]);
+  const [userLocation, setUserLocation] = useState(null);
+  const [locationError, setLocationError] = useState(null);
   
   // Settings & Notifications
   const [showSettings, setShowSettings] = useState(false);
@@ -4526,6 +4957,11 @@ export default function App() {
         100% { transform: translate(-50%, 0); opacity: 1; }
       }
       .animate-slide-down { animation: slide-down 0.3s ease-out; }
+      @keyframes pulse {
+        0%, 100% { transform: scale(1); opacity: 0.3; }
+        50% { transform: scale(1.5); opacity: 0.1; }
+      }
+      .mapboxgl-canvas { outline: none; }
     `;
     document.head.appendChild(style);
     return () => document.head.removeChild(style);
@@ -5105,6 +5541,24 @@ export default function App() {
   const handleCloseSharedEvent = () => {
     setShowSharedEvent(false);
     window.history.replaceState({}, document.title, window.location.pathname);
+  };
+
+  // Request user location (one-time)
+  const requestUserLocation = async () => {
+    try {
+      const location = await getUserLocation();
+      setUserLocation(location);
+      setLocationError(null);
+      showToast('Location enabled!', 'success');
+    } catch (error) {
+      console.error('Location error:', error);
+      setLocationError(error.message);
+      if (error.code === 1) {
+        showToast('Location access denied. Enable in browser settings.', 'error');
+      } else {
+        showToast('Could not get location. Try again.', 'error');
+      }
+    }
   };
 
   const handleEventClick = async (event) => {
@@ -6066,7 +6520,16 @@ const loadSquads = async (userId) => {
           )}
 
           {currentTab === 'search' && <AIChat userProfile={userProfile} />}
-          {currentTab === 'events' && <CalendarView likedEvents={likedEvents} onEventClick={handleEventClick} onUnlikeEvent={handleUnlikeEvent} />}
+          {currentTab === 'events' && (
+            <EventsTab 
+              events={events}
+              likedEvents={likedEvents} 
+              onEventClick={handleEventClick} 
+              onUnlikeEvent={handleUnlikeEvent}
+              userLocation={userLocation}
+              onRequestLocation={requestUserLocation}
+            />
+          )}
           {currentTab === 'crew' && mode === 'crew' && (
             <CrewTab 
               squads={squads} 
