@@ -6575,28 +6575,26 @@ const AVG_SPEND_PER_PERSON = 25;
 
 function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOODS }) {
   // Main state
-  const [currentView, setCurrentView] = useState('dashboard');
+  const [currentView, setCurrentView] = useState('auth'); // Start at auth
   const [businessUser, setBusinessUser] = useState(null);
   const [venue, setVenue] = useState(null);
   const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   
-  // Onboarding state
+  // Onboarding state - use individual state variables to prevent re-render issues
   const [onboardingStep, setOnboardingStep] = useState(0);
-  const [onboardingData, setOnboardingData] = useState({
-    venueName: '',
-    venueType: '',
-    neighborhood: '',
-    address: '',
-    phone: '',
-    website: '',
-    supportEmail: '',
-    description: ''
-  });
+  const [venueName, setVenueName] = useState('');
+  const [venueType, setVenueType] = useState('');
+  const [venueNeighborhood, setVenueNeighborhood] = useState('');
+  const [venueAddress, setVenueAddress] = useState('');
+  const [venuePhone, setVenuePhone] = useState('');
+  const [venueWebsite, setVenueWebsite] = useState('');
+  const [venueSupportEmail, setVenueSupportEmail] = useState('');
+  const [venueDescription, setVenueDescription] = useState('');
   
-  // Auth state
+  // Auth state - individual variables
   const [authMode, setAuthMode] = useState('login');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
@@ -6605,38 +6603,70 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
   
-  // Event creation state
-  const [eventForm, setEventForm] = useState({
-    name: '',
-    category: '',
-    type: '',
-    date: '',
-    startTime: '',
-    endTime: '',
-    description: '',
-    coverCharge: '',
-    drinkSpecials: '',
-    foodSpecials: '',
-    ageRestriction: '21+',
-    dressCode: 'casual',
-    musicGenre: '',
-    capacity: '',
-    imageUrl: '',
-    recurring: false,
-    recurringType: 'weekly'
-  });
-  const [imageFile, setImageFile] = useState(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
+  // Event creation state - individual variables
+  const [evtName, setEvtName] = useState('');
+  const [evtCategory, setEvtCategory] = useState('');
+  const [evtType, setEvtType] = useState('');
+  const [evtDate, setEvtDate] = useState('');
+  const [evtStartTime, setEvtStartTime] = useState('');
+  const [evtEndTime, setEvtEndTime] = useState('');
+  const [evtDescription, setEvtDescription] = useState('');
+  const [evtCoverCharge, setEvtCoverCharge] = useState('');
+  const [evtDrinkSpecials, setEvtDrinkSpecials] = useState('');
+  const [evtFoodSpecials, setEvtFoodSpecials] = useState('');
+  const [evtAgeRestriction, setEvtAgeRestriction] = useState('21+');
+  const [evtDressCode, setEvtDressCode] = useState('casual');
+  const [evtMusicGenre, setEvtMusicGenre] = useState('');
+  const [evtCapacity, setEvtCapacity] = useState('');
+  const [evtImageUrl, setEvtImageUrl] = useState('');
+  const [evtRecurring, setEvtRecurring] = useState(false);
+  const [evtRecurringType, setEvtRecurringType] = useState('weekly');
+
+  // Constants
+  const VENUE_TYPES = [
+    { id: 'bar', label: 'Bar', icon: '🍺' },
+    { id: 'restaurant', label: 'Restaurant', icon: '🍽️' },
+    { id: 'club', label: 'Nightclub', icon: '🎵' },
+    { id: 'lounge', label: 'Lounge', icon: '🛋️' },
+    { id: 'brewery', label: 'Brewery', icon: '🍻' },
+    { id: 'rooftop', label: 'Rooftop', icon: '🌃' },
+    { id: 'sports_bar', label: 'Sports Bar', icon: '⚽' },
+    { id: 'wine_bar', label: 'Wine Bar', icon: '🍷' },
+    { id: 'other', label: 'Other', icon: '🏢' },
+  ];
+
+  const EVENT_CATEGORIES = [
+    { id: 'nightlife', name: 'Nightlife', icon: '🌙' },
+    { id: 'social', name: 'Social', icon: '👥' },
+    { id: 'food_drink', name: 'Food & Drink', icon: '🍽️' },
+    { id: 'entertainment', name: 'Entertainment', icon: '🎭' },
+    { id: 'sports', name: 'Sports', icon: '⚽' },
+    { id: 'wellness', name: 'Wellness', icon: '💪' },
+    { id: 'professional', name: 'Professional', icon: '💼' },
+    { id: 'other', name: 'Other', icon: '📌' },
+  ];
+
+  const EVENT_TYPES = {
+    nightlife: ['Happy Hour', 'DJ Night', 'Live Music', 'Ladies Night', 'Karaoke', 'Other'],
+    social: ['Trivia Night', 'Game Night', 'Watch Party', 'Speed Dating', 'Mixer', 'Other'],
+    food_drink: ['Wine Tasting', 'Beer Tasting', 'Brunch', 'Dinner Event', 'Other'],
+    entertainment: ['Comedy Show', 'Open Mic', 'Live Performance', 'Other'],
+    sports: ['Watch Party', 'Game Day', 'Tournament', 'Other'],
+    wellness: ['Yoga', 'Meditation', 'Fitness Class', 'Other'],
+    professional: ['Networking', 'Happy Hour', 'Workshop', 'Other'],
+    other: ['Custom Event', 'Other'],
+  };
+
+  const AVG_SPEND = 25;
 
   const showToastMsg = (message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
   };
 
-  // Load business user data
+  // Load business data
   const loadBusinessData = async (userId) => {
     try {
-      // Load venue
       const { data: venueData } = await supabaseClient
         .from('establishments')
         .select('*')
@@ -6645,14 +6675,11 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
       
       if (venueData) {
         setVenue(venueData);
-        
-        // Load events for this venue
         const { data: eventsData } = await supabaseClient
           .from('events')
           .select('*')
           .eq('establishment_id', venueData.id)
           .order('date', { ascending: false });
-        
         setEvents(eventsData || []);
       }
     } catch (err) {
@@ -6661,7 +6688,7 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
     setLoading(false);
   };
 
-  // Auth handlers
+  // Auth: Login
   const handleLogin = async () => {
     if (!authEmail || !authPassword) {
       setAuthError('Please enter email and password');
@@ -6691,13 +6718,206 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
       
       setBusinessUser(data);
       
-      // Check if onboarding complete
       if (!data.onboarding_complete) {
         setCurrentView('onboarding');
       } else {
+        setLoading(true);
         await loadBusinessData(data.id);
         setCurrentView('dashboard');
       }
+    } catch (err) {
+      console.error('Login error:', err);
+      setAuthError('Login failed. Please try again.');
+    }
+    setAuthLoading(false);
+  };
+
+  // Auth: Signup
+  const handleSignup = async () => {
+    setAuthError('');
+    if (!authEmail || !authPassword || !authConfirmPassword) {
+      setAuthError('Please fill in all required fields');
+      return;
+    }
+    if (authPassword !== authConfirmPassword) {
+      setAuthError('Passwords do not match');
+      return;
+    }
+    if (authPassword.length < 6) {
+      setAuthError('Password must be at least 6 characters');
+      return;
+    }
+    
+    setAuthLoading(true);
+    
+    try {
+      const { data: existing } = await supabaseClient
+        .from('establishment_users')
+        .select('email')
+        .eq('email', authEmail.toLowerCase())
+        .single();
+      
+      if (existing) {
+        setAuthError('An account with this email already exists');
+        setAuthLoading(false);
+        return;
+      }
+      
+      const { data: userData, error: userError } = await supabaseClient
+        .from('establishment_users')
+        .insert([{
+          email: authEmail.toLowerCase(),
+          password_hash: authPassword,
+          name: authName || authEmail.split('@')[0],
+          role: 'owner',
+          onboarding_complete: false
+        }])
+        .select()
+        .single();
+      
+      if (userError) throw userError;
+      
+      setBusinessUser(userData);
+      setCurrentView('onboarding');
+      showToastMsg('Account created! Let\'s set up your venue.');
+    } catch (err) {
+      console.error('Signup error:', err);
+      setAuthError('Failed to create account. Please try again.');
+    }
+    setAuthLoading(false);
+  };
+
+  // Onboarding: Complete
+  const handleOnboardingComplete = async () => {
+    if (!venueName || !venueAddress || !venuePhone || !venueSupportEmail) {
+      showToastMsg('Please fill in all required fields', 'error');
+      return;
+    }
+    
+    setLoading(true);
+    
+    try {
+      const { data: venueData, error: venueError } = await supabaseClient
+        .from('establishments')
+        .insert([{
+          name: venueName,
+          venue_type: venueType,
+          neighborhood: venueNeighborhood,
+          address: venueAddress,
+          phone: venuePhone,
+          website: venueWebsite,
+          support_email: venueSupportEmail,
+          description: venueDescription,
+          owner_id: businessUser.id,
+          status: 'approved'
+        }])
+        .select()
+        .single();
+      
+      if (venueError) {
+        console.error('Venue creation error:', venueError);
+        throw venueError;
+      }
+      
+      const { error: updateError } = await supabaseClient
+        .from('establishment_users')
+        .update({ 
+          onboarding_complete: true,
+          establishment_id: venueData.id 
+        })
+        .eq('id', businessUser.id);
+      
+      if (updateError) {
+        console.error('User update error:', updateError);
+      }
+      
+      setVenue(venueData);
+      setBusinessUser({ ...businessUser, onboarding_complete: true, establishment_id: venueData.id });
+      showToastMsg('🎉 You\'re all set! Start creating events.');
+      setCurrentView('dashboard');
+    } catch (err) {
+      console.error('Onboarding error:', err);
+      showToastMsg('Failed to complete setup: ' + (err.message || 'Unknown error'), 'error');
+    }
+    setLoading(false);
+  };
+
+  // Create Event
+  const handleCreateEvent = async () => {
+    if (!evtName || !evtDate || !evtStartTime) {
+      showToastMsg('Please fill in Name, Date, and Time', 'error');
+      return;
+    }
+    
+    setLoading(true);
+    
+    try {
+      const eventData = {
+        name: evtName,
+        venue: venue.name,
+        neighborhood: venue.neighborhood,
+        establishment_id: venue.id,
+        category: evtCategory,
+        type: evtType || 'Event',
+        date: evtDate,
+        time: evtStartTime,
+        end_time: evtEndTime || null,
+        description: evtDescription,
+        cover_charge: evtCoverCharge ? parseFloat(evtCoverCharge) : 0,
+        drink_specials: evtDrinkSpecials,
+        food_specials: evtFoodSpecials,
+        age_restriction: evtAgeRestriction,
+        dress_code: evtDressCode,
+        music_genre: evtMusicGenre,
+        capacity: evtCapacity ? parseInt(evtCapacity) : null,
+        image_url: evtImageUrl,
+        recurring: evtRecurring,
+        recurring_type: evtRecurring ? evtRecurringType : null,
+        status: 'pending',
+        views: 0,
+        rsvps: 0,
+        checkins: 0
+      };
+      
+      const { data, error } = await supabaseClient
+        .from('events')
+        .insert([eventData])
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      setEvents([data, ...events]);
+      showToastMsg('Event submitted for approval!');
+      
+      // Reset form
+      setEvtName(''); setEvtCategory(''); setEvtType(''); setEvtDate('');
+      setEvtStartTime(''); setEvtEndTime(''); setEvtDescription('');
+      setEvtCoverCharge(''); setEvtDrinkSpecials(''); setEvtFoodSpecials('');
+      setEvtAgeRestriction('21+'); setEvtDressCode('casual'); setEvtMusicGenre('');
+      setEvtCapacity(''); setEvtImageUrl(''); setEvtRecurring(false);
+      
+      setCurrentView('events');
+    } catch (err) {
+      console.error('Event creation error:', err);
+      showToastMsg('Failed to create event', 'error');
+    }
+    setLoading(false);
+  };
+
+  // Analytics
+  const getAnalytics = () => {
+    const totalViews = events.reduce((sum, e) => sum + (e.views || 0), 0);
+    const totalRsvps = events.reduce((sum, e) => sum + (e.rsvps || 0), 0);
+    const totalCheckins = events.reduce((sum, e) => sum + (e.checkins || 0), 0);
+    const liveEvents = events.filter(e => e.status === 'live' || e.status === 'approved').length;
+    const pendingEvents = events.filter(e => e.status === 'pending').length;
+    const estimatedRevenue = totalCheckins * AVG_SPEND;
+    const conversionRate = totalViews > 0 ? ((totalRsvps / totalViews) * 100).toFixed(1) : 0;
+    const valuePerView = totalViews > 0 ? (estimatedRevenue / totalViews).toFixed(2) : 0;
+    
+    return { totalViews, totalRsvps, totalCheckins, liveEvents, pendingEvents, estimatedRevenue, conversionRate, valuePerView };
+  };
     } catch (err) {
       setAuthError('Login failed. Please try again.');
     }
@@ -6920,1126 +7140,402 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
       conversionRate,
       checkInRate,
       valuePerView
-    };
   };
 
-  // ==================== RENDER COMPONENTS ====================
-
-  // Auth Screen
-  const AuthScreen = () => (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="bg-slate-800 rounded-2xl p-8 shadow-2xl border border-slate-700">
-          {/* Logo */}
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-gradient-to-br from-orange-500 to-amber-500 rounded-xl flex items-center justify-center mx-auto mb-4">
-              <Building2 className="w-8 h-8 text-white" />
-            </div>
-            <h1 className="text-2xl font-bold text-white">
-              Crew<span className="text-orange-500">Q</span> <span className="text-slate-400 font-normal">Business</span>
-            </h1>
-            <p className="text-slate-400 mt-2 text-sm">Venue Management Portal</p>
-          </div>
-
-          {/* Tab Switcher */}
-          <div className="flex bg-slate-700/50 rounded-lg p-1 mb-6">
-            <button
-              onClick={() => { setAuthMode('login'); setAuthError(''); }}
-              className={`flex-1 py-2 text-sm font-medium rounded-md transition ${
-                authMode === 'login' ? 'bg-orange-500 text-white' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Sign In
-            </button>
-            <button
-              onClick={() => { setAuthMode('signup'); setAuthError(''); }}
-              className={`flex-1 py-2 text-sm font-medium rounded-md transition ${
-                authMode === 'signup' ? 'bg-orange-500 text-white' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Create Account
-            </button>
-          </div>
-
-          {/* Form */}
-          <div className="space-y-4">
-            {authMode === 'signup' && (
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Your Name</label>
-                <input
-                  type="text"
-                  value={authName}
-                  onChange={e => setAuthName(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none"
-                  placeholder="John Smith"
-                />
+  // ==================== RENDER ====================
+  
+  // AUTH VIEW
+  if (currentView === 'auth' || !businessUser) {
+    return (
+      <div className="fixed inset-0 z-50 bg-slate-900 flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="bg-slate-800 rounded-2xl p-8 shadow-2xl border border-slate-700">
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 bg-gradient-to-br from-orange-500 to-amber-500 rounded-xl flex items-center justify-center mx-auto mb-4">
+                <Building2 className="w-8 h-8 text-white" />
               </div>
-            )}
-
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Email <span className="text-red-400">*</span></label>
-              <input
-                type="email"
-                value={authEmail}
-                onChange={e => setAuthEmail(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none"
-                placeholder="you@business.com"
-              />
+              <h1 className="text-2xl font-bold text-white">Crew<span className="text-orange-500">Q</span> <span className="text-slate-400 font-normal">Business</span></h1>
+              <p className="text-slate-400 mt-2 text-sm">Venue Management Portal</p>
             </div>
 
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Password <span className="text-red-400">*</span></label>
-              <input
-                type="password"
-                value={authPassword}
-                onChange={e => setAuthPassword(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none"
-                placeholder="••••••••"
-              />
+            <div className="flex bg-slate-700/50 rounded-lg p-1 mb-6">
+              <button onClick={() => { setAuthMode('login'); setAuthError(''); }} className={`flex-1 py-2 text-sm font-medium rounded-md transition ${authMode === 'login' ? 'bg-orange-500 text-white' : 'text-slate-400 hover:text-white'}`}>Sign In</button>
+              <button onClick={() => { setAuthMode('signup'); setAuthError(''); }} className={`flex-1 py-2 text-sm font-medium rounded-md transition ${authMode === 'signup' ? 'bg-orange-500 text-white' : 'text-slate-400 hover:text-white'}`}>Create Account</button>
             </div>
 
-            {authMode === 'signup' && (
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Confirm Password <span className="text-red-400">*</span></label>
-                <input
-                  type="password"
-                  value={authConfirmPassword}
-                  onChange={e => setAuthConfirmPassword(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none"
-                  placeholder="••••••••"
-                />
-              </div>
-            )}
-
-            {authError && (
-              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-                <p className="text-red-400 text-sm text-center">{authError}</p>
-              </div>
-            )}
-
-            <button
-              onClick={authMode === 'login' ? handleLogin : handleSignup}
-              disabled={authLoading}
-              className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-semibold rounded-lg hover:from-orange-600 hover:to-amber-600 transition disabled:opacity-50"
-            >
-              {authLoading ? 'Please wait...' : (authMode === 'login' ? 'Sign In' : 'Create Account')}
-            </button>
-          </div>
-
-          <p className="text-center text-sm text-slate-500 mt-6">
-            Need help? <a href="mailto:business@crewq.com" className="text-orange-500 hover:underline">business@crewq.com</a>
-          </p>
-        </div>
-
-        <button
-          onClick={onClose}
-          className="w-full mt-4 py-2 text-slate-500 hover:text-slate-300 text-sm"
-        >
-          ← Back to CrewQ
-        </button>
-      </div>
-    </div>
-  );
-
-  // Onboarding Screen
-  const OnboardingScreen = () => (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-      <div className="w-full max-w-lg">
-        <div className="bg-slate-800 rounded-2xl p-8 shadow-2xl border border-slate-700">
-          <div className="text-center mb-6">
-            <h1 className="text-2xl font-bold text-white">Set Up Your Venue</h1>
-            <p className="text-slate-400 mt-2">Complete your profile to start creating events</p>
-          </div>
-
-          {/* Progress */}
-          <div className="flex gap-2 mb-8">
-            {[0, 1, 2].map(i => (
-              <div key={i} className={`flex-1 h-1 rounded-full ${onboardingStep >= i ? 'bg-orange-500' : 'bg-slate-700'}`} />
-            ))}
-          </div>
-
-          {onboardingStep === 0 && (
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-white">Basic Information</h2>
-              
+              {authMode === 'signup' && (
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">Your Name</label>
+                  <input type="text" value={authName} onChange={e => setAuthName(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:border-orange-500 outline-none" placeholder="John Smith" />
+                </div>
+              )}
               <div>
-                <label className="block text-sm text-slate-400 mb-1">Venue Name <span className="text-red-400">*</span></label>
-                <input
-                  type="text"
-                  value={onboardingData.venueName}
-                  onChange={e => setOnboardingData({...onboardingData, venueName: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
-                  placeholder="The Rustic"
-                />
+                <label className="block text-sm text-slate-400 mb-1">Email <span className="text-red-400">*</span></label>
+                <input type="email" value={authEmail} onChange={e => setAuthEmail(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:border-orange-500 outline-none" placeholder="you@business.com" />
               </div>
-
               <div>
-                <label className="block text-sm text-slate-400 mb-1">Venue Type</label>
-                <select
-                  value={onboardingData.venueType}
-                  onChange={e => setOnboardingData({...onboardingData, venueType: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
-                >
-                  <option value="">Select type...</option>
-                  {VENUE_TYPES_EXPANDED.map(t => (
-                    <option key={t.id} value={t.id}>{t.icon} {t.label}</option>
-                  ))}
-                </select>
+                <label className="block text-sm text-slate-400 mb-1">Password <span className="text-red-400">*</span></label>
+                <input type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:border-orange-500 outline-none" placeholder="••••••••" />
               </div>
-
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Neighborhood</label>
-                <select
-                  value={onboardingData.neighborhood}
-                  onChange={e => setOnboardingData({...onboardingData, neighborhood: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
-                >
-                  <option value="">Select neighborhood...</option>
-                  {DALLAS_NEIGHBORHOODS.map(n => (
-                    <option key={n.id} value={n.name}>{n.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <button
-                onClick={() => setOnboardingStep(1)}
-                disabled={!onboardingData.venueName}
-                className="w-full py-3 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition disabled:opacity-50"
-              >
-                Continue
+              {authMode === 'signup' && (
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">Confirm Password <span className="text-red-400">*</span></label>
+                  <input type="password" value={authConfirmPassword} onChange={e => setAuthConfirmPassword(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:border-orange-500 outline-none" placeholder="••••••••" />
+                </div>
+              )}
+              {authError && <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg"><p className="text-red-400 text-sm text-center">{authError}</p></div>}
+              <button onClick={authMode === 'login' ? handleLogin : handleSignup} disabled={authLoading} className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-semibold rounded-lg hover:from-orange-600 hover:to-amber-600 transition disabled:opacity-50">
+                {authLoading ? 'Please wait...' : (authMode === 'login' ? 'Sign In' : 'Create Account')}
               </button>
             </div>
-          )}
-
-          {onboardingStep === 1 && (
-            <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-white">Contact Details</h2>
-              
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Address <span className="text-red-400">*</span></label>
-                <input
-                  type="text"
-                  value={onboardingData.address}
-                  onChange={e => setOnboardingData({...onboardingData, address: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
-                  placeholder="123 Main St, Dallas, TX 75201"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Phone Number <span className="text-red-400">*</span></label>
-                <input
-                  type="tel"
-                  value={onboardingData.phone}
-                  onChange={e => setOnboardingData({...onboardingData, phone: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
-                  placeholder="(214) 555-1234"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Website</label>
-                <input
-                  type="url"
-                  value={onboardingData.website}
-                  onChange={e => setOnboardingData({...onboardingData, website: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
-                  placeholder="https://yourvenue.com"
-                />
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setOnboardingStep(0)}
-                  className="flex-1 py-3 border border-slate-600 text-slate-400 rounded-lg hover:bg-slate-700 transition"
-                >
-                  Back
-                </button>
-                <button
-                  onClick={() => setOnboardingStep(2)}
-                  disabled={!onboardingData.address || !onboardingData.phone}
-                  className="flex-1 py-3 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition disabled:opacity-50"
-                >
-                  Continue
-                </button>
-              </div>
-            </div>
-          )}
-
-          {onboardingStep === 2 && (
-            <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-white">Support & Description</h2>
-              
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Support Email <span className="text-red-400">*</span></label>
-                <input
-                  type="email"
-                  value={onboardingData.supportEmail}
-                  onChange={e => setOnboardingData({...onboardingData, supportEmail: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
-                  placeholder="support@yourvenue.com"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Description</label>
-                <textarea
-                  value={onboardingData.description}
-                  onChange={e => setOnboardingData({...onboardingData, description: e.target.value})}
-                  rows={3}
-                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none resize-none"
-                  placeholder="Tell customers about your venue..."
-                />
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setOnboardingStep(1)}
-                  className="flex-1 py-3 border border-slate-600 text-slate-400 rounded-lg hover:bg-slate-700 transition"
-                >
-                  Back
-                </button>
-                <button
-                  onClick={handleOnboardingComplete}
-                  disabled={!onboardingData.supportEmail || loading}
-                  className="flex-1 py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-semibold rounded-lg hover:from-orange-600 hover:to-amber-600 transition disabled:opacity-50"
-                >
-                  {loading ? 'Setting up...' : 'Complete Setup'}
-                </button>
-              </div>
-            </div>
-          )}
+            <p className="text-center text-sm text-slate-500 mt-6">Need help? <a href="mailto:business@crewq.com" className="text-orange-500 hover:underline">business@crewq.com</a></p>
+          </div>
+          <button onClick={onClose} className="w-full mt-4 py-2 text-slate-500 hover:text-slate-300 text-sm">← Back to CrewQ</button>
         </div>
-      </div>
-    </div>
-  );
-
-  // Sidebar Navigation
-  const Sidebar = () => (
-    <div className={`bg-slate-900 border-r border-slate-800 flex flex-col transition-all ${sidebarCollapsed ? 'w-16' : 'w-64'}`}>
-      {/* Logo */}
-      <div className="p-4 border-b border-slate-800">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-amber-500 rounded-lg flex items-center justify-center flex-shrink-0">
-            <Building2 className="w-5 h-5 text-white" />
-          </div>
-          {!sidebarCollapsed && (
-            <div>
-              <h1 className="font-bold text-white">Crew<span className="text-orange-500">Q</span></h1>
-              <p className="text-xs text-slate-500">Business</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Nav Items */}
-      <nav className="flex-1 p-2 space-y-1">
-        {[
-          { id: 'dashboard', icon: BarChart3, label: 'Dashboard' },
-          { id: 'events', icon: Calendar, label: 'Events' },
-          { id: 'create-event', icon: Plus, label: 'Create Event' },
-          { id: 'audience', icon: Users, label: 'Audience' },
-          { id: 'venue', icon: Building2, label: 'Venue' },
-          { id: 'host-crewq', icon: Star, label: 'Host a CrewQ' },
-        ].map(item => (
-          <button
-            key={item.id}
-            onClick={() => setCurrentView(item.id)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition ${
-              currentView === item.id 
-                ? 'bg-orange-500/20 text-orange-400' 
-                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <item.icon className="w-5 h-5 flex-shrink-0" />
-            {!sidebarCollapsed && <span className="text-sm font-medium">{item.label}</span>}
-          </button>
-        ))}
-      </nav>
-
-      {/* Bottom */}
-      <div className="p-2 border-t border-slate-800">
-        <button
-          onClick={() => setCurrentView('settings')}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition ${
-            currentView === 'settings' ? 'bg-orange-500/20 text-orange-400' : ''
-          }`}
-        >
-          <Settings className="w-5 h-5 flex-shrink-0" />
-          {!sidebarCollapsed && <span className="text-sm font-medium">Settings</span>}
-        </button>
-        
-        <button
-          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          className="w-full flex items-center justify-center gap-3 px-3 py-2.5 rounded-lg text-slate-500 hover:bg-slate-800 hover:text-white transition mt-1"
-        >
-          {sidebarCollapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
-        </button>
-      </div>
-    </div>
-  );
-
-  // Dashboard View
-  const DashboardView = () => {
-    const analytics = getAnalytics();
-    
-    return (
-      <div className="p-6 space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-            <p className="text-slate-400">{venue?.name || 'Your Venue'}</p>
-          </div>
-          <button
-            onClick={() => setCurrentView('create-event')}
-            className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"
-          >
-            <Plus className="w-4 h-4" />
-            Create Event
-          </button>
-        </div>
-
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
-            <div className="flex items-center justify-between mb-3">
-              <Eye className="w-8 h-8 text-blue-400" />
-              <span className="text-xs text-slate-500">Total</span>
-            </div>
-            <p className="text-3xl font-bold text-white">{analytics.totalViews.toLocaleString()}</p>
-            <p className="text-slate-400 text-sm">Event Views</p>
-          </div>
-
-          <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
-            <div className="flex items-center justify-between mb-3">
-              <Users className="w-8 h-8 text-emerald-400" />
-              <span className="text-xs text-emerald-400">+{analytics.conversionRate}%</span>
-            </div>
-            <p className="text-3xl font-bold text-white">{analytics.totalRsvps.toLocaleString()}</p>
-            <p className="text-slate-400 text-sm">RSVPs</p>
-          </div>
-
-          <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
-            <div className="flex items-center justify-between mb-3">
-              <CheckCircle className="w-8 h-8 text-amber-400" />
-              <span className="text-xs text-amber-400">{analytics.checkInRate}%</span>
-            </div>
-            <p className="text-3xl font-bold text-white">{analytics.totalCheckins.toLocaleString()}</p>
-            <p className="text-slate-400 text-sm">Check-ins</p>
-          </div>
-
-          <div className="bg-gradient-to-br from-orange-500/20 to-amber-500/20 rounded-xl p-5 border border-orange-500/30">
-            <div className="flex items-center justify-between mb-3">
-              <DollarSign className="w-8 h-8 text-orange-400" />
-              <span className="text-xs text-orange-400">Estimated</span>
-            </div>
-            <p className="text-3xl font-bold text-white">${analytics.estimatedRevenue.toLocaleString()}</p>
-            <p className="text-slate-400 text-sm">Impact</p>
-          </div>
-        </div>
-
-        {/* Value Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
-            <p className="text-slate-400 text-sm mb-1">Value Per View</p>
-            <p className="text-2xl font-bold text-white">${analytics.valuePerView}</p>
-            <p className="text-xs text-slate-500 mt-1">Based on check-in conversions</p>
-          </div>
-          <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
-            <p className="text-slate-400 text-sm mb-1">Live Events</p>
-            <p className="text-2xl font-bold text-emerald-400">{analytics.liveEvents}</p>
-            <p className="text-xs text-slate-500 mt-1">{analytics.pendingEvents} pending approval</p>
-          </div>
-          <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
-            <p className="text-slate-400 text-sm mb-1">Avg. Spend Per Guest</p>
-            <p className="text-2xl font-bold text-white">${AVG_SPEND_PER_PERSON}</p>
-            <p className="text-xs text-slate-500 mt-1">Industry average</p>
-          </div>
-        </div>
-
-        {/* Recent Events */}
-        <div className="bg-slate-800 rounded-xl border border-slate-700">
-          <div className="p-4 border-b border-slate-700 flex justify-between items-center">
-            <h2 className="font-semibold text-white">Recent Events</h2>
-            <button onClick={() => setCurrentView('events')} className="text-orange-400 text-sm hover:underline">View All</button>
-          </div>
-          <div className="divide-y divide-slate-700">
-            {events.slice(0, 5).map(event => (
-              <div key={event.id} className="p-4 flex items-center gap-4">
-                <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
-                  event.status === 'pending' ? 'bg-amber-500/20' : 'bg-emerald-500/20'
-                }`}>
-                  <Calendar className={`w-6 h-6 ${event.status === 'pending' ? 'text-amber-400' : 'text-emerald-400'}`} />
-                </div>
-                <div className="flex-1">
-                  <p className="text-white font-medium">{event.name}</p>
-                  <p className="text-slate-500 text-sm">{event.date} • {event.time}</p>
-                </div>
-                <div className="text-right">
-                  <span className={`px-2 py-1 rounded-full text-xs ${
-                    event.status === 'pending' ? 'bg-amber-500/20 text-amber-400' : 
-                    event.status === 'live' || event.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400' :
-                    'bg-slate-600 text-slate-400'
-                  }`}>
-                    {event.status === 'approved' ? 'Live' : event.status}
-                  </span>
-                </div>
-                <div className="text-right min-w-[80px]">
-                  <p className="text-white font-medium">{event.views || 0}</p>
-                  <p className="text-slate-500 text-xs">views</p>
-                </div>
-              </div>
-            ))}
-            {events.length === 0 && (
-              <div className="p-8 text-center">
-                <Calendar className="w-12 h-12 mx-auto text-slate-600 mb-3" />
-                <p className="text-slate-500">No events yet</p>
-                <button onClick={() => setCurrentView('create-event')} className="text-orange-400 mt-2 hover:underline">
-                  Create your first event
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
+        {toast && <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg ${toast.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'} text-white`}>{toast.message}</div>}
       </div>
     );
-  };
+  }
 
-  // Create Event View
-  const CreateEventView = () => (
-    <div className="p-6 max-w-4xl">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white">Create Event</h1>
-        <p className="text-slate-400">Events require admin approval before going live</p>
-      </div>
-
-      <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 space-y-6">
-        {/* Basic Info */}
-        <div>
-          <h2 className="text-lg font-semibold text-white mb-4">Basic Information</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="md:col-span-2">
-              <label className="block text-sm text-slate-400 mb-1">Event Name <span className="text-red-400">*</span></label>
-              <input
-                type="text"
-                value={eventForm.name}
-                onChange={e => setEventForm({...eventForm, name: e.target.value})}
-                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
-                placeholder="Friday Happy Hour"
-              />
+  // ONBOARDING VIEW
+  if (currentView === 'onboarding' || !businessUser?.onboarding_complete) {
+    return (
+      <div className="fixed inset-0 z-50 bg-slate-900 flex items-center justify-center p-4">
+        <div className="w-full max-w-lg">
+          <div className="bg-slate-800 rounded-2xl p-8 shadow-2xl border border-slate-700">
+            <div className="text-center mb-6">
+              <h1 className="text-2xl font-bold text-white">Set Up Your Venue</h1>
+              <p className="text-slate-400 mt-2">Complete your profile to start creating events</p>
             </div>
             
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Category</label>
-              <select
-                value={eventForm.category}
-                onChange={e => setEventForm({...eventForm, category: e.target.value, type: ''})}
-                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
-              >
-                <option value="">Select category...</option>
-                {BUSINESS_EVENT_CATEGORIES_EXPANDED.map(c => (
-                  <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
-                ))}
-              </select>
+            <div className="flex gap-2 mb-8">
+              {[0, 1, 2].map(i => (<div key={i} className={`flex-1 h-1 rounded-full ${onboardingStep >= i ? 'bg-orange-500' : 'bg-slate-700'}`} />))}
             </div>
 
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Event Type</label>
-              <select
-                value={eventForm.type}
-                onChange={e => setEventForm({...eventForm, type: e.target.value})}
-                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
-                disabled={!eventForm.category}
-              >
-                <option value="">Select type...</option>
-                {eventForm.category && BUSINESS_EVENT_TYPES_EXPANDED[eventForm.category]?.map(t => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
+            {onboardingStep === 0 && (
+              <div className="space-y-4">
+                <h2 className="text-lg font-semibold text-white">Basic Information</h2>
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">Venue Name <span className="text-red-400">*</span></label>
+                  <input type="text" value={venueName} onChange={e => setVenueName(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" placeholder="The Rustic" />
+                </div>
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">Venue Type</label>
+                  <select value={venueType} onChange={e => setVenueType(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none">
+                    <option value="">Select type...</option>
+                    {VENUE_TYPES.map(t => <option key={t.id} value={t.id}>{t.icon} {t.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">Neighborhood</label>
+                  <select value={venueNeighborhood} onChange={e => setVenueNeighborhood(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none">
+                    <option value="">Select neighborhood...</option>
+                    {DALLAS_NEIGHBORHOODS.map(n => <option key={n.id} value={n.name}>{n.name}</option>)}
+                  </select>
+                </div>
+                <button onClick={() => setOnboardingStep(1)} disabled={!venueName} className="w-full py-3 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition disabled:opacity-50">Continue</button>
+              </div>
+            )}
 
-        {/* Date & Time */}
-        <div>
-          <h2 className="text-lg font-semibold text-white mb-4">Date & Time</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Date <span className="text-red-400">*</span></label>
-              <input
-                type="date"
-                value={eventForm.date}
-                onChange={e => setEventForm({...eventForm, date: e.target.value})}
-                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Start Time <span className="text-red-400">*</span></label>
-              <input
-                type="time"
-                value={eventForm.startTime}
-                onChange={e => setEventForm({...eventForm, startTime: e.target.value})}
-                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">End Time</label>
-              <input
-                type="time"
-                value={eventForm.endTime}
-                onChange={e => setEventForm({...eventForm, endTime: e.target.value})}
-                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
-              />
-            </div>
-          </div>
+            {onboardingStep === 1 && (
+              <div className="space-y-4">
+                <h2 className="text-lg font-semibold text-white">Contact Details</h2>
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">Address <span className="text-red-400">*</span></label>
+                  <input type="text" value={venueAddress} onChange={e => setVenueAddress(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" placeholder="123 Main St, Dallas, TX 75201" />
+                </div>
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">Phone Number <span className="text-red-400">*</span></label>
+                  <input type="tel" value={venuePhone} onChange={e => setVenuePhone(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" placeholder="(214) 555-1234" />
+                </div>
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">Website</label>
+                  <input type="url" value={venueWebsite} onChange={e => setVenueWebsite(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" placeholder="https://yourvenue.com" />
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => setOnboardingStep(0)} className="flex-1 py-3 border border-slate-600 text-slate-400 rounded-lg hover:bg-slate-700 transition">Back</button>
+                  <button onClick={() => setOnboardingStep(2)} disabled={!venueAddress || !venuePhone} className="flex-1 py-3 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition disabled:opacity-50">Continue</button>
+                </div>
+              </div>
+            )}
 
-          {/* Recurring */}
-          <div className="mt-4 flex items-center gap-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={eventForm.recurring}
-                onChange={e => setEventForm({...eventForm, recurring: e.target.checked})}
-                className="w-4 h-4 rounded border-slate-600 text-orange-500 focus:ring-orange-500"
-              />
-              <span className="text-slate-300 text-sm">Recurring event</span>
-            </label>
-            {eventForm.recurring && (
-              <select
-                value={eventForm.recurringType}
-                onChange={e => setEventForm({...eventForm, recurringType: e.target.value})}
-                className="px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm focus:border-orange-500 outline-none"
-              >
-                <option value="weekly">Weekly</option>
-                <option value="biweekly">Bi-weekly</option>
-                <option value="monthly">Monthly</option>
-              </select>
+            {onboardingStep === 2 && (
+              <div className="space-y-4">
+                <h2 className="text-lg font-semibold text-white">Support & Description</h2>
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">Support Email <span className="text-red-400">*</span></label>
+                  <input type="email" value={venueSupportEmail} onChange={e => setVenueSupportEmail(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" placeholder="support@yourvenue.com" />
+                </div>
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">Description</label>
+                  <textarea value={venueDescription} onChange={e => setVenueDescription(e.target.value)} rows={3} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none resize-none" placeholder="Tell customers about your venue..." />
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => setOnboardingStep(1)} className="flex-1 py-3 border border-slate-600 text-slate-400 rounded-lg hover:bg-slate-700 transition">Back</button>
+                  <button onClick={handleOnboardingComplete} disabled={!venueSupportEmail || loading} className="flex-1 py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-semibold rounded-lg hover:from-orange-600 hover:to-amber-600 transition disabled:opacity-50">
+                    {loading ? 'Setting up...' : 'Complete Setup'}
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>
-
-        {/* Details */}
-        <div>
-          <h2 className="text-lg font-semibold text-white mb-4">Event Details</h2>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Description</label>
-              <textarea
-                value={eventForm.description}
-                onChange={e => setEventForm({...eventForm, description: e.target.value})}
-                rows={3}
-                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none resize-none"
-                placeholder="Describe your event..."
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Cover Charge ($)</label>
-                <input
-                  type="number"
-                  value={eventForm.coverCharge}
-                  onChange={e => setEventForm({...eventForm, coverCharge: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
-                  placeholder="0 for free"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Age Restriction</label>
-                <select
-                  value={eventForm.ageRestriction}
-                  onChange={e => setEventForm({...eventForm, ageRestriction: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
-                >
-                  {AGE_RESTRICTIONS.map(a => (
-                    <option key={a.id} value={a.id}>{a.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Capacity</label>
-                <input
-                  type="number"
-                  value={eventForm.capacity}
-                  onChange={e => setEventForm({...eventForm, capacity: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
-                  placeholder="Leave blank for unlimited"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Dress Code</label>
-                <select
-                  value={eventForm.dressCode}
-                  onChange={e => setEventForm({...eventForm, dressCode: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
-                >
-                  {DRESS_CODES.map(d => (
-                    <option key={d.id} value={d.id}>{d.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Music Genre</label>
-                <select
-                  value={eventForm.musicGenre}
-                  onChange={e => setEventForm({...eventForm, musicGenre: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
-                >
-                  <option value="">Select genre...</option>
-                  {MUSIC_GENRES.map(g => (
-                    <option key={g} value={g}>{g}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Specials */}
-        <div>
-          <h2 className="text-lg font-semibold text-white mb-4">Specials & Promotions</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Drink Specials</label>
-              <input
-                type="text"
-                value={eventForm.drinkSpecials}
-                onChange={e => setEventForm({...eventForm, drinkSpecials: e.target.value})}
-                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
-                placeholder="$5 margaritas, 2-for-1 beers"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Food Specials</label>
-              <input
-                type="text"
-                value={eventForm.foodSpecials}
-                onChange={e => setEventForm({...eventForm, foodSpecials: e.target.value})}
-                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
-                placeholder="Half-price appetizers"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Image */}
-        <div>
-          <h2 className="text-lg font-semibold text-white mb-4">Event Image</h2>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Upload Image</label>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={e => setImageFile(e.target.files[0])}
-                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-orange-500 file:text-white file:cursor-pointer"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Or paste image URL</label>
-              <input
-                type="url"
-                value={eventForm.imageUrl}
-                onChange={e => setEventForm({...eventForm, imageUrl: e.target.value})}
-                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
-                placeholder="https://..."
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Submit */}
-        <div className="flex items-center gap-4 pt-4 border-t border-slate-700">
-          <button
-            onClick={handleCreateEvent}
-            disabled={loading || !eventForm.name || !eventForm.date || !eventForm.startTime}
-            className="flex-1 py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-semibold rounded-lg hover:from-orange-600 hover:to-amber-600 transition disabled:opacity-50"
-          >
-            {loading ? 'Submitting...' : 'Submit for Approval'}
-          </button>
-        </div>
-
-        <p className="text-center text-slate-500 text-sm">
-          Events typically get approved within 24 hours
-        </p>
+        {toast && <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg ${toast.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'} text-white`}>{toast.message}</div>}
       </div>
-    </div>
-  );
-
-  // Events List View
-  const EventsView = () => (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Events</h1>
-          <p className="text-slate-400">{events.length} total events</p>
-        </div>
-        <button
-          onClick={() => setCurrentView('create-event')}
-          className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"
-        >
-          <Plus className="w-4 h-4" />
-          Create Event
-        </button>
-      </div>
-
-      <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-slate-750">
-            <tr className="border-b border-slate-700">
-              <th className="text-left p-4 text-slate-400 text-sm font-medium">Event</th>
-              <th className="text-left p-4 text-slate-400 text-sm font-medium">Date</th>
-              <th className="text-left p-4 text-slate-400 text-sm font-medium">Status</th>
-              <th className="text-right p-4 text-slate-400 text-sm font-medium">Views</th>
-              <th className="text-right p-4 text-slate-400 text-sm font-medium">RSVPs</th>
-              <th className="text-right p-4 text-slate-400 text-sm font-medium">Est. Impact</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-700">
-            {events.map(event => (
-              <tr key={event.id} className="hover:bg-slate-750 transition">
-                <td className="p-4">
-                  <p className="text-white font-medium">{event.name}</p>
-                  <p className="text-slate-500 text-sm">{event.type || event.category}</p>
-                </td>
-                <td className="p-4 text-slate-300">{event.date}</td>
-                <td className="p-4">
-                  <span className={`px-2 py-1 rounded-full text-xs ${
-                    event.status === 'pending' ? 'bg-amber-500/20 text-amber-400' :
-                    event.status === 'live' || event.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400' :
-                    'bg-slate-600 text-slate-400'
-                  }`}>
-                    {event.status === 'approved' ? 'Live' : event.status}
-                  </span>
-                </td>
-                <td className="p-4 text-right text-slate-300">{(event.views || 0).toLocaleString()}</td>
-                <td className="p-4 text-right text-slate-300">{event.rsvps || 0}</td>
-                <td className="p-4 text-right text-emerald-400">${((event.checkins || 0) * AVG_SPEND_PER_PERSON).toLocaleString()}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {events.length === 0 && (
-          <div className="p-12 text-center">
-            <Calendar className="w-16 h-16 mx-auto text-slate-600 mb-4" />
-            <p className="text-slate-400 mb-2">No events yet</p>
-            <button onClick={() => setCurrentView('create-event')} className="text-orange-400 hover:underline">
-              Create your first event →
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
-  // Audience View
-  const AudienceView = () => {
-    const analytics = getAnalytics();
-    
-    // Mock demographic data (would come from real data later)
-    const demographics = {
-      ageGroups: [
-        { label: '21-25', percentage: 35 },
-        { label: '26-30', percentage: 40 },
-        { label: '31-35', percentage: 15 },
-        { label: '36+', percentage: 10 },
-      ],
-      vibes: [
-        { name: 'Chill', count: 45 },
-        { name: 'Party', count: 38 },
-        { name: 'Social', count: 32 },
-        { name: 'Upscale', count: 28 },
-        { name: 'Casual', count: 25 },
-      ]
-    };
-
-    return (
-      <div className="p-6 space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Audience Insights</h1>
-          <p className="text-slate-400">Anonymous demographic data from your events</p>
-        </div>
-
-        {/* Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
-            <p className="text-slate-400 text-sm">Total Reach</p>
-            <p className="text-3xl font-bold text-white mt-1">{analytics.totalViews.toLocaleString()}</p>
-            <p className="text-slate-500 text-xs mt-1">unique views</p>
-          </div>
-          <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
-            <p className="text-slate-400 text-sm">Engaged Users</p>
-            <p className="text-3xl font-bold text-white mt-1">{analytics.totalRsvps}</p>
-            <p className="text-slate-500 text-xs mt-1">RSVPs across all events</p>
-          </div>
-          <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
-            <p className="text-slate-400 text-sm">Actual Attendance</p>
-            <p className="text-3xl font-bold text-white mt-1">{analytics.totalCheckins}</p>
-            <p className="text-slate-500 text-xs mt-1">verified check-ins</p>
-          </div>
-        </div>
-
-        {/* Demographics */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
-            <h2 className="font-semibold text-white mb-4">Age Distribution</h2>
-            <div className="space-y-3">
-              {demographics.ageGroups.map(group => (
-                <div key={group.label}>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-slate-400">{group.label}</span>
-                    <span className="text-white">{group.percentage}%</span>
-                  </div>
-                  <div className="h-2 bg-slate-700 rounded-full">
-                    <div 
-                      className="h-full bg-gradient-to-r from-orange-500 to-amber-500 rounded-full"
-                      style={{ width: `${group.percentage}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
-            <h2 className="font-semibold text-white mb-4">Popular Vibes</h2>
-            <div className="flex flex-wrap gap-2">
-              {demographics.vibes.map(vibe => (
-                <span key={vibe.name} className="px-3 py-2 bg-slate-700 rounded-lg text-sm">
-                  <span className="text-white">{vibe.name}</span>
-                  <span className="text-slate-500 ml-2">({vibe.count})</span>
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Revenue Impact */}
-        <div className="bg-gradient-to-r from-orange-500/10 to-amber-500/10 rounded-xl p-6 border border-orange-500/30">
-          <h2 className="font-semibold text-white mb-4">Estimated Revenue Impact</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div>
-              <p className="text-slate-400 text-sm">Projected from Check-ins</p>
-              <p className="text-3xl font-bold text-orange-400">${analytics.estimatedRevenue.toLocaleString()}</p>
-              <p className="text-slate-500 text-xs mt-1">Based on ${AVG_SPEND_PER_PERSON}/person avg</p>
-            </div>
-            <div>
-              <p className="text-slate-400 text-sm">Value Per View</p>
-              <p className="text-3xl font-bold text-white">${analytics.valuePerView}</p>
-              <p className="text-slate-500 text-xs mt-1">Revenue generated per impression</p>
-            </div>
-            <div>
-              <p className="text-slate-400 text-sm">Conversion Rate</p>
-              <p className="text-3xl font-bold text-emerald-400">{analytics.conversionRate}%</p>
-              <p className="text-slate-500 text-xs mt-1">Views → RSVPs</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // Host CrewQ Event (Placeholder)
-  const HostCrewQView = () => (
-    <div className="p-6 flex items-center justify-center min-h-[60vh]">
-      <div className="text-center max-w-md">
-        <div className="w-20 h-20 bg-gradient-to-br from-orange-500 to-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
-          <Star className="w-10 h-10 text-white" />
-        </div>
-        <h1 className="text-2xl font-bold text-white mb-2">Host a CrewQ Event</h1>
-        <p className="text-slate-400 mb-6">
-          Want more visibility? Partner with CrewQ to host a featured event and reach 10x more users!
-        </p>
-        <div className="inline-block px-4 py-2 bg-amber-500/20 text-amber-400 rounded-full text-sm font-medium">
-          🚀 Coming Soon
-        </div>
-        <p className="text-slate-500 text-sm mt-6">
-          We're working on exclusive partnership opportunities. Stay tuned!
-        </p>
-      </div>
-    </div>
-  );
-
-  // Venue Settings View
-  const VenueView = () => (
-    <div className="p-6 max-w-2xl">
-      <h1 className="text-2xl font-bold text-white mb-6">Venue Settings</h1>
-      
-      {venue ? (
-        <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 space-y-4">
-          <div className="flex items-center gap-4 pb-4 border-b border-slate-700">
-            <div className="w-16 h-16 bg-slate-700 rounded-xl flex items-center justify-center text-3xl">
-              {VENUE_TYPES_EXPANDED.find(t => t.id === venue.venue_type)?.icon || '🏢'}
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-white">{venue.name}</h2>
-              <p className="text-slate-400">{venue.neighborhood}</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Address</label>
-              <p className="text-white">{venue.address || '-'}</p>
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Phone</label>
-              <p className="text-white">{venue.phone || '-'}</p>
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Website</label>
-              <p className="text-white">{venue.website || '-'}</p>
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Support Email</label>
-              <p className="text-white">{venue.support_email || '-'}</p>
-            </div>
-          </div>
-
-          {venue.description && (
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Description</label>
-              <p className="text-slate-300">{venue.description}</p>
-            </div>
-          )}
-
-          <button className="w-full py-3 border border-slate-600 text-slate-400 rounded-lg hover:bg-slate-700 transition mt-4">
-            Edit Venue Details
-          </button>
-        </div>
-      ) : (
-        <p className="text-slate-500">No venue set up yet.</p>
-      )}
-    </div>
-  );
-
-  // Settings View
-  const SettingsView = () => (
-    <div className="p-6 max-w-2xl">
-      <h1 className="text-2xl font-bold text-white mb-6">Account Settings</h1>
-      
-      <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 space-y-4">
-        <div>
-          <label className="block text-sm text-slate-400 mb-1">Email</label>
-          <p className="text-white">{businessUser?.email}</p>
-        </div>
-        <div>
-          <label className="block text-sm text-slate-400 mb-1">Name</label>
-          <p className="text-white">{businessUser?.name}</p>
-        </div>
-
-        <div className="pt-4 border-t border-slate-700">
-          <button
-            onClick={() => {
-              setBusinessUser(null);
-              setVenue(null);
-              setEvents([]);
-              setCurrentView('auth');
-            }}
-            className="w-full py-3 border border-red-500/50 text-red-400 rounded-lg hover:bg-red-500/10 transition"
-          >
-            Sign Out
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
-  // ==================== MAIN RENDER ====================
-
-  // Show auth screen if not logged in
-  if (!businessUser) {
-    return (
-      <>
-        <AuthScreen />
-        {toast && (
-          <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg ${
-            toast.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'
-          } text-white`}>
-            {toast.message}
-          </div>
-        )}
-      </>
     );
   }
 
-  // Show onboarding if not complete
-  if (!businessUser.onboarding_complete) {
-    return (
-      <>
-        <OnboardingScreen />
-        {toast && (
-          <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg ${
-            toast.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'
-          } text-white`}>
-            {toast.message}
-          </div>
-        )}
-      </>
-    );
-  }
-
-  // Main dashboard layout
+  // MAIN DASHBOARD LAYOUT
+  const analytics = getAnalytics();
+  
   return (
     <div className="fixed inset-0 z-50 bg-slate-900 flex">
       {/* Sidebar */}
-      <Sidebar />
+      <div className={`bg-slate-900 border-r border-slate-800 flex flex-col transition-all ${sidebarCollapsed ? 'w-16' : 'w-64'}`}>
+        <div className="p-4 border-b border-slate-800">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-amber-500 rounded-lg flex items-center justify-center flex-shrink-0">
+              <Building2 className="w-5 h-5 text-white" />
+            </div>
+            {!sidebarCollapsed && <div><h1 className="font-bold text-white">Crew<span className="text-orange-500">Q</span></h1><p className="text-xs text-slate-500">Business</p></div>}
+          </div>
+        </div>
+        <nav className="flex-1 p-2 space-y-1">
+          {[
+            { id: 'dashboard', icon: Home, label: 'Dashboard' },
+            { id: 'events', icon: Calendar, label: 'Events' },
+            { id: 'create-event', icon: Plus, label: 'Create Event' },
+            { id: 'audience', icon: Users, label: 'Audience' },
+            { id: 'venue', icon: Building2, label: 'Venue' },
+            { id: 'host-crewq', icon: Star, label: 'Host a CrewQ' },
+          ].map(item => (
+            <button key={item.id} onClick={() => setCurrentView(item.id)} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition ${currentView === item.id ? 'bg-orange-500/20 text-orange-400' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
+              <item.icon className="w-5 h-5 flex-shrink-0" />
+              {!sidebarCollapsed && <span className="text-sm font-medium">{item.label}</span>}
+            </button>
+          ))}
+        </nav>
+        <div className="p-2 border-t border-slate-800">
+          <button onClick={() => { setBusinessUser(null); setCurrentView('auth'); }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition">
+            <LogOut className="w-5 h-5 flex-shrink-0" />
+            {!sidebarCollapsed && <span className="text-sm font-medium">Sign Out</span>}
+          </button>
+        </div>
+      </div>
 
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto">
-        {/* Top Bar */}
         <div className="bg-slate-800 border-b border-slate-700 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
           <div className="flex items-center gap-4">
-            <button
-              onClick={onClose}
-              className="text-slate-400 hover:text-white transition"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <button onClick={onClose} className="text-slate-400 hover:text-white transition"><X className="w-5 h-5" /></button>
             <span className="text-slate-500">|</span>
-            <span className="text-slate-400">{venue?.name}</span>
+            <span className="text-slate-400">{venue?.name || 'Your Venue'}</span>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="text-slate-400 text-sm">{businessUser?.email}</span>
-          </div>
+          <span className="text-slate-400 text-sm">{businessUser?.email}</span>
         </div>
 
-        {/* Content */}
         {loading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
-          </div>
+          <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" /></div>
         ) : (
-          <>
-            {currentView === 'dashboard' && <DashboardView />}
-            {currentView === 'events' && <EventsView />}
-            {currentView === 'create-event' && <CreateEventView />}
-            {currentView === 'audience' && <AudienceView />}
-            {currentView === 'venue' && <VenueView />}
-            {currentView === 'host-crewq' && <HostCrewQView />}
-            {currentView === 'settings' && <SettingsView />}
-          </>
+          <div className="p-6">
+            {/* DASHBOARD VIEW */}
+            {currentView === 'dashboard' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div><h1 className="text-2xl font-bold text-white">Dashboard</h1><p className="text-slate-400">{venue?.name}</p></div>
+                  <button onClick={() => setCurrentView('create-event')} className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"><Plus className="w-4 h-4" />Create Event</button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-slate-800 rounded-xl p-5 border border-slate-700"><Eye className="w-8 h-8 text-blue-400 mb-3" /><p className="text-3xl font-bold text-white">{analytics.totalViews.toLocaleString()}</p><p className="text-slate-400 text-sm">Event Views</p></div>
+                  <div className="bg-slate-800 rounded-xl p-5 border border-slate-700"><Users className="w-8 h-8 text-emerald-400 mb-3" /><p className="text-3xl font-bold text-white">{analytics.totalRsvps}</p><p className="text-slate-400 text-sm">RSVPs</p></div>
+                  <div className="bg-slate-800 rounded-xl p-5 border border-slate-700"><CheckCircle className="w-8 h-8 text-amber-400 mb-3" /><p className="text-3xl font-bold text-white">{analytics.totalCheckins}</p><p className="text-slate-400 text-sm">Check-ins</p></div>
+                  <div className="bg-gradient-to-br from-orange-500/20 to-amber-500/20 rounded-xl p-5 border border-orange-500/30"><DollarSign className="w-8 h-8 text-orange-400 mb-3" /><p className="text-3xl font-bold text-white">${analytics.estimatedRevenue.toLocaleString()}</p><p className="text-slate-400 text-sm">Est. Impact</p></div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-slate-800 rounded-xl p-5 border border-slate-700"><p className="text-slate-400 text-sm mb-1">Value Per View</p><p className="text-2xl font-bold text-white">${analytics.valuePerView}</p></div>
+                  <div className="bg-slate-800 rounded-xl p-5 border border-slate-700"><p className="text-slate-400 text-sm mb-1">Live Events</p><p className="text-2xl font-bold text-emerald-400">{analytics.liveEvents}</p><p className="text-xs text-slate-500">{analytics.pendingEvents} pending</p></div>
+                  <div className="bg-slate-800 rounded-xl p-5 border border-slate-700"><p className="text-slate-400 text-sm mb-1">Conversion Rate</p><p className="text-2xl font-bold text-white">{analytics.conversionRate}%</p></div>
+                </div>
+                <div className="bg-slate-800 rounded-xl border border-slate-700">
+                  <div className="p-4 border-b border-slate-700 flex justify-between"><h2 className="font-semibold text-white">Recent Events</h2><button onClick={() => setCurrentView('events')} className="text-orange-400 text-sm hover:underline">View All</button></div>
+                  <div className="divide-y divide-slate-700">
+                    {events.slice(0, 5).map(event => (
+                      <div key={event.id} className="p-4 flex items-center gap-4">
+                        <Calendar className={`w-6 h-6 ${event.status === 'pending' ? 'text-amber-400' : 'text-emerald-400'}`} />
+                        <div className="flex-1"><p className="text-white font-medium">{event.name}</p><p className="text-slate-500 text-sm">{event.date}</p></div>
+                        <span className={`px-2 py-1 rounded-full text-xs ${event.status === 'pending' ? 'bg-amber-500/20 text-amber-400' : 'bg-emerald-500/20 text-emerald-400'}`}>{event.status === 'approved' ? 'Live' : event.status}</span>
+                        <div className="text-right"><p className="text-white">{event.views || 0}</p><p className="text-slate-500 text-xs">views</p></div>
+                      </div>
+                    ))}
+                    {events.length === 0 && <div className="p-8 text-center text-slate-500">No events yet. <button onClick={() => setCurrentView('create-event')} className="text-orange-400">Create your first event</button></div>}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* EVENTS LIST VIEW */}
+            {currentView === 'events' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div><h1 className="text-2xl font-bold text-white">Events</h1><p className="text-slate-400">{events.length} total</p></div>
+                  <button onClick={() => setCurrentView('create-event')} className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"><Plus className="w-4 h-4" />Create</button>
+                </div>
+                <div className="bg-slate-800 rounded-xl border border-slate-700">
+                  {events.map(event => (
+                    <div key={event.id} className="p-4 border-b border-slate-700 last:border-0 flex items-center gap-4">
+                      <Calendar className="w-6 h-6 text-slate-400" />
+                      <div className="flex-1"><p className="text-white font-medium">{event.name}</p><p className="text-slate-500 text-sm">{event.venue} • {event.date}</p></div>
+                      <span className={`px-2 py-1 rounded-full text-xs ${event.status === 'pending' ? 'bg-amber-500/20 text-amber-400' : event.status === 'live' || event.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-600 text-slate-400'}`}>{event.status === 'approved' ? 'Live' : event.status}</span>
+                      <div className="text-right min-w-[60px]"><p className="text-white">{event.views || 0}</p><p className="text-slate-500 text-xs">views</p></div>
+                    </div>
+                  ))}
+                  {events.length === 0 && <div className="p-12 text-center"><Calendar className="w-12 h-12 mx-auto text-slate-600 mb-4" /><p className="text-slate-400">No events yet</p></div>}
+                </div>
+              </div>
+            )}
+
+            {/* CREATE EVENT VIEW */}
+            {currentView === 'create-event' && (
+              <div className="max-w-3xl space-y-6">
+                <div><h1 className="text-2xl font-bold text-white">Create Event</h1><p className="text-slate-400">Events require admin approval before going live</p></div>
+                <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="md:col-span-2">
+                      <label className="block text-sm text-slate-400 mb-1">Event Name <span className="text-red-400">*</span></label>
+                      <input type="text" value={evtName} onChange={e => setEvtName(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" placeholder="Friday Happy Hour" />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-slate-400 mb-1">Category</label>
+                      <select value={evtCategory} onChange={e => { setEvtCategory(e.target.value); setEvtType(''); }} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none">
+                        <option value="">Select...</option>
+                        {EVENT_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm text-slate-400 mb-1">Type</label>
+                      <select value={evtType} onChange={e => setEvtType(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" disabled={!evtCategory}>
+                        <option value="">Select...</option>
+                        {evtCategory && EVENT_TYPES[evtCategory]?.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm text-slate-400 mb-1">Date <span className="text-red-400">*</span></label>
+                      <input type="date" value={evtDate} onChange={e => setEvtDate(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-slate-400 mb-1">Start Time <span className="text-red-400">*</span></label>
+                      <input type="time" value={evtStartTime} onChange={e => setEvtStartTime(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-slate-400 mb-1">End Time</label>
+                      <input type="time" value={evtEndTime} onChange={e => setEvtEndTime(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1">Description</label>
+                    <textarea value={evtDescription} onChange={e => setEvtDescription(e.target.value)} rows={3} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none resize-none" placeholder="Describe your event..." />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm text-slate-400 mb-1">Drink Specials</label>
+                      <input type="text" value={evtDrinkSpecials} onChange={e => setEvtDrinkSpecials(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" placeholder="$5 margaritas" />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-slate-400 mb-1">Food Specials</label>
+                      <input type="text" value={evtFoodSpecials} onChange={e => setEvtFoodSpecials(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" placeholder="Half-price apps" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm text-slate-400 mb-1">Cover Charge ($)</label>
+                      <input type="number" value={evtCoverCharge} onChange={e => setEvtCoverCharge(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" placeholder="0" />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-slate-400 mb-1">Age Restriction</label>
+                      <select value={evtAgeRestriction} onChange={e => setEvtAgeRestriction(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none">
+                        <option value="all">All Ages</option>
+                        <option value="18+">18+</option>
+                        <option value="21+">21+</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm text-slate-400 mb-1">Capacity</label>
+                      <input type="number" value={evtCapacity} onChange={e => setEvtCapacity(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" placeholder="Unlimited" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1">Event Image URL</label>
+                    <input type="url" value={evtImageUrl} onChange={e => setEvtImageUrl(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" placeholder="https://..." />
+                  </div>
+                  <button onClick={handleCreateEvent} disabled={loading || !evtName || !evtDate || !evtStartTime} className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-semibold rounded-lg hover:from-orange-600 hover:to-amber-600 transition disabled:opacity-50">
+                    {loading ? 'Submitting...' : 'Submit for Approval'}
+                  </button>
+                  <p className="text-center text-slate-500 text-sm">Events typically get approved within 24 hours</p>
+                </div>
+              </div>
+            )}
+
+            {/* AUDIENCE VIEW */}
+            {currentView === 'audience' && (
+              <div className="space-y-6">
+                <div><h1 className="text-2xl font-bold text-white">Audience Insights</h1><p className="text-slate-400">Anonymous demographic data</p></div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-slate-800 rounded-xl p-5 border border-slate-700"><p className="text-slate-400 text-sm">Total Reach</p><p className="text-3xl font-bold text-white mt-1">{analytics.totalViews.toLocaleString()}</p></div>
+                  <div className="bg-slate-800 rounded-xl p-5 border border-slate-700"><p className="text-slate-400 text-sm">Engaged Users</p><p className="text-3xl font-bold text-white mt-1">{analytics.totalRsvps}</p></div>
+                  <div className="bg-slate-800 rounded-xl p-5 border border-slate-700"><p className="text-slate-400 text-sm">Attendance</p><p className="text-3xl font-bold text-white mt-1">{analytics.totalCheckins}</p></div>
+                </div>
+                <div className="bg-gradient-to-r from-orange-500/10 to-amber-500/10 rounded-xl p-6 border border-orange-500/30">
+                  <h2 className="font-semibold text-white mb-4">Estimated Revenue Impact</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div><p className="text-slate-400 text-sm">From Check-ins</p><p className="text-3xl font-bold text-orange-400">${analytics.estimatedRevenue.toLocaleString()}</p><p className="text-slate-500 text-xs mt-1">Based on ${AVG_SPEND}/person</p></div>
+                    <div><p className="text-slate-400 text-sm">Value Per View</p><p className="text-3xl font-bold text-white">${analytics.valuePerView}</p></div>
+                    <div><p className="text-slate-400 text-sm">Conversion</p><p className="text-3xl font-bold text-emerald-400">{analytics.conversionRate}%</p></div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* VENUE VIEW */}
+            {currentView === 'venue' && venue && (
+              <div className="max-w-2xl space-y-6">
+                <h1 className="text-2xl font-bold text-white">Venue Settings</h1>
+                <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
+                  <div className="flex items-center gap-4 pb-4 border-b border-slate-700 mb-4">
+                    <div className="w-16 h-16 bg-slate-700 rounded-xl flex items-center justify-center text-3xl">{VENUE_TYPES.find(t => t.id === venue.venue_type)?.icon || '🏢'}</div>
+                    <div><h2 className="text-xl font-bold text-white">{venue.name}</h2><p className="text-slate-400">{venue.neighborhood}</p></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div><p className="text-slate-500">Address</p><p className="text-white">{venue.address || '-'}</p></div>
+                    <div><p className="text-slate-500">Phone</p><p className="text-white">{venue.phone || '-'}</p></div>
+                    <div><p className="text-slate-500">Website</p><p className="text-white">{venue.website || '-'}</p></div>
+                    <div><p className="text-slate-500">Support Email</p><p className="text-white">{venue.support_email || '-'}</p></div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* HOST CREWQ VIEW */}
+            {currentView === 'host-crewq' && (
+              <div className="flex items-center justify-center min-h-[60vh]">
+                <div className="text-center max-w-md">
+                  <div className="w-20 h-20 bg-gradient-to-br from-orange-500 to-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-6"><Star className="w-10 h-10 text-white" /></div>
+                  <h1 className="text-2xl font-bold text-white mb-2">Host a CrewQ Event</h1>
+                  <p className="text-slate-400 mb-6">Want more visibility? Partner with CrewQ to host a featured event and reach 10x more users!</p>
+                  <div className="inline-block px-4 py-2 bg-amber-500/20 text-amber-400 rounded-full text-sm font-medium">🚀 Coming Soon</div>
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
-      {/* Toast */}
-      {toast && (
-        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg ${
-          toast.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'
-        } text-white max-w-sm`}>
-          {toast.message}
-        </div>
-      )}
+      {toast && <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg ${toast.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'} text-white max-w-sm`}>{toast.message}</div>}
     </div>
   );
 }
-
-// Need to add these icons to imports in main file:
-// BarChart3, DollarSign, Star
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState('discover');
