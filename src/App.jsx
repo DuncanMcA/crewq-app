@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Heart, X, Share2, Bell, BellOff, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle, Trash2, Eye, EyeOff, Shield, Sparkles, ExternalLink, Globe, UtensilsCrossed, Award, Trophy, Star, Flame, Music, Mic, Beer, Coffee, Utensils, Sunrise, Moon, Key, Crown, Zap, Target, Navigation, Map, Filter, Car, Building2, Plus } from 'lucide-react';
+import { Heart, X, Share2, Bell, BellOff, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle, Trash2, Eye, EyeOff, Shield, Sparkles, ExternalLink, Globe, UtensilsCrossed, Award, Trophy, Star, Flame, Music, Mic, Beer, Coffee, Utensils, Sunrise, Moon, Key, Crown, Zap, Target, Navigation, Map, Filter, Car, Building2, Plus, BarChart3, DollarSign } from 'lucide-react';
 
 // Theme color configuration
 // Dark mode: Purple neon nighttime vibe
@@ -6310,31 +6310,107 @@ function AdminPortal({ onClose, userEmail }) {
     const [time, setTime] = useState('');
     const [specials, setSpecials] = useState('');
     const [desc, setDesc] = useState('');
+    const [imageUrl, setImageUrl] = useState('');
     const approvedVenues = establishments.filter(e => e.status === 'approved');
+    
     const handleSubmit = () => {
-      const venue = establishments.find(e => e.id === venueId);
-      if (!name || !date || !time || !venue) { showToastMsg('Fill required fields', 'error'); return; }
-      handleCreateEvent({ name, date, time, venue: venue.name, neighborhood: venue.neighborhood, establishment_id: venue.id, category: cat, type: evtType || 'Event', drink_specials: specials, description: desc, status: 'live' });
+      // Use String() for comparison to handle UUID types
+      const venue = establishments.find(e => String(e.id) === String(venueId));
+      
+      if (!name) { showToastMsg('Please enter an event name', 'error'); return; }
+      if (!date) { showToastMsg('Please select a date', 'error'); return; }
+      if (!time) { showToastMsg('Please select a time', 'error'); return; }
+      if (!venue) { showToastMsg('Please select a venue', 'error'); return; }
+      
+      handleCreateEvent({ 
+        name, 
+        date, 
+        time, 
+        venue: venue.name, 
+        neighborhood: venue.neighborhood, 
+        establishment_id: venue.id, 
+        category: cat, 
+        type: evtType || 'Event', 
+        drink_specials: specials, 
+        description: desc, 
+        image_url: imageUrl,
+        status: 'live',
+        views: 0,
+        rsvps: 0,
+        checkins: 0
+      });
     };
+    
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-4"><button onClick={() => setCurrentView('dashboard')} className="p-2 hover:bg-gray-800 rounded-lg"><ChevronLeft className="w-5 h-5 text-gray-400" /></button><div><h1 className="text-xl font-bold text-white">Create Event</h1></div></div>
-        <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 space-y-4">
-          <div><label className="block text-sm text-gray-400 mb-2">Venue *</label>{approvedVenues.length === 0 ? <p className="text-amber-400 text-sm">No venues. <button onClick={() => setCurrentView('create-venue')} className="underline">Create one</button></p> : <select value={venueId} onChange={e => setVenueId(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white"><option value="">Choose...</option>{approvedVenues.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</select>}</div>
-          <div><label className="block text-sm text-gray-400 mb-2">Name *</label><input value={name} onChange={e => setName(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="Event name" /></div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className="block text-sm text-gray-400 mb-2">Category</label><select value={cat} onChange={e => { setCat(e.target.value); setEvtType(''); }} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white"><option value="">Select...</option>{BUSINESS_EVENT_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
-            <div><label className="block text-sm text-gray-400 mb-2">Type</label><select value={evtType} onChange={e => setEvtType(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" disabled={!cat}><option value="">Select...</option>{cat && BUSINESS_EVENT_TYPES[cat]?.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className="block text-sm text-gray-400 mb-2">Date *</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" /></div>
-            <div><label className="block text-sm text-gray-400 mb-2">Time *</label><input type="time" value={time} onChange={e => setTime(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" /></div>
-          </div>
-          <div><label className="block text-sm text-gray-400 mb-2">Specials</label><input value={specials} onChange={e => setSpecials(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="$5 drinks" /></div>
-          <div><label className="block text-sm text-gray-400 mb-2">Description</label><textarea value={desc} onChange={e => setDesc(e.target.value)} rows={2} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" /></div>
-          <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg"><p className="text-emerald-400 text-sm">✓ Goes live immediately</p></div>
+        <div className="flex items-center gap-4">
+          <button onClick={() => setCurrentView('dashboard')} className="p-2 hover:bg-gray-800 rounded-lg">
+            <ChevronLeft className="w-5 h-5 text-gray-400" />
+          </button>
+          <div><h1 className="text-xl font-bold text-white">Create Event</h1></div>
         </div>
-        <div className="flex gap-3"><button onClick={() => setCurrentView('dashboard')} className="flex-1 px-4 py-3 border border-gray-600 text-gray-400 rounded-xl">Cancel</button><button onClick={handleSubmit} disabled={!approvedVenues.length} className="flex-1 px-4 py-3 bg-emerald-500 text-white rounded-xl font-semibold disabled:opacity-50">Create</button></div>
+        <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 space-y-4">
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">Venue *</label>
+            {approvedVenues.length === 0 ? (
+              <p className="text-amber-400 text-sm">No approved venues. <button onClick={() => setCurrentView('create-venue')} className="underline">Create one first</button></p>
+            ) : (
+              <select value={venueId} onChange={e => setVenueId(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white">
+                <option value="">Choose a venue...</option>
+                {approvedVenues.map(v => <option key={v.id} value={v.id}>{v.name} - {v.neighborhood}</option>)}
+              </select>
+            )}
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">Event Name *</label>
+            <input value={name} onChange={e => setName(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="e.g., Friday Happy Hour" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Category</label>
+              <select value={cat} onChange={e => { setCat(e.target.value); setEvtType(''); }} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white">
+                <option value="">Select...</option>
+                {BUSINESS_EVENT_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Type</label>
+              <select value={evtType} onChange={e => setEvtType(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" disabled={!cat}>
+                <option value="">Select...</option>
+                {cat && BUSINESS_EVENT_TYPES[cat]?.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Date *</label>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Time *</label>
+              <input type="time" value={time} onChange={e => setTime(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">Drink Specials</label>
+            <input value={specials} onChange={e => setSpecials(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="e.g., $5 margaritas" />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">Description</label>
+            <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={2} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="Describe your event..." />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">Event Image URL</label>
+            <input value={imageUrl} onChange={e => setImageUrl(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="https://example.com/image.jpg" />
+          </div>
+          <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
+            <p className="text-emerald-400 text-sm">✓ Event goes live immediately</p>
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={() => setCurrentView('dashboard')} className="flex-1 px-4 py-3 border border-gray-600 text-gray-400 rounded-xl">Cancel</button>
+          <button onClick={handleSubmit} disabled={!approvedVenues.length} className="flex-1 px-4 py-3 bg-emerald-500 text-white rounded-xl font-semibold disabled:opacity-50">Create Event</button>
+        </div>
       </div>
     );
   };
@@ -6426,349 +6502,1544 @@ function AdminPortal({ onClose, userEmail }) {
   );
 }
 
-function BusinessPortalLogin({ onClose, darkMode }) {
-  const [mode, setMode] = useState('login'); // 'login' or 'signup'
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [businessName, setBusinessName] = useState('');
-  const [contactName, setContactName] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [loggedInUser, setLoggedInUser] = useState(null);
+// ============================================
+// CREWQ BUSINESS PORTAL - Comprehensive Business Management
+// Desktop-optimized with sidebar navigation
+// ============================================
 
-  const handleLogin = async () => {
-    if (!email || !password) { setError('Enter email and password'); return; }
-    setLoading(true); setError('');
+// Expanded Event Categories with "Other" option
+const BUSINESS_EVENT_CATEGORIES_EXPANDED = [
+  { id: 'nightlife', name: 'Nightlife', icon: '🌙' },
+  { id: 'social', name: 'Social', icon: '👥' },
+  { id: 'food_drink', name: 'Food & Drink', icon: '🍽️' },
+  { id: 'entertainment', name: 'Entertainment', icon: '🎭' },
+  { id: 'sports', name: 'Sports', icon: '⚽' },
+  { id: 'wellness', name: 'Wellness', icon: '💪' },
+  { id: 'professional', name: 'Professional', icon: '💼' },
+  { id: 'cultural', name: 'Cultural', icon: '🎨' },
+  { id: 'special', name: 'Special Interest', icon: '⭐' },
+  { id: 'other', name: 'Other', icon: '📌' },
+];
+
+const BUSINESS_EVENT_TYPES_EXPANDED = {
+  nightlife: ['Happy Hour', 'DJ Night', 'Live Music', 'Ladies Night', 'Karaoke', 'Industry Night', 'Club Night', 'Late Night', 'Other'],
+  social: ['Trivia Night', 'Game Night', 'Watch Party', 'Speed Dating', 'Singles Mixer', 'Meetup', 'Networking Social', 'Other'],
+  food_drink: ['Wine Tasting', 'Beer Tasting', 'Cocktail Class', 'Food Pairing', 'Brunch', 'Dinner Event', 'Tasting Menu', 'Other'],
+  entertainment: ['Comedy Show', 'Open Mic', 'Live Performance', 'Drag Show', 'Burlesque', 'Magic Show', 'Improv Night', 'Other'],
+  sports: ['Watch Party', 'Game Day', 'Fantasy Draft', 'Sports Trivia', 'Viewing Party', 'Tournament', 'Other'],
+  wellness: ['Yoga & Brunch', 'Sober Social', 'Meditation', 'Fitness Class', 'Wellness Workshop', 'Sound Bath', 'Other'],
+  professional: ['Networking Event', 'Corporate Happy Hour', 'Business Mixer', 'Industry Event', 'Seminar', 'Workshop', 'Other'],
+  cultural: ['Art Night', 'Gallery Opening', 'Cultural Celebration', 'Heritage Event', 'Film Screening', 'Book Club', 'Other'],
+  special: ['Themed Party', 'Holiday Event', 'Anniversary', 'Launch Party', 'Private Event', 'Charity Event', 'Other'],
+  other: ['Custom Event', 'Private Booking', 'Special Occasion', 'Other'],
+};
+
+const VENUE_TYPES_EXPANDED = [
+  { id: 'bar', label: 'Bar', icon: '🍺' },
+  { id: 'restaurant', label: 'Restaurant', icon: '🍽️' },
+  { id: 'club', label: 'Nightclub', icon: '🎵' },
+  { id: 'lounge', label: 'Lounge', icon: '🛋️' },
+  { id: 'brewery', label: 'Brewery', icon: '🍻' },
+  { id: 'rooftop', label: 'Rooftop', icon: '🌃' },
+  { id: 'sports_bar', label: 'Sports Bar', icon: '⚽' },
+  { id: 'wine_bar', label: 'Wine Bar', icon: '🍷' },
+  { id: 'cocktail_bar', label: 'Cocktail Bar', icon: '🍸' },
+  { id: 'cafe', label: 'Café', icon: '☕' },
+  { id: 'event_space', label: 'Event Space', icon: '🎪' },
+  { id: 'other', label: 'Other', icon: '🏢' },
+];
+
+const AGE_RESTRICTIONS = [
+  { id: 'all', label: 'All Ages' },
+  { id: '18+', label: '18+' },
+  { id: '21+', label: '21+' },
+];
+
+const DRESS_CODES = [
+  { id: 'casual', label: 'Casual' },
+  { id: 'smart_casual', label: 'Smart Casual' },
+  { id: 'business_casual', label: 'Business Casual' },
+  { id: 'cocktail', label: 'Cocktail Attire' },
+  { id: 'formal', label: 'Formal' },
+  { id: 'themed', label: 'Themed' },
+  { id: 'none', label: 'No Dress Code' },
+];
+
+const MUSIC_GENRES = [
+  'Top 40', 'Hip Hop', 'R&B', 'EDM', 'House', 'Techno', 'Latin', 'Country', 
+  'Rock', 'Jazz', 'Acoustic', 'Live Band', 'DJ Mix', 'None', 'Other'
+];
+
+// Average spend per person (will be variable later)
+const AVG_SPEND_PER_PERSON = 25;
+
+function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOODS }) {
+  // Main state
+  const [currentView, setCurrentView] = useState('dashboard');
+  const [businessUser, setBusinessUser] = useState(null);
+  const [venue, setVenue] = useState(null);
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  
+  // Onboarding state
+  const [onboardingStep, setOnboardingStep] = useState(0);
+  const [onboardingData, setOnboardingData] = useState({
+    venueName: '',
+    venueType: '',
+    neighborhood: '',
+    address: '',
+    phone: '',
+    website: '',
+    supportEmail: '',
+    description: ''
+  });
+  
+  // Auth state
+  const [authMode, setAuthMode] = useState('login');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authConfirmPassword, setAuthConfirmPassword] = useState('');
+  const [authName, setAuthName] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState('');
+  
+  // Event creation state
+  const [eventForm, setEventForm] = useState({
+    name: '',
+    category: '',
+    type: '',
+    date: '',
+    startTime: '',
+    endTime: '',
+    description: '',
+    coverCharge: '',
+    drinkSpecials: '',
+    foodSpecials: '',
+    ageRestriction: '21+',
+    dressCode: 'casual',
+    musicGenre: '',
+    capacity: '',
+    imageUrl: '',
+    recurring: false,
+    recurringType: 'weekly'
+  });
+  const [imageFile, setImageFile] = useState(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  const showToastMsg = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  // Load business user data
+  const loadBusinessData = async (userId) => {
     try {
-      const { data, error: err } = await supabaseClient
-        .from('establishment_users')
-        .select('*, establishment:establishments(*)')
-        .eq('email', email.toLowerCase())
+      // Load venue
+      const { data: venueData } = await supabaseClient
+        .from('establishments')
+        .select('*')
+        .eq('owner_id', userId)
         .single();
-      if (err || !data) { setError('Invalid email or password'); setLoading(false); return; }
-      if (data.password_hash !== password) { setError('Invalid email or password'); setLoading(false); return; }
-      setLoggedInUser(data);
-    } catch { setError('Login failed. Please try again.'); }
+      
+      if (venueData) {
+        setVenue(venueData);
+        
+        // Load events for this venue
+        const { data: eventsData } = await supabaseClient
+          .from('events')
+          .select('*')
+          .eq('establishment_id', venueData.id)
+          .order('date', { ascending: false });
+        
+        setEvents(eventsData || []);
+      }
+    } catch (err) {
+      console.error('Error loading business data:', err);
+    }
     setLoading(false);
+  };
+
+  // Auth handlers
+  const handleLogin = async () => {
+    if (!authEmail || !authPassword) {
+      setAuthError('Please enter email and password');
+      return;
+    }
+    setAuthLoading(true);
+    setAuthError('');
+    
+    try {
+      const { data, error } = await supabaseClient
+        .from('establishment_users')
+        .select('*')
+        .eq('email', authEmail.toLowerCase())
+        .single();
+      
+      if (error || !data) {
+        setAuthError('Invalid email or password');
+        setAuthLoading(false);
+        return;
+      }
+      
+      if (data.password_hash !== authPassword) {
+        setAuthError('Invalid email or password');
+        setAuthLoading(false);
+        return;
+      }
+      
+      setBusinessUser(data);
+      
+      // Check if onboarding complete
+      if (!data.onboarding_complete) {
+        setCurrentView('onboarding');
+      } else {
+        await loadBusinessData(data.id);
+        setCurrentView('dashboard');
+      }
+    } catch (err) {
+      setAuthError('Login failed. Please try again.');
+    }
+    setAuthLoading(false);
   };
 
   const handleSignup = async () => {
-    setError('');
-    if (!email || !password || !confirmPassword) { 
-      setError('Please fill in all required fields'); 
-      return; 
+    setAuthError('');
+    
+    if (!authEmail || !authPassword || !authConfirmPassword) {
+      setAuthError('Please fill in all required fields');
+      return;
     }
-    if (password !== confirmPassword) { 
-      setError('Passwords do not match'); 
-      return; 
+    if (authPassword !== authConfirmPassword) {
+      setAuthError('Passwords do not match');
+      return;
     }
-    if (password.length < 6) { 
-      setError('Password must be at least 6 characters'); 
-      return; 
+    if (authPassword.length < 6) {
+      setAuthError('Password must be at least 6 characters');
+      return;
     }
     
-    setLoading(true);
+    setAuthLoading(true);
+    
     try {
-      // Check if email already exists
+      // Check if email exists
       const { data: existing } = await supabaseClient
         .from('establishment_users')
         .select('email')
-        .eq('email', email.toLowerCase())
+        .eq('email', authEmail.toLowerCase())
         .single();
       
       if (existing) {
-        setError('An account with this email already exists');
-        setLoading(false);
+        setAuthError('An account with this email already exists');
+        setAuthLoading(false);
         return;
       }
-
-      // Create a pending establishment if business name provided
-      let establishmentId = null;
-      if (businessName.trim()) {
-        const { data: estData, error: estError } = await supabaseClient
-          .from('establishments')
-          .insert([{
-            name: businessName.trim(),
-            status: 'pending',
-            neighborhood: 'TBD'
-          }])
-          .select()
-          .single();
-        
-        if (estData) {
-          establishmentId = estData.id;
-        }
-      }
-
-      // Create the business user account
+      
+      // Create business user
       const { data: userData, error: userError } = await supabaseClient
         .from('establishment_users')
         .insert([{
-          email: email.toLowerCase(),
-          password_hash: password, // In production, this should be properly hashed
-          name: contactName.trim() || email.split('@')[0],
-          establishment_id: establishmentId,
-          role: 'owner'
+          email: authEmail.toLowerCase(),
+          password_hash: authPassword,
+          name: authName || authEmail.split('@')[0],
+          role: 'owner',
+          onboarding_complete: false
         }])
-        .select('*, establishment:establishments(*)')
+        .select()
         .single();
-
+      
       if (userError) throw userError;
-
-      setSuccess('Account created successfully!');
-      setTimeout(() => {
-        setLoggedInUser(userData);
-        setSuccess('');
-      }, 1500);
-
+      
+      setBusinessUser(userData);
+      setCurrentView('onboarding');
+      showToastMsg('Account created! Let\'s set up your venue.', 'success');
     } catch (err) {
       console.error('Signup error:', err);
-      setError('Failed to create account. Please try again.');
+      setAuthError('Failed to create account. Please try again.');
+    }
+    setAuthLoading(false);
+  };
+
+  // Onboarding handler
+  const handleOnboardingComplete = async () => {
+    if (!onboardingData.venueName || !onboardingData.address || !onboardingData.phone || !onboardingData.supportEmail) {
+      showToastMsg('Please fill in all required fields', 'error');
+      return;
+    }
+    
+    setLoading(true);
+    
+    try {
+      // Create venue
+      const { data: venueData, error: venueError } = await supabaseClient
+        .from('establishments')
+        .insert([{
+          name: onboardingData.venueName,
+          venue_type: onboardingData.venueType,
+          neighborhood: onboardingData.neighborhood,
+          address: onboardingData.address,
+          phone: onboardingData.phone,
+          website: onboardingData.website,
+          support_email: onboardingData.supportEmail,
+          description: onboardingData.description,
+          owner_id: businessUser.id,
+          status: 'approved' // Auto-approved
+        }])
+        .select()
+        .single();
+      
+      if (venueError) throw venueError;
+      
+      // Update user as onboarding complete
+      await supabaseClient
+        .from('establishment_users')
+        .update({ 
+          onboarding_complete: true,
+          establishment_id: venueData.id 
+        })
+        .eq('id', businessUser.id);
+      
+      setVenue(venueData);
+      setBusinessUser({ ...businessUser, onboarding_complete: true, establishment_id: venueData.id });
+      showToastMsg('🎉 You\'re all set! Start creating events to attract customers.', 'success');
+      setCurrentView('dashboard');
+    } catch (err) {
+      console.error('Onboarding error:', err);
+      showToastMsg('Failed to complete setup. Please try again.', 'error');
     }
     setLoading(false);
   };
 
-  // Business Dashboard (after login)
-  if (loggedInUser) {
-    const establishment = loggedInUser.establishment;
-    return (
-      <div className={`fixed inset-0 z-50 ${darkMode ? 'bg-black' : 'bg-white'}`}>
-        <div className={`h-full max-w-md mx-auto ${darkMode ? 'bg-zinc-950' : 'bg-white'} flex flex-col`}>
-          <div className={`px-4 py-4 border-b ${darkMode ? 'border-zinc-800' : 'border-gray-200'} flex justify-between items-center`}>
-            <div>
-              <h2 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                {establishment?.name || 'Business Dashboard'}
-              </h2>
-              <p className={`text-sm ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>{loggedInUser.email}</p>
-            </div>
-            <button onClick={onClose}><X className={`w-6 h-6 ${darkMode ? 'text-zinc-400' : 'text-gray-600'}`} /></button>
-          </div>
-          
-          <div className="flex-1 p-6 overflow-y-auto">
-            <div className="text-center mb-6">
-              <div className={`w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-4 ${darkMode ? 'bg-zinc-800' : 'bg-gray-100'}`}>
-                <Building2 className={`w-10 h-10 ${darkMode ? 'text-orange-400' : 'text-orange-500'}`} />
-              </div>
-              <h1 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                Welcome, {loggedInUser.name}!
-              </h1>
-            </div>
-
-            {establishment ? (
-              <div className="space-y-4">
-                <div className={`p-4 rounded-xl ${darkMode ? 'bg-zinc-900 border border-zinc-800' : 'bg-gray-50 border border-gray-200'}`}>
-                  <h3 className={`font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Venue Status</h3>
-                  <div className="flex items-center justify-between">
-                    <span className={darkMode ? 'text-zinc-400' : 'text-gray-600'}>{establishment.name}</span>
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      establishment.status === 'approved' 
-                        ? 'bg-emerald-500/20 text-emerald-400' 
-                        : 'bg-amber-500/20 text-amber-400'
-                    }`}>
-                      {establishment.status === 'approved' ? 'Active' : 'Pending Approval'}
-                    </span>
-                  </div>
-                </div>
-
-                {establishment.status === 'pending' && (
-                  <div className={`p-4 rounded-xl ${darkMode ? 'bg-amber-500/10 border border-amber-500/30' : 'bg-amber-50 border border-amber-200'}`}>
-                    <p className={`text-sm ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>
-                      Your venue is pending approval. You'll be notified once it's approved and you can start creating events.
-                    </p>
-                  </div>
-                )}
-
-                {establishment.status === 'approved' && (
-                  <div className="space-y-3">
-                    <button className="w-full p-4 bg-orange-500 text-white rounded-xl font-semibold flex items-center justify-center gap-2">
-                      <Calendar className="w-5 h-5" />
-                      Create Event
-                    </button>
-                    <button className={`w-full p-4 rounded-xl font-semibold flex items-center justify-center gap-2 ${darkMode ? 'bg-zinc-800 text-white' : 'bg-gray-100 text-gray-900'}`}>
-                      <Eye className="w-5 h-5" />
-                      View Analytics
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className={`p-4 rounded-xl ${darkMode ? 'bg-zinc-900 border border-zinc-800' : 'bg-gray-50 border border-gray-200'}`}>
-                <h3 className={`font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>No Venue Linked</h3>
-                <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-gray-600'}`}>
-                  Contact us to link your business account to a venue.
-                </p>
-              </div>
-            )}
-
-            <div className={`mt-6 p-4 rounded-xl ${darkMode ? 'bg-zinc-900' : 'bg-gray-50'}`}>
-              <h3 className={`font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Need Help?</h3>
-              <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-gray-600'}`}>
-                Contact us at <a href="mailto:business@crewq.com" className="text-orange-500">business@crewq.com</a>
-              </p>
-            </div>
-          </div>
-
-          <div className={`p-4 border-t ${darkMode ? 'border-zinc-800' : 'border-gray-200'}`}>
-            <button 
-              onClick={() => setLoggedInUser(null)}
-              className={`w-full p-3 rounded-xl text-sm ${darkMode ? 'text-zinc-500 hover:text-zinc-300' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              Sign Out
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Login / Signup Form
-  return (
-    <div className={`fixed inset-0 z-50 ${darkMode ? 'bg-black' : 'bg-white'}`}>
-      <div className={`h-full max-w-md mx-auto ${darkMode ? 'bg-zinc-950' : 'bg-white'} flex flex-col`}>
-        <div className={`px-4 py-4 border-b ${darkMode ? 'border-zinc-800' : 'border-gray-200'} flex justify-between`}>
-          <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Business Portal</h2>
-          <button onClick={onClose}><X className={`w-6 h-6 ${darkMode ? 'text-zinc-400' : 'text-gray-600'}`} /></button>
-        </div>
+  // Event handlers
+  const handleCreateEvent = async () => {
+    if (!eventForm.name || !eventForm.date || !eventForm.startTime) {
+      showToastMsg('Please fill in required fields (Name, Date, Time)', 'error');
+      return;
+    }
+    
+    setLoading(true);
+    
+    try {
+      let imageUrl = eventForm.imageUrl;
+      
+      // Upload image if file selected
+      if (imageFile) {
+        setUploadingImage(true);
+        const fileName = `event-${Date.now()}-${imageFile.name}`;
+        const { data: uploadData, error: uploadError } = await supabaseClient.storage
+          .from('event-images')
+          .upload(fileName, imageFile);
         
-        <div className="flex-1 p-6 flex flex-col justify-center overflow-y-auto">
-          <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
+        if (uploadError) {
+          console.error('Image upload error:', uploadError);
+        } else {
+          const { data: urlData } = supabaseClient.storage
+            .from('event-images')
+            .getPublicUrl(fileName);
+          imageUrl = urlData.publicUrl;
+        }
+        setUploadingImage(false);
+      }
+      
+      const eventData = {
+        name: eventForm.name,
+        venue: venue.name,
+        neighborhood: venue.neighborhood,
+        establishment_id: venue.id,
+        category: eventForm.category,
+        type: eventForm.type || 'Event',
+        date: eventForm.date,
+        time: eventForm.startTime,
+        end_time: eventForm.endTime,
+        description: eventForm.description,
+        cover_charge: eventForm.coverCharge ? parseFloat(eventForm.coverCharge) : 0,
+        drink_specials: eventForm.drinkSpecials,
+        food_specials: eventForm.foodSpecials,
+        age_restriction: eventForm.ageRestriction,
+        dress_code: eventForm.dressCode,
+        music_genre: eventForm.musicGenre,
+        capacity: eventForm.capacity ? parseInt(eventForm.capacity) : null,
+        image_url: imageUrl,
+        recurring: eventForm.recurring,
+        recurring_type: eventForm.recurring ? eventForm.recurringType : null,
+        status: 'pending', // Requires admin approval
+        views: 0,
+        rsvps: 0,
+        checkins: 0
+      };
+      
+      const { data, error } = await supabaseClient
+        .from('events')
+        .insert([eventData])
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      setEvents([data, ...events]);
+      showToastMsg('Event submitted for approval! You\'ll be notified when it goes live.', 'success');
+      
+      // Reset form
+      setEventForm({
+        name: '', category: '', type: '', date: '', startTime: '', endTime: '',
+        description: '', coverCharge: '', drinkSpecials: '', foodSpecials: '',
+        ageRestriction: '21+', dressCode: 'casual', musicGenre: '', capacity: '',
+        imageUrl: '', recurring: false, recurringType: 'weekly'
+      });
+      setImageFile(null);
+      setCurrentView('events');
+    } catch (err) {
+      console.error('Event creation error:', err);
+      showToastMsg('Failed to create event. Please try again.', 'error');
+    }
+    setLoading(false);
+  };
+
+  // Calculate analytics
+  const getAnalytics = () => {
+    const totalViews = events.reduce((sum, e) => sum + (e.views || 0), 0);
+    const totalRsvps = events.reduce((sum, e) => sum + (e.rsvps || 0), 0);
+    const totalCheckins = events.reduce((sum, e) => sum + (e.checkins || 0), 0);
+    const liveEvents = events.filter(e => e.status === 'live' || e.status === 'approved');
+    const pendingEvents = events.filter(e => e.status === 'pending');
+    
+    const estimatedRevenue = totalCheckins * AVG_SPEND_PER_PERSON;
+    const conversionRate = totalViews > 0 ? ((totalRsvps / totalViews) * 100).toFixed(1) : 0;
+    const checkInRate = totalRsvps > 0 ? ((totalCheckins / totalRsvps) * 100).toFixed(1) : 0;
+    const valuePerView = totalViews > 0 ? (estimatedRevenue / totalViews).toFixed(2) : 0;
+    
+    return {
+      totalViews,
+      totalRsvps,
+      totalCheckins,
+      liveEvents: liveEvents.length,
+      pendingEvents: pendingEvents.length,
+      totalEvents: events.length,
+      estimatedRevenue,
+      conversionRate,
+      checkInRate,
+      valuePerView
+    };
+  };
+
+  // ==================== RENDER COMPONENTS ====================
+
+  // Auth Screen
+  const AuthScreen = () => (
+    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        <div className="bg-slate-800 rounded-2xl p-8 shadow-2xl border border-slate-700">
+          {/* Logo */}
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-gradient-to-br from-orange-500 to-amber-500 rounded-xl flex items-center justify-center mx-auto mb-4">
               <Building2 className="w-8 h-8 text-white" />
             </div>
-            <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-              Crew<span className="text-orange-500">Q</span> Business
+            <h1 className="text-2xl font-bold text-white">
+              Crew<span className="text-orange-500">Q</span> <span className="text-slate-400 font-normal">Business</span>
             </h1>
-            <p className={`mt-2 ${darkMode ? 'text-zinc-400' : 'text-gray-600'}`}>
-              {mode === 'login' ? 'Sign in to manage your venue' : 'Create your business account'}
-            </p>
+            <p className="text-slate-400 mt-2 text-sm">Venue Management Portal</p>
           </div>
 
           {/* Tab Switcher */}
-          <div className={`flex rounded-xl p-1 mb-6 ${darkMode ? 'bg-zinc-900' : 'bg-gray-100'}`}>
-            <button 
-              onClick={() => { setMode('login'); setError(''); setSuccess(''); }}
-              className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${
-                mode === 'login' 
-                  ? 'bg-orange-500 text-white' 
-                  : darkMode ? 'text-zinc-400' : 'text-gray-600'
+          <div className="flex bg-slate-700/50 rounded-lg p-1 mb-6">
+            <button
+              onClick={() => { setAuthMode('login'); setAuthError(''); }}
+              className={`flex-1 py-2 text-sm font-medium rounded-md transition ${
+                authMode === 'login' ? 'bg-orange-500 text-white' : 'text-slate-400 hover:text-white'
               }`}
             >
               Sign In
             </button>
-            <button 
-              onClick={() => { setMode('signup'); setError(''); setSuccess(''); }}
-              className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${
-                mode === 'signup' 
-                  ? 'bg-orange-500 text-white' 
-                  : darkMode ? 'text-zinc-400' : 'text-gray-600'
+            <button
+              onClick={() => { setAuthMode('signup'); setAuthError(''); }}
+              className={`flex-1 py-2 text-sm font-medium rounded-md transition ${
+                authMode === 'signup' ? 'bg-orange-500 text-white' : 'text-slate-400 hover:text-white'
               }`}
             >
-              Sign Up
+              Create Account
             </button>
           </div>
 
+          {/* Form */}
           <div className="space-y-4">
-            {mode === 'signup' && (
-              <>
-                <div>
-                  <label className={`block text-sm mb-1 ${darkMode ? 'text-zinc-400' : 'text-gray-700'}`}>
-                    Business Name <span className="text-zinc-500">(optional)</span>
-                  </label>
-                  <input 
-                    type="text" 
-                    value={businessName} 
-                    onChange={e => setBusinessName(e.target.value)} 
-                    className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-zinc-900 border-zinc-700 text-white' : 'bg-white border-gray-300'}`}
-                    placeholder="Your venue or business name"
-                  />
-                </div>
-                <div>
-                  <label className={`block text-sm mb-1 ${darkMode ? 'text-zinc-400' : 'text-gray-700'}`}>
-                    Your Name <span className="text-zinc-500">(optional)</span>
-                  </label>
-                  <input 
-                    type="text" 
-                    value={contactName} 
-                    onChange={e => setContactName(e.target.value)} 
-                    className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-zinc-900 border-zinc-700 text-white' : 'bg-white border-gray-300'}`}
-                    placeholder="Contact name"
-                  />
-                </div>
-              </>
+            {authMode === 'signup' && (
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Your Name</label>
+                <input
+                  type="text"
+                  value={authName}
+                  onChange={e => setAuthName(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none"
+                  placeholder="John Smith"
+                />
+              </div>
             )}
 
             <div>
-              <label className={`block text-sm mb-1 ${darkMode ? 'text-zinc-400' : 'text-gray-700'}`}>
-                Email <span className="text-red-500">*</span>
-              </label>
-              <input 
-                type="email" 
-                value={email} 
-                onChange={e => setEmail(e.target.value)} 
-                className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-zinc-900 border-zinc-700 text-white' : 'bg-white border-gray-300'}`}
-                placeholder="business@example.com"
+              <label className="block text-sm text-slate-400 mb-1">Email <span className="text-red-400">*</span></label>
+              <input
+                type="email"
+                value={authEmail}
+                onChange={e => setAuthEmail(e.target.value)}
+                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none"
+                placeholder="you@business.com"
               />
             </div>
 
             <div>
-              <label className={`block text-sm mb-1 ${darkMode ? 'text-zinc-400' : 'text-gray-700'}`}>
-                Password <span className="text-red-500">*</span>
-              </label>
-              <input 
-                type="password" 
-                value={password} 
-                onChange={e => setPassword(e.target.value)} 
-                className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-zinc-900 border-zinc-700 text-white' : 'bg-white border-gray-300'}`}
+              <label className="block text-sm text-slate-400 mb-1">Password <span className="text-red-400">*</span></label>
+              <input
+                type="password"
+                value={authPassword}
+                onChange={e => setAuthPassword(e.target.value)}
+                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none"
                 placeholder="••••••••"
               />
             </div>
 
-            {mode === 'signup' && (
+            {authMode === 'signup' && (
               <div>
-                <label className={`block text-sm mb-1 ${darkMode ? 'text-zinc-400' : 'text-gray-700'}`}>
-                  Confirm Password <span className="text-red-500">*</span>
-                </label>
-                <input 
-                  type="password" 
-                  value={confirmPassword} 
-                  onChange={e => setConfirmPassword(e.target.value)} 
-                  className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-zinc-900 border-zinc-700 text-white' : 'bg-white border-gray-300'}`}
+                <label className="block text-sm text-slate-400 mb-1">Confirm Password <span className="text-red-400">*</span></label>
+                <input
+                  type="password"
+                  value={authConfirmPassword}
+                  onChange={e => setAuthConfirmPassword(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none"
                   placeholder="••••••••"
                 />
               </div>
             )}
 
-            {error && (
-              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30">
-                <p className="text-red-500 text-sm text-center">{error}</p>
+            {authError && (
+              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                <p className="text-red-400 text-sm text-center">{authError}</p>
               </div>
             )}
 
-            {success && (
-              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
-                <p className="text-emerald-500 text-sm text-center">{success}</p>
-              </div>
-            )}
-
-            <button 
-              onClick={mode === 'login' ? handleLogin : handleSignup} 
-              disabled={loading} 
-              className="w-full bg-orange-500 text-white py-3 rounded-xl font-semibold disabled:opacity-50 transition hover:bg-orange-600"
+            <button
+              onClick={authMode === 'login' ? handleLogin : handleSignup}
+              disabled={authLoading}
+              className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-semibold rounded-lg hover:from-orange-600 hover:to-amber-600 transition disabled:opacity-50"
             >
-              {loading ? (mode === 'login' ? 'Signing in...' : 'Creating account...') : (mode === 'login' ? 'Sign In' : 'Create Account')}
+              {authLoading ? 'Please wait...' : (authMode === 'login' ? 'Sign In' : 'Create Account')}
             </button>
           </div>
 
-          <p className={`text-center text-sm mt-6 ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>
-            Questions? Contact <a href="mailto:business@crewq.com" className="text-orange-500">business@crewq.com</a>
+          <p className="text-center text-sm text-slate-500 mt-6">
+            Need help? <a href="mailto:business@crewq.com" className="text-orange-500 hover:underline">business@crewq.com</a>
           </p>
+        </div>
+
+        <button
+          onClick={onClose}
+          className="w-full mt-4 py-2 text-slate-500 hover:text-slate-300 text-sm"
+        >
+          ← Back to CrewQ
+        </button>
+      </div>
+    </div>
+  );
+
+  // Onboarding Screen
+  const OnboardingScreen = () => (
+    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+      <div className="w-full max-w-lg">
+        <div className="bg-slate-800 rounded-2xl p-8 shadow-2xl border border-slate-700">
+          <div className="text-center mb-6">
+            <h1 className="text-2xl font-bold text-white">Set Up Your Venue</h1>
+            <p className="text-slate-400 mt-2">Complete your profile to start creating events</p>
+          </div>
+
+          {/* Progress */}
+          <div className="flex gap-2 mb-8">
+            {[0, 1, 2].map(i => (
+              <div key={i} className={`flex-1 h-1 rounded-full ${onboardingStep >= i ? 'bg-orange-500' : 'bg-slate-700'}`} />
+            ))}
+          </div>
+
+          {onboardingStep === 0 && (
+            <div className="space-y-4">
+              <h2 className="text-lg font-semibold text-white">Basic Information</h2>
+              
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Venue Name <span className="text-red-400">*</span></label>
+                <input
+                  type="text"
+                  value={onboardingData.venueName}
+                  onChange={e => setOnboardingData({...onboardingData, venueName: e.target.value})}
+                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
+                  placeholder="The Rustic"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Venue Type</label>
+                <select
+                  value={onboardingData.venueType}
+                  onChange={e => setOnboardingData({...onboardingData, venueType: e.target.value})}
+                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
+                >
+                  <option value="">Select type...</option>
+                  {VENUE_TYPES_EXPANDED.map(t => (
+                    <option key={t.id} value={t.id}>{t.icon} {t.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Neighborhood</label>
+                <select
+                  value={onboardingData.neighborhood}
+                  onChange={e => setOnboardingData({...onboardingData, neighborhood: e.target.value})}
+                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
+                >
+                  <option value="">Select neighborhood...</option>
+                  {DALLAS_NEIGHBORHOODS.map(n => (
+                    <option key={n.id} value={n.name}>{n.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                onClick={() => setOnboardingStep(1)}
+                disabled={!onboardingData.venueName}
+                className="w-full py-3 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition disabled:opacity-50"
+              >
+                Continue
+              </button>
+            </div>
+          )}
+
+          {onboardingStep === 1 && (
+            <div className="space-y-4">
+              <h2 className="text-lg font-semibold text-white">Contact Details</h2>
+              
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Address <span className="text-red-400">*</span></label>
+                <input
+                  type="text"
+                  value={onboardingData.address}
+                  onChange={e => setOnboardingData({...onboardingData, address: e.target.value})}
+                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
+                  placeholder="123 Main St, Dallas, TX 75201"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Phone Number <span className="text-red-400">*</span></label>
+                <input
+                  type="tel"
+                  value={onboardingData.phone}
+                  onChange={e => setOnboardingData({...onboardingData, phone: e.target.value})}
+                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
+                  placeholder="(214) 555-1234"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Website</label>
+                <input
+                  type="url"
+                  value={onboardingData.website}
+                  onChange={e => setOnboardingData({...onboardingData, website: e.target.value})}
+                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
+                  placeholder="https://yourvenue.com"
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setOnboardingStep(0)}
+                  className="flex-1 py-3 border border-slate-600 text-slate-400 rounded-lg hover:bg-slate-700 transition"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={() => setOnboardingStep(2)}
+                  disabled={!onboardingData.address || !onboardingData.phone}
+                  className="flex-1 py-3 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition disabled:opacity-50"
+                >
+                  Continue
+                </button>
+              </div>
+            </div>
+          )}
+
+          {onboardingStep === 2 && (
+            <div className="space-y-4">
+              <h2 className="text-lg font-semibold text-white">Support & Description</h2>
+              
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Support Email <span className="text-red-400">*</span></label>
+                <input
+                  type="email"
+                  value={onboardingData.supportEmail}
+                  onChange={e => setOnboardingData({...onboardingData, supportEmail: e.target.value})}
+                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
+                  placeholder="support@yourvenue.com"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Description</label>
+                <textarea
+                  value={onboardingData.description}
+                  onChange={e => setOnboardingData({...onboardingData, description: e.target.value})}
+                  rows={3}
+                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none resize-none"
+                  placeholder="Tell customers about your venue..."
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setOnboardingStep(1)}
+                  className="flex-1 py-3 border border-slate-600 text-slate-400 rounded-lg hover:bg-slate-700 transition"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={handleOnboardingComplete}
+                  disabled={!onboardingData.supportEmail || loading}
+                  className="flex-1 py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-semibold rounded-lg hover:from-orange-600 hover:to-amber-600 transition disabled:opacity-50"
+                >
+                  {loading ? 'Setting up...' : 'Complete Setup'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
+
+  // Sidebar Navigation
+  const Sidebar = () => (
+    <div className={`bg-slate-900 border-r border-slate-800 flex flex-col transition-all ${sidebarCollapsed ? 'w-16' : 'w-64'}`}>
+      {/* Logo */}
+      <div className="p-4 border-b border-slate-800">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-amber-500 rounded-lg flex items-center justify-center flex-shrink-0">
+            <Building2 className="w-5 h-5 text-white" />
+          </div>
+          {!sidebarCollapsed && (
+            <div>
+              <h1 className="font-bold text-white">Crew<span className="text-orange-500">Q</span></h1>
+              <p className="text-xs text-slate-500">Business</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Nav Items */}
+      <nav className="flex-1 p-2 space-y-1">
+        {[
+          { id: 'dashboard', icon: BarChart3, label: 'Dashboard' },
+          { id: 'events', icon: Calendar, label: 'Events' },
+          { id: 'create-event', icon: Plus, label: 'Create Event' },
+          { id: 'audience', icon: Users, label: 'Audience' },
+          { id: 'venue', icon: Building2, label: 'Venue' },
+          { id: 'host-crewq', icon: Star, label: 'Host a CrewQ' },
+        ].map(item => (
+          <button
+            key={item.id}
+            onClick={() => setCurrentView(item.id)}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition ${
+              currentView === item.id 
+                ? 'bg-orange-500/20 text-orange-400' 
+                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <item.icon className="w-5 h-5 flex-shrink-0" />
+            {!sidebarCollapsed && <span className="text-sm font-medium">{item.label}</span>}
+          </button>
+        ))}
+      </nav>
+
+      {/* Bottom */}
+      <div className="p-2 border-t border-slate-800">
+        <button
+          onClick={() => setCurrentView('settings')}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition ${
+            currentView === 'settings' ? 'bg-orange-500/20 text-orange-400' : ''
+          }`}
+        >
+          <Settings className="w-5 h-5 flex-shrink-0" />
+          {!sidebarCollapsed && <span className="text-sm font-medium">Settings</span>}
+        </button>
+        
+        <button
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          className="w-full flex items-center justify-center gap-3 px-3 py-2.5 rounded-lg text-slate-500 hover:bg-slate-800 hover:text-white transition mt-1"
+        >
+          {sidebarCollapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
+        </button>
+      </div>
+    </div>
+  );
+
+  // Dashboard View
+  const DashboardView = () => {
+    const analytics = getAnalytics();
+    
+    return (
+      <div className="p-6 space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+            <p className="text-slate-400">{venue?.name || 'Your Venue'}</p>
+          </div>
+          <button
+            onClick={() => setCurrentView('create-event')}
+            className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"
+          >
+            <Plus className="w-4 h-4" />
+            Create Event
+          </button>
+        </div>
+
+        {/* Stats Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
+            <div className="flex items-center justify-between mb-3">
+              <Eye className="w-8 h-8 text-blue-400" />
+              <span className="text-xs text-slate-500">Total</span>
+            </div>
+            <p className="text-3xl font-bold text-white">{analytics.totalViews.toLocaleString()}</p>
+            <p className="text-slate-400 text-sm">Event Views</p>
+          </div>
+
+          <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
+            <div className="flex items-center justify-between mb-3">
+              <Users className="w-8 h-8 text-emerald-400" />
+              <span className="text-xs text-emerald-400">+{analytics.conversionRate}%</span>
+            </div>
+            <p className="text-3xl font-bold text-white">{analytics.totalRsvps.toLocaleString()}</p>
+            <p className="text-slate-400 text-sm">RSVPs</p>
+          </div>
+
+          <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
+            <div className="flex items-center justify-between mb-3">
+              <CheckCircle className="w-8 h-8 text-amber-400" />
+              <span className="text-xs text-amber-400">{analytics.checkInRate}%</span>
+            </div>
+            <p className="text-3xl font-bold text-white">{analytics.totalCheckins.toLocaleString()}</p>
+            <p className="text-slate-400 text-sm">Check-ins</p>
+          </div>
+
+          <div className="bg-gradient-to-br from-orange-500/20 to-amber-500/20 rounded-xl p-5 border border-orange-500/30">
+            <div className="flex items-center justify-between mb-3">
+              <DollarSign className="w-8 h-8 text-orange-400" />
+              <span className="text-xs text-orange-400">Estimated</span>
+            </div>
+            <p className="text-3xl font-bold text-white">${analytics.estimatedRevenue.toLocaleString()}</p>
+            <p className="text-slate-400 text-sm">Impact</p>
+          </div>
+        </div>
+
+        {/* Value Metrics */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
+            <p className="text-slate-400 text-sm mb-1">Value Per View</p>
+            <p className="text-2xl font-bold text-white">${analytics.valuePerView}</p>
+            <p className="text-xs text-slate-500 mt-1">Based on check-in conversions</p>
+          </div>
+          <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
+            <p className="text-slate-400 text-sm mb-1">Live Events</p>
+            <p className="text-2xl font-bold text-emerald-400">{analytics.liveEvents}</p>
+            <p className="text-xs text-slate-500 mt-1">{analytics.pendingEvents} pending approval</p>
+          </div>
+          <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
+            <p className="text-slate-400 text-sm mb-1">Avg. Spend Per Guest</p>
+            <p className="text-2xl font-bold text-white">${AVG_SPEND_PER_PERSON}</p>
+            <p className="text-xs text-slate-500 mt-1">Industry average</p>
+          </div>
+        </div>
+
+        {/* Recent Events */}
+        <div className="bg-slate-800 rounded-xl border border-slate-700">
+          <div className="p-4 border-b border-slate-700 flex justify-between items-center">
+            <h2 className="font-semibold text-white">Recent Events</h2>
+            <button onClick={() => setCurrentView('events')} className="text-orange-400 text-sm hover:underline">View All</button>
+          </div>
+          <div className="divide-y divide-slate-700">
+            {events.slice(0, 5).map(event => (
+              <div key={event.id} className="p-4 flex items-center gap-4">
+                <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
+                  event.status === 'pending' ? 'bg-amber-500/20' : 'bg-emerald-500/20'
+                }`}>
+                  <Calendar className={`w-6 h-6 ${event.status === 'pending' ? 'text-amber-400' : 'text-emerald-400'}`} />
+                </div>
+                <div className="flex-1">
+                  <p className="text-white font-medium">{event.name}</p>
+                  <p className="text-slate-500 text-sm">{event.date} • {event.time}</p>
+                </div>
+                <div className="text-right">
+                  <span className={`px-2 py-1 rounded-full text-xs ${
+                    event.status === 'pending' ? 'bg-amber-500/20 text-amber-400' : 
+                    event.status === 'live' || event.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400' :
+                    'bg-slate-600 text-slate-400'
+                  }`}>
+                    {event.status === 'approved' ? 'Live' : event.status}
+                  </span>
+                </div>
+                <div className="text-right min-w-[80px]">
+                  <p className="text-white font-medium">{event.views || 0}</p>
+                  <p className="text-slate-500 text-xs">views</p>
+                </div>
+              </div>
+            ))}
+            {events.length === 0 && (
+              <div className="p-8 text-center">
+                <Calendar className="w-12 h-12 mx-auto text-slate-600 mb-3" />
+                <p className="text-slate-500">No events yet</p>
+                <button onClick={() => setCurrentView('create-event')} className="text-orange-400 mt-2 hover:underline">
+                  Create your first event
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Create Event View
+  const CreateEventView = () => (
+    <div className="p-6 max-w-4xl">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-white">Create Event</h1>
+        <p className="text-slate-400">Events require admin approval before going live</p>
+      </div>
+
+      <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 space-y-6">
+        {/* Basic Info */}
+        <div>
+          <h2 className="text-lg font-semibold text-white mb-4">Basic Information</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2">
+              <label className="block text-sm text-slate-400 mb-1">Event Name <span className="text-red-400">*</span></label>
+              <input
+                type="text"
+                value={eventForm.name}
+                onChange={e => setEventForm({...eventForm, name: e.target.value})}
+                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
+                placeholder="Friday Happy Hour"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Category</label>
+              <select
+                value={eventForm.category}
+                onChange={e => setEventForm({...eventForm, category: e.target.value, type: ''})}
+                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
+              >
+                <option value="">Select category...</option>
+                {BUSINESS_EVENT_CATEGORIES_EXPANDED.map(c => (
+                  <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Event Type</label>
+              <select
+                value={eventForm.type}
+                onChange={e => setEventForm({...eventForm, type: e.target.value})}
+                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
+                disabled={!eventForm.category}
+              >
+                <option value="">Select type...</option>
+                {eventForm.category && BUSINESS_EVENT_TYPES_EXPANDED[eventForm.category]?.map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Date & Time */}
+        <div>
+          <h2 className="text-lg font-semibold text-white mb-4">Date & Time</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Date <span className="text-red-400">*</span></label>
+              <input
+                type="date"
+                value={eventForm.date}
+                onChange={e => setEventForm({...eventForm, date: e.target.value})}
+                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Start Time <span className="text-red-400">*</span></label>
+              <input
+                type="time"
+                value={eventForm.startTime}
+                onChange={e => setEventForm({...eventForm, startTime: e.target.value})}
+                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">End Time</label>
+              <input
+                type="time"
+                value={eventForm.endTime}
+                onChange={e => setEventForm({...eventForm, endTime: e.target.value})}
+                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Recurring */}
+          <div className="mt-4 flex items-center gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={eventForm.recurring}
+                onChange={e => setEventForm({...eventForm, recurring: e.target.checked})}
+                className="w-4 h-4 rounded border-slate-600 text-orange-500 focus:ring-orange-500"
+              />
+              <span className="text-slate-300 text-sm">Recurring event</span>
+            </label>
+            {eventForm.recurring && (
+              <select
+                value={eventForm.recurringType}
+                onChange={e => setEventForm({...eventForm, recurringType: e.target.value})}
+                className="px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm focus:border-orange-500 outline-none"
+              >
+                <option value="weekly">Weekly</option>
+                <option value="biweekly">Bi-weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            )}
+          </div>
+        </div>
+
+        {/* Details */}
+        <div>
+          <h2 className="text-lg font-semibold text-white mb-4">Event Details</h2>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Description</label>
+              <textarea
+                value={eventForm.description}
+                onChange={e => setEventForm({...eventForm, description: e.target.value})}
+                rows={3}
+                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none resize-none"
+                placeholder="Describe your event..."
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Cover Charge ($)</label>
+                <input
+                  type="number"
+                  value={eventForm.coverCharge}
+                  onChange={e => setEventForm({...eventForm, coverCharge: e.target.value})}
+                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
+                  placeholder="0 for free"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Age Restriction</label>
+                <select
+                  value={eventForm.ageRestriction}
+                  onChange={e => setEventForm({...eventForm, ageRestriction: e.target.value})}
+                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
+                >
+                  {AGE_RESTRICTIONS.map(a => (
+                    <option key={a.id} value={a.id}>{a.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Capacity</label>
+                <input
+                  type="number"
+                  value={eventForm.capacity}
+                  onChange={e => setEventForm({...eventForm, capacity: e.target.value})}
+                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
+                  placeholder="Leave blank for unlimited"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Dress Code</label>
+                <select
+                  value={eventForm.dressCode}
+                  onChange={e => setEventForm({...eventForm, dressCode: e.target.value})}
+                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
+                >
+                  {DRESS_CODES.map(d => (
+                    <option key={d.id} value={d.id}>{d.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Music Genre</label>
+                <select
+                  value={eventForm.musicGenre}
+                  onChange={e => setEventForm({...eventForm, musicGenre: e.target.value})}
+                  className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
+                >
+                  <option value="">Select genre...</option>
+                  {MUSIC_GENRES.map(g => (
+                    <option key={g} value={g}>{g}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Specials */}
+        <div>
+          <h2 className="text-lg font-semibold text-white mb-4">Specials & Promotions</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Drink Specials</label>
+              <input
+                type="text"
+                value={eventForm.drinkSpecials}
+                onChange={e => setEventForm({...eventForm, drinkSpecials: e.target.value})}
+                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
+                placeholder="$5 margaritas, 2-for-1 beers"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Food Specials</label>
+              <input
+                type="text"
+                value={eventForm.foodSpecials}
+                onChange={e => setEventForm({...eventForm, foodSpecials: e.target.value})}
+                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
+                placeholder="Half-price appetizers"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Image */}
+        <div>
+          <h2 className="text-lg font-semibold text-white mb-4">Event Image</h2>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Upload Image</label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={e => setImageFile(e.target.files[0])}
+                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-orange-500 file:text-white file:cursor-pointer"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Or paste image URL</label>
+              <input
+                type="url"
+                value={eventForm.imageUrl}
+                onChange={e => setEventForm({...eventForm, imageUrl: e.target.value})}
+                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none"
+                placeholder="https://..."
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Submit */}
+        <div className="flex items-center gap-4 pt-4 border-t border-slate-700">
+          <button
+            onClick={handleCreateEvent}
+            disabled={loading || !eventForm.name || !eventForm.date || !eventForm.startTime}
+            className="flex-1 py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-semibold rounded-lg hover:from-orange-600 hover:to-amber-600 transition disabled:opacity-50"
+          >
+            {loading ? 'Submitting...' : 'Submit for Approval'}
+          </button>
+        </div>
+
+        <p className="text-center text-slate-500 text-sm">
+          Events typically get approved within 24 hours
+        </p>
+      </div>
+    </div>
+  );
+
+  // Events List View
+  const EventsView = () => (
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Events</h1>
+          <p className="text-slate-400">{events.length} total events</p>
+        </div>
+        <button
+          onClick={() => setCurrentView('create-event')}
+          className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"
+        >
+          <Plus className="w-4 h-4" />
+          Create Event
+        </button>
+      </div>
+
+      <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+        <table className="w-full">
+          <thead className="bg-slate-750">
+            <tr className="border-b border-slate-700">
+              <th className="text-left p-4 text-slate-400 text-sm font-medium">Event</th>
+              <th className="text-left p-4 text-slate-400 text-sm font-medium">Date</th>
+              <th className="text-left p-4 text-slate-400 text-sm font-medium">Status</th>
+              <th className="text-right p-4 text-slate-400 text-sm font-medium">Views</th>
+              <th className="text-right p-4 text-slate-400 text-sm font-medium">RSVPs</th>
+              <th className="text-right p-4 text-slate-400 text-sm font-medium">Est. Impact</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-700">
+            {events.map(event => (
+              <tr key={event.id} className="hover:bg-slate-750 transition">
+                <td className="p-4">
+                  <p className="text-white font-medium">{event.name}</p>
+                  <p className="text-slate-500 text-sm">{event.type || event.category}</p>
+                </td>
+                <td className="p-4 text-slate-300">{event.date}</td>
+                <td className="p-4">
+                  <span className={`px-2 py-1 rounded-full text-xs ${
+                    event.status === 'pending' ? 'bg-amber-500/20 text-amber-400' :
+                    event.status === 'live' || event.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400' :
+                    'bg-slate-600 text-slate-400'
+                  }`}>
+                    {event.status === 'approved' ? 'Live' : event.status}
+                  </span>
+                </td>
+                <td className="p-4 text-right text-slate-300">{(event.views || 0).toLocaleString()}</td>
+                <td className="p-4 text-right text-slate-300">{event.rsvps || 0}</td>
+                <td className="p-4 text-right text-emerald-400">${((event.checkins || 0) * AVG_SPEND_PER_PERSON).toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {events.length === 0 && (
+          <div className="p-12 text-center">
+            <Calendar className="w-16 h-16 mx-auto text-slate-600 mb-4" />
+            <p className="text-slate-400 mb-2">No events yet</p>
+            <button onClick={() => setCurrentView('create-event')} className="text-orange-400 hover:underline">
+              Create your first event →
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // Audience View
+  const AudienceView = () => {
+    const analytics = getAnalytics();
+    
+    // Mock demographic data (would come from real data later)
+    const demographics = {
+      ageGroups: [
+        { label: '21-25', percentage: 35 },
+        { label: '26-30', percentage: 40 },
+        { label: '31-35', percentage: 15 },
+        { label: '36+', percentage: 10 },
+      ],
+      vibes: [
+        { name: 'Chill', count: 45 },
+        { name: 'Party', count: 38 },
+        { name: 'Social', count: 32 },
+        { name: 'Upscale', count: 28 },
+        { name: 'Casual', count: 25 },
+      ]
+    };
+
+    return (
+      <div className="p-6 space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Audience Insights</h1>
+          <p className="text-slate-400">Anonymous demographic data from your events</p>
+        </div>
+
+        {/* Overview */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
+            <p className="text-slate-400 text-sm">Total Reach</p>
+            <p className="text-3xl font-bold text-white mt-1">{analytics.totalViews.toLocaleString()}</p>
+            <p className="text-slate-500 text-xs mt-1">unique views</p>
+          </div>
+          <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
+            <p className="text-slate-400 text-sm">Engaged Users</p>
+            <p className="text-3xl font-bold text-white mt-1">{analytics.totalRsvps}</p>
+            <p className="text-slate-500 text-xs mt-1">RSVPs across all events</p>
+          </div>
+          <div className="bg-slate-800 rounded-xl p-5 border border-slate-700">
+            <p className="text-slate-400 text-sm">Actual Attendance</p>
+            <p className="text-3xl font-bold text-white mt-1">{analytics.totalCheckins}</p>
+            <p className="text-slate-500 text-xs mt-1">verified check-ins</p>
+          </div>
+        </div>
+
+        {/* Demographics */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+            <h2 className="font-semibold text-white mb-4">Age Distribution</h2>
+            <div className="space-y-3">
+              {demographics.ageGroups.map(group => (
+                <div key={group.label}>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-slate-400">{group.label}</span>
+                    <span className="text-white">{group.percentage}%</span>
+                  </div>
+                  <div className="h-2 bg-slate-700 rounded-full">
+                    <div 
+                      className="h-full bg-gradient-to-r from-orange-500 to-amber-500 rounded-full"
+                      style={{ width: `${group.percentage}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+            <h2 className="font-semibold text-white mb-4">Popular Vibes</h2>
+            <div className="flex flex-wrap gap-2">
+              {demographics.vibes.map(vibe => (
+                <span key={vibe.name} className="px-3 py-2 bg-slate-700 rounded-lg text-sm">
+                  <span className="text-white">{vibe.name}</span>
+                  <span className="text-slate-500 ml-2">({vibe.count})</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Revenue Impact */}
+        <div className="bg-gradient-to-r from-orange-500/10 to-amber-500/10 rounded-xl p-6 border border-orange-500/30">
+          <h2 className="font-semibold text-white mb-4">Estimated Revenue Impact</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div>
+              <p className="text-slate-400 text-sm">Projected from Check-ins</p>
+              <p className="text-3xl font-bold text-orange-400">${analytics.estimatedRevenue.toLocaleString()}</p>
+              <p className="text-slate-500 text-xs mt-1">Based on ${AVG_SPEND_PER_PERSON}/person avg</p>
+            </div>
+            <div>
+              <p className="text-slate-400 text-sm">Value Per View</p>
+              <p className="text-3xl font-bold text-white">${analytics.valuePerView}</p>
+              <p className="text-slate-500 text-xs mt-1">Revenue generated per impression</p>
+            </div>
+            <div>
+              <p className="text-slate-400 text-sm">Conversion Rate</p>
+              <p className="text-3xl font-bold text-emerald-400">{analytics.conversionRate}%</p>
+              <p className="text-slate-500 text-xs mt-1">Views → RSVPs</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Host CrewQ Event (Placeholder)
+  const HostCrewQView = () => (
+    <div className="p-6 flex items-center justify-center min-h-[60vh]">
+      <div className="text-center max-w-md">
+        <div className="w-20 h-20 bg-gradient-to-br from-orange-500 to-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
+          <Star className="w-10 h-10 text-white" />
+        </div>
+        <h1 className="text-2xl font-bold text-white mb-2">Host a CrewQ Event</h1>
+        <p className="text-slate-400 mb-6">
+          Want more visibility? Partner with CrewQ to host a featured event and reach 10x more users!
+        </p>
+        <div className="inline-block px-4 py-2 bg-amber-500/20 text-amber-400 rounded-full text-sm font-medium">
+          🚀 Coming Soon
+        </div>
+        <p className="text-slate-500 text-sm mt-6">
+          We're working on exclusive partnership opportunities. Stay tuned!
+        </p>
+      </div>
+    </div>
+  );
+
+  // Venue Settings View
+  const VenueView = () => (
+    <div className="p-6 max-w-2xl">
+      <h1 className="text-2xl font-bold text-white mb-6">Venue Settings</h1>
+      
+      {venue ? (
+        <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 space-y-4">
+          <div className="flex items-center gap-4 pb-4 border-b border-slate-700">
+            <div className="w-16 h-16 bg-slate-700 rounded-xl flex items-center justify-center text-3xl">
+              {VENUE_TYPES_EXPANDED.find(t => t.id === venue.venue_type)?.icon || '🏢'}
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-white">{venue.name}</h2>
+              <p className="text-slate-400">{venue.neighborhood}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Address</label>
+              <p className="text-white">{venue.address || '-'}</p>
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Phone</label>
+              <p className="text-white">{venue.phone || '-'}</p>
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Website</label>
+              <p className="text-white">{venue.website || '-'}</p>
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Support Email</label>
+              <p className="text-white">{venue.support_email || '-'}</p>
+            </div>
+          </div>
+
+          {venue.description && (
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Description</label>
+              <p className="text-slate-300">{venue.description}</p>
+            </div>
+          )}
+
+          <button className="w-full py-3 border border-slate-600 text-slate-400 rounded-lg hover:bg-slate-700 transition mt-4">
+            Edit Venue Details
+          </button>
+        </div>
+      ) : (
+        <p className="text-slate-500">No venue set up yet.</p>
+      )}
+    </div>
+  );
+
+  // Settings View
+  const SettingsView = () => (
+    <div className="p-6 max-w-2xl">
+      <h1 className="text-2xl font-bold text-white mb-6">Account Settings</h1>
+      
+      <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 space-y-4">
+        <div>
+          <label className="block text-sm text-slate-400 mb-1">Email</label>
+          <p className="text-white">{businessUser?.email}</p>
+        </div>
+        <div>
+          <label className="block text-sm text-slate-400 mb-1">Name</label>
+          <p className="text-white">{businessUser?.name}</p>
+        </div>
+
+        <div className="pt-4 border-t border-slate-700">
+          <button
+            onClick={() => {
+              setBusinessUser(null);
+              setVenue(null);
+              setEvents([]);
+              setCurrentView('auth');
+            }}
+            className="w-full py-3 border border-red-500/50 text-red-400 rounded-lg hover:bg-red-500/10 transition"
+          >
+            Sign Out
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ==================== MAIN RENDER ====================
+
+  // Show auth screen if not logged in
+  if (!businessUser) {
+    return (
+      <>
+        <AuthScreen />
+        {toast && (
+          <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg ${
+            toast.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'
+          } text-white`}>
+            {toast.message}
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // Show onboarding if not complete
+  if (!businessUser.onboarding_complete) {
+    return (
+      <>
+        <OnboardingScreen />
+        {toast && (
+          <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg ${
+            toast.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'
+          } text-white`}>
+            {toast.message}
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // Main dashboard layout
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-900 flex">
+      {/* Sidebar */}
+      <Sidebar />
+
+      {/* Main Content */}
+      <div className="flex-1 overflow-y-auto">
+        {/* Top Bar */}
+        <div className="bg-slate-800 border-b border-slate-700 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={onClose}
+              className="text-slate-400 hover:text-white transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <span className="text-slate-500">|</span>
+            <span className="text-slate-400">{venue?.name}</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-slate-400 text-sm">{businessUser?.email}</span>
+          </div>
+        </div>
+
+        {/* Content */}
+        {loading ? (
+          <div className="flex items-center justify-center h-64">
+            <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : (
+          <>
+            {currentView === 'dashboard' && <DashboardView />}
+            {currentView === 'events' && <EventsView />}
+            {currentView === 'create-event' && <CreateEventView />}
+            {currentView === 'audience' && <AudienceView />}
+            {currentView === 'venue' && <VenueView />}
+            {currentView === 'host-crewq' && <HostCrewQView />}
+            {currentView === 'settings' && <SettingsView />}
+          </>
+        )}
+      </div>
+
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg ${
+          toast.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'
+        } text-white max-w-sm`}>
+          {toast.message}
+        </div>
+      )}
+    </div>
+  );
 }
+
+// Need to add these icons to imports in main file:
+// BarChart3, DollarSign, Star
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState('discover');
@@ -8448,9 +9719,11 @@ const loadSquads = async (userId) => {
       <>
         <AuthScreen onAuth={handleAuth} onGoogleAuth={handleGoogleAuth} onOpenBusinessPortal={() => setShowBusinessPortal(true)} />
         {showBusinessPortal && (
-          <BusinessPortalLogin
+          <BusinessPortal
             onClose={() => setShowBusinessPortal(false)}
             darkMode={true}
+            supabaseClient={supabaseClient}
+            DALLAS_NEIGHBORHOODS={DALLAS_NEIGHBORHOODS}
           />
         )}
       </>
@@ -8909,9 +10182,11 @@ const loadSquads = async (userId) => {
 
         {/* Business Portal */}
         {showBusinessPortal && (
-          <BusinessPortalLogin
+          <BusinessPortal
             onClose={() => setShowBusinessPortal(false)}
             darkMode={darkMode}
+            supabaseClient={supabaseClient}
+            DALLAS_NEIGHBORHOODS={DALLAS_NEIGHBORHOODS}
           />
         )}
 
