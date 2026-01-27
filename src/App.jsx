@@ -5736,7 +5736,8 @@ export default function App() {
   const [mode, setMode] = useState('crew');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showShareModal, setShowShareModal] = useState(false);
-  const [events, setEvents] = useState([]);
+  const [events, setEvents] = useState([]); // Filtered events for discover feed
+  const [allEvents, setAllEvents] = useState([]); // All events for squads, map, etc.
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [crewMembers, setCrewMembers] = useState([]);
@@ -7152,9 +7153,12 @@ export default function App() {
       
       if (error) throw error;
       
+      // Store all events for squads, map, etc.
+      setAllEvents(data || []);
+      
       let filteredEvents = data || [];
       
-      // Filter out seen events if user is logged in
+      // Filter out seen events if user is logged in (for discover feed only)
       const effectiveUserId = userId || userProfile?.id;
       if (effectiveUserId) {
         const userKey = `crewq_${effectiveUserId}`;
@@ -7512,7 +7516,7 @@ const loadSquads = async (userId) => {
           {currentTab === 'search' && <AIChat userProfile={userProfile} />}
           {currentTab === 'events' && (
             <EventsTab 
-              events={events}
+              events={allEvents}
               likedEvents={likedEvents} 
               onEventClick={handleEventClick} 
               onUnlikeEvent={handleUnlikeEvent}
@@ -7620,7 +7624,7 @@ const loadSquads = async (userId) => {
             onClose={() => setShowCreateSquad(false)}
             onCreate={handleCreateSquad}
             userProfile={userProfile}
-            events={events}
+            events={allEvents}
           />
         )}
 
