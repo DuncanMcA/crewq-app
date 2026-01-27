@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Heart, X, Share2, Bell, BellOff, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle, Trash2, Eye, EyeOff, Shield, Sparkles, ExternalLink, Globe, UtensilsCrossed, Award, Trophy, Star, Flame, Music, Mic, Beer, Coffee, Utensils, Sunrise, Moon, Key, Crown, Zap, Target, Navigation, Map, Filter, Car, Building2, Plus, DollarSign, BarChart3 } from 'lucide-react';
+import { Heart, X, Share2, Bell, BellOff, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle, Trash2, Eye, EyeOff, Shield, Sparkles, ExternalLink, Globe, UtensilsCrossed, Award, Trophy, Star, Flame, Music, Mic, Beer, Coffee, Utensils, Sunrise, Moon, Key, Crown, Zap, Target, Navigation, Map, Filter, Car, Building2, Plus } from 'lucide-react';
 
 // Theme color configuration
 // Dark mode: Purple neon nighttime vibe
@@ -2797,18 +2797,14 @@ function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, 
             ))}
           </div>
 
-          {/* Admin Portal Button - Only visible to admins */}
+          {/* Admin Portal - Only for admins */}
           {isAdmin && (
             <button
               onClick={onOpenAdmin}
-              className={`w-full rounded-2xl p-4 text-left ${
-                darkMode ? 'bg-violet-500 bg-opacity-10' : 'bg-violet-50'
-              }`}
+              className={`w-full rounded-2xl p-4 text-left ${darkMode ? 'bg-violet-500 bg-opacity-10' : 'bg-violet-50'}`}
             >
               <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                  darkMode ? 'bg-violet-500 bg-opacity-20' : 'bg-violet-100'
-                }`}>
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${darkMode ? 'bg-violet-500 bg-opacity-20' : 'bg-violet-100'}`}>
                   <Shield className="w-5 h-5 text-violet-500" />
                 </div>
                 <div className="flex-1">
@@ -5465,7 +5461,7 @@ function AuthScreen({ onAuth, onGoogleAuth, onOpenBusinessPortal }) {
             {/* For Business Link */}
             <button
               onClick={onOpenBusinessPortal}
-              className={`w-full mt-6 py-3 text-sm ${textSecondaryClass} hover:${isNightMode ? 'text-violet-400' : 'text-orange-500'} transition flex items-center justify-center gap-2`}
+              className={`w-full mt-6 py-3 text-sm ${textSecondaryClass} hover:opacity-80 transition flex items-center justify-center gap-2`}
             >
               <Building2 className="w-4 h-4" />
               For Business
@@ -5800,7 +5796,8 @@ function GoogleOnboardingModal({ pendingUser, onComplete }) {
 }
 
 // ============================================
-// BUSINESS PORTAL & ADMIN PORTAL COMPONENTS
+// ENHANCED ADMIN PORTAL - CrewQ
+// Features: Clickable stats, Edit modals, User analytics, Detailed views
 // ============================================
 
 const BUSINESS_VENUE_TYPES = [
@@ -5828,7 +5825,6 @@ const BUSINESS_EVENT_TYPES = {
   special: ['Wine Tasting', 'Beer Tasting', 'Comedy Show', 'Art Night', 'Themed Party'],
 };
 
-// Admin email check
 const ADMIN_EMAILS = ['duncan.mcaloon@gmail.com'];
 
 const isAdminUser = async (email) => {
@@ -5836,24 +5832,24 @@ const isAdminUser = async (email) => {
   if (ADMIN_EMAILS.includes(email.toLowerCase())) return true;
   try {
     if (supabaseClient) {
-      const { data } = await supabaseClient
-        .from('admin_users')
-        .select('email')
-        .eq('email', email.toLowerCase())
-        .single();
+      const { data } = await supabaseClient.from('admin_users').select('email').eq('email', email.toLowerCase()).single();
       return !!data;
     }
   } catch { }
   return false;
 };
 
-// Admin Portal Component
 function AdminPortal({ onClose, userEmail }) {
   const [currentView, setCurrentView] = useState('dashboard');
   const [establishments, setEstablishments] = useState([]);
   const [events, setEvents] = useState([]);
+  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [selectedVenue, setSelectedVenue] = useState(null);
+  const [editingVenue, setEditingVenue] = useState(null);
+  const [editingEvent, setEditingEvent] = useState(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -5864,12 +5860,22 @@ function AdminPortal({ onClose, userEmail }) {
       setEstablishments(estData || []);
       const { data: evtData } = await supabaseClient.from('events').select('*').order('date', { ascending: false });
       setEvents(evtData || []);
+      const { data: userData } = await supabaseClient.from('users').select('*').order('created_at', { ascending: false });
+      setUsers(userData || []);
     } catch (error) { console.error('Error loading data:', error); }
     setLoading(false);
   };
 
-  const showToastMsg = (message, type = 'success') => { setToast({ message, type }); setTimeout(() => setToast(null), 3000); };
+  const showToastMsg = (msg, type = 'success') => { setToast({ message: msg, type }); setTimeout(() => setToast(null), 3000); };
 
+  const totalViews = events.reduce((sum, e) => sum + (e.views || 0), 0);
+  const totalRsvps = events.reduce((sum, e) => sum + (e.rsvps || 0), 0);
+  const totalCheckins = events.reduce((sum, e) => sum + (e.checkins || 0), 0);
+  const pendingVenues = establishments.filter(e => e.status === 'pending');
+  const liveEvents = events.filter(e => !e.status || e.status === 'live');
+  const topEvents = [...events].sort((a, b) => (b.views || 0) - (a.views || 0)).slice(0, 10);
+
+  // CRUD
   const handleCreateVenue = async (venueData) => {
     try {
       const { data, error } = await supabaseClient.from('establishments').insert([venueData]).select().single();
@@ -5877,7 +5883,28 @@ function AdminPortal({ onClose, userEmail }) {
       setEstablishments([data, ...establishments]);
       showToastMsg(`Venue "${venueData.name}" created!`);
       setCurrentView('venues');
-    } catch (error) { showToastMsg('Error creating venue', 'error'); }
+    } catch (err) { console.error(err); showToastMsg('Error creating venue', 'error'); }
+  };
+
+  const handleUpdateVenue = async (id, updates) => {
+    try {
+      const { data, error } = await supabaseClient.from('establishments').update(updates).eq('id', id).select().single();
+      if (error) throw error;
+      setEstablishments(establishments.map(e => e.id === id ? data : e));
+      showToastMsg('Venue updated!');
+      setEditingVenue(null);
+    } catch { showToastMsg('Error updating venue', 'error'); }
+  };
+
+  const handleDeleteVenue = async (id) => {
+    if (!confirm('Delete this venue?')) return;
+    try {
+      await supabaseClient.from('establishments').delete().eq('id', id);
+      setEstablishments(establishments.filter(e => e.id !== id));
+      showToastMsg('Venue deleted');
+      setSelectedVenue(null);
+      setCurrentView('venues');
+    } catch { showToastMsg('Error deleting venue', 'error'); }
   };
 
   const handleCreateEvent = async (eventData) => {
@@ -5887,273 +5914,553 @@ function AdminPortal({ onClose, userEmail }) {
       setEvents([data, ...events]);
       showToastMsg(`Event "${eventData.name}" created!`);
       setCurrentView('events');
-    } catch (error) { showToastMsg('Error creating event', 'error'); }
+    } catch (err) { console.error(err); showToastMsg('Error creating event', 'error'); }
   };
 
-  const handleApproveVenue = async (id) => {
+  const handleUpdateEvent = async (id, updates) => {
     try {
-      await supabaseClient.from('establishments').update({ status: 'approved' }).eq('id', id);
-      setEstablishments(establishments.map(e => e.id === id ? { ...e, status: 'approved' } : e));
-      showToastMsg('Venue approved!');
-    } catch (error) { console.error('Error:', error); }
+      const { data, error } = await supabaseClient.from('events').update(updates).eq('id', id).select().single();
+      if (error) throw error;
+      setEvents(events.map(e => e.id === id ? data : e));
+      showToastMsg('Event updated!');
+      setEditingEvent(null);
+      if (selectedEvent?.id === id) setSelectedEvent(data);
+    } catch { showToastMsg('Error updating event', 'error'); }
   };
 
-  // Dashboard
-  const AdminDashboard = () => {
-    const pendingVenues = establishments.filter(e => e.status === 'pending');
-    const totalViews = events.reduce((sum, e) => sum + (e.views || 0), 0);
+  const handleDeleteEvent = async (id) => {
+    if (!confirm('Delete this event?')) return;
+    try {
+      await supabaseClient.from('events').delete().eq('id', id);
+      setEvents(events.filter(e => e.id !== id));
+      showToastMsg('Event deleted');
+      setSelectedEvent(null);
+      setCurrentView('events');
+    } catch { showToastMsg('Error deleting event', 'error'); }
+  };
+
+  // ========== DASHBOARD ==========
+  const AdminDashboard = () => (
+    <div className="space-y-6">
+      <div><h1 className="text-2xl font-bold text-white">Admin Dashboard</h1><p className="text-gray-400">CrewQ Analytics & Management</p></div>
+      
+      <div className="grid grid-cols-2 gap-3">
+        <button onClick={() => setCurrentView('venues')} className="bg-gray-800 rounded-xl p-4 border border-gray-700 text-left hover:border-blue-500 transition">
+          <Building2 className="w-7 h-7 text-blue-400 mb-2" />
+          <p className="text-2xl font-bold text-white">{establishments.length}</p>
+          <p className="text-gray-400 text-sm">Venues</p>
+          {pendingVenues.length > 0 && <p className="text-amber-400 text-xs mt-1">{pendingVenues.length} pending</p>}
+        </button>
+        <button onClick={() => setCurrentView('events')} className="bg-gray-800 rounded-xl p-4 border border-gray-700 text-left hover:border-emerald-500 transition">
+          <Calendar className="w-7 h-7 text-emerald-400 mb-2" />
+          <p className="text-2xl font-bold text-white">{events.length}</p>
+          <p className="text-gray-400 text-sm">Events</p>
+          <p className="text-emerald-400 text-xs mt-1">{liveEvents.length} live</p>
+        </button>
+        <button onClick={() => setCurrentView('analytics-views')} className="bg-gray-800 rounded-xl p-4 border border-gray-700 text-left hover:border-purple-500 transition">
+          <Eye className="w-7 h-7 text-purple-400 mb-2" />
+          <p className="text-2xl font-bold text-white">{totalViews.toLocaleString()}</p>
+          <p className="text-gray-400 text-sm">Total Views</p>
+        </button>
+        <button onClick={() => setCurrentView('analytics-engagement')} className="bg-gray-800 rounded-xl p-4 border border-gray-700 text-left hover:border-amber-500 transition">
+          <Users className="w-7 h-7 text-amber-400 mb-2" />
+          <p className="text-2xl font-bold text-white">{totalRsvps}</p>
+          <p className="text-gray-400 text-sm">RSVPs</p>
+          <p className="text-amber-400 text-xs mt-1">{totalCheckins} check-ins</p>
+        </button>
+      </div>
+
+      <button onClick={() => setCurrentView('users')} className="w-full bg-gradient-to-r from-violet-600 to-purple-600 rounded-xl p-4 text-left hover:opacity-90 transition">
+        <div className="flex items-center justify-between">
+          <div><p className="text-white font-semibold">User Analytics</p><p className="text-violet-200 text-sm">{users.length} users</p></div>
+          <div className="text-right"><p className="text-2xl font-bold text-white">{users.filter(u => u.created_at && new Date(u.created_at) > new Date(Date.now() - 7*24*60*60*1000)).length}</p><p className="text-violet-200 text-xs">new this week</p></div>
+        </div>
+      </button>
+
+      <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+        <h2 className="font-semibold text-white mb-3">Quick Actions</h2>
+        <div className="grid grid-cols-2 gap-3">
+          <button onClick={() => setCurrentView('create-venue')} className="flex items-center gap-3 p-3 bg-blue-500/20 rounded-xl hover:bg-blue-500/30 border border-blue-500/30">
+            <Building2 className="w-5 h-5 text-blue-400" /><span className="text-white text-sm">Add Venue</span>
+          </button>
+          <button onClick={() => setCurrentView('create-event')} className="flex items-center gap-3 p-3 bg-emerald-500/20 rounded-xl hover:bg-emerald-500/30 border border-emerald-500/30">
+            <Calendar className="w-5 h-5 text-emerald-400" /><span className="text-white text-sm">Create Event</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-gray-800 rounded-xl border border-gray-700">
+        <div className="p-4 border-b border-gray-700 flex justify-between"><h2 className="font-semibold text-white">Recent Events</h2><button onClick={() => setCurrentView('events')} className="text-violet-400 text-sm">View All →</button></div>
+        <div className="divide-y divide-gray-700">
+          {events.slice(0, 5).map(evt => (
+            <button key={evt.id} onClick={() => { setSelectedEvent(evt); setCurrentView('event-detail'); }} className="w-full p-4 flex items-center gap-3 hover:bg-gray-750 text-left">
+              <div className="w-12 h-12 bg-gradient-to-br from-violet-500 to-purple-600 rounded-lg flex items-center justify-center"><Calendar className="w-6 h-6 text-white" /></div>
+              <div className="flex-1 min-w-0"><p className="text-white font-medium truncate">{evt.name}</p><p className="text-gray-500 text-xs">{evt.venue} • {evt.date}</p></div>
+              <div className="text-right text-xs"><div><span className="text-white font-medium">{evt.views || 0}</span><span className="text-gray-500 ml-1">views</span></div><div><span className="text-white font-medium">{evt.rsvps || 0}</span><span className="text-gray-500 ml-1">rsvps</span></div></div>
+              <ChevronRight className="w-4 h-4 text-gray-600" />
+            </button>
+          ))}
+          {events.length === 0 && <div className="p-8 text-center text-gray-500">No events yet</div>}
+        </div>
+      </div>
+
+      <div className="bg-gray-800 rounded-xl border border-gray-700">
+        <div className="p-4 border-b border-gray-700"><h2 className="font-semibold text-white">🔥 Top Events</h2></div>
+        <div className="p-4 space-y-3">
+          {topEvents.slice(0, 3).map((evt, i) => (
+            <button key={evt.id} onClick={() => { setSelectedEvent(evt); setCurrentView('event-detail'); }} className="w-full flex items-center gap-3 p-3 bg-gray-700/50 rounded-lg hover:bg-gray-700 text-left">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${i === 0 ? 'bg-amber-500 text-black' : i === 1 ? 'bg-gray-400 text-black' : 'bg-amber-700 text-white'}`}>{i + 1}</div>
+              <div className="flex-1 min-w-0"><p className="text-white font-medium truncate">{evt.name}</p><p className="text-gray-500 text-xs">{evt.venue}</p></div>
+              <div className="text-right"><p className="text-white font-medium">{(evt.views || 0).toLocaleString()}</p><p className="text-gray-500 text-xs">views</p></div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  // ========== ANALYTICS VIEWS ==========
+  const AnalyticsViews = () => {
+    const eventsByViews = [...events].sort((a, b) => (b.views || 0) - (a.views || 0));
+    const venueViews = {};
+    events.forEach(e => { venueViews[e.venue || 'Unknown'] = (venueViews[e.venue || 'Unknown'] || 0) + (e.views || 0); });
+    const sortedVenueViews = Object.entries(venueViews).sort((a, b) => b[1] - a[1]);
     return (
       <div className="space-y-6">
-        <div><h1 className="text-2xl font-bold text-white">Admin Dashboard</h1><p className="text-gray-400">CrewQ Business Portal</p></div>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-            <Building2 className="w-8 h-8 text-blue-400 mb-2" />
-            <p className="text-2xl font-bold text-white">{establishments.length}</p>
-            <p className="text-gray-400 text-sm">Venues</p>
-            {pendingVenues.length > 0 && <p className="text-amber-400 text-xs mt-1">{pendingVenues.length} pending</p>}
-          </div>
-          <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-            <Calendar className="w-8 h-8 text-emerald-400 mb-2" />
-            <p className="text-2xl font-bold text-white">{events.length}</p>
-            <p className="text-gray-400 text-sm">Events</p>
-          </div>
-          <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-            <Eye className="w-8 h-8 text-purple-400 mb-2" />
-            <p className="text-2xl font-bold text-white">{totalViews.toLocaleString()}</p>
-            <p className="text-gray-400 text-sm">Total Views</p>
-          </div>
-          <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-            <Users className="w-8 h-8 text-amber-400 mb-2" />
-            <p className="text-2xl font-bold text-white">{events.reduce((sum, e) => sum + (e.rsvps || 0), 0)}</p>
-            <p className="text-gray-400 text-sm">Total RSVPs</p>
-          </div>
+        <div className="flex items-center gap-4">
+          <button onClick={() => setCurrentView('dashboard')} className="p-2 hover:bg-gray-800 rounded-lg"><ChevronLeft className="w-5 h-5 text-gray-400" /></button>
+          <div><h1 className="text-xl font-bold text-white">Views Analytics</h1><p className="text-gray-400 text-sm">{totalViews.toLocaleString()} total</p></div>
         </div>
-        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-          <h2 className="font-semibold text-white mb-4">Quick Actions</h2>
-          <div className="grid grid-cols-2 gap-3">
-            <button onClick={() => setCurrentView('create-venue')} className="flex flex-col items-center gap-2 p-4 bg-blue-500 bg-opacity-20 rounded-xl hover:bg-opacity-30 border border-blue-500 border-opacity-30">
-              <Building2 className="w-6 h-6 text-blue-400" /><span className="text-white text-sm font-medium">Add Venue</span>
-            </button>
-            <button onClick={() => setCurrentView('create-event')} className="flex flex-col items-center gap-2 p-4 bg-emerald-500 bg-opacity-20 rounded-xl hover:bg-opacity-30 border border-emerald-500 border-opacity-30">
-              <Calendar className="w-6 h-6 text-emerald-400" /><span className="text-white text-sm font-medium">Create Event</span>
-            </button>
+        <div className="bg-gray-800 rounded-xl border border-gray-700 p-4">
+          <h3 className="text-white font-semibold mb-3">By Venue</h3>
+          <div className="space-y-3">
+            {sortedVenueViews.slice(0, 10).map(([venue, views], i) => (
+              <div key={venue} className="flex items-center gap-3">
+                <span className="text-gray-500 text-sm w-6">{i + 1}</span>
+                <div className="flex-1"><p className="text-white text-sm">{venue}</p><div className="h-2 bg-gray-700 rounded-full mt-1"><div className="h-full bg-purple-500 rounded-full" style={{ width: `${(views / (sortedVenueViews[0]?.[1] || 1)) * 100}%` }} /></div></div>
+                <span className="text-white font-medium">{views.toLocaleString()}</span>
+              </div>
+            ))}
           </div>
         </div>
         <div className="bg-gray-800 rounded-xl border border-gray-700">
-          <div className="p-4 border-b border-gray-700 flex justify-between"><h2 className="font-semibold text-white">Recent Events</h2><button onClick={() => setCurrentView('events')} className="text-red-400 text-sm">View All</button></div>
-          <div className="divide-y divide-gray-700">
-            {events.slice(0, 5).map(event => (
-              <div key={event.id} className="p-4 flex items-center gap-3">
-                <div className="w-10 h-10 bg-gray-700 rounded-lg flex items-center justify-center"><Calendar className="w-5 h-5 text-gray-400" /></div>
-                <div className="flex-1 min-w-0"><p className="text-white font-medium truncate">{event.name}</p><p className="text-gray-500 text-xs">{event.venue} • {event.date}</p></div>
-                <div className="text-right"><p className="text-white text-sm">{event.views || 0}</p><p className="text-gray-500 text-xs">views</p></div>
+          <div className="p-4 border-b border-gray-700"><h3 className="text-white font-semibold">All Events</h3></div>
+          <div className="divide-y divide-gray-700 max-h-80 overflow-y-auto">
+            {eventsByViews.map((evt, i) => (
+              <button key={evt.id} onClick={() => { setSelectedEvent(evt); setCurrentView('event-detail'); }} className="w-full p-3 flex items-center gap-3 hover:bg-gray-750 text-left">
+                <span className="text-gray-500 text-sm w-6">{i + 1}</span>
+                <div className="flex-1 min-w-0"><p className="text-white text-sm truncate">{evt.name}</p><p className="text-gray-500 text-xs">{evt.venue}</p></div>
+                <span className="text-purple-400 font-medium">{(evt.views || 0).toLocaleString()}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ========== ANALYTICS ENGAGEMENT ==========
+  const AnalyticsEngagement = () => {
+    const eventsByRsvp = [...events].sort((a, b) => (b.rsvps || 0) - (a.rsvps || 0));
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <button onClick={() => setCurrentView('dashboard')} className="p-2 hover:bg-gray-800 rounded-lg"><ChevronLeft className="w-5 h-5 text-gray-400" /></button>
+          <div><h1 className="text-xl font-bold text-white">Engagement</h1></div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-gray-800 rounded-xl p-4 border border-gray-700"><Users className="w-6 h-6 text-amber-400 mb-2" /><p className="text-2xl font-bold text-white">{totalRsvps}</p><p className="text-gray-400 text-sm">RSVPs</p></div>
+          <div className="bg-gray-800 rounded-xl p-4 border border-gray-700"><CheckCircle className="w-6 h-6 text-emerald-400 mb-2" /><p className="text-2xl font-bold text-white">{totalCheckins}</p><p className="text-gray-400 text-sm">Check-ins</p></div>
+        </div>
+        <div className="bg-gray-800 rounded-xl border border-gray-700">
+          <div className="p-4 border-b border-gray-700"><h3 className="text-white font-semibold">Events by RSVPs</h3></div>
+          <div className="divide-y divide-gray-700 max-h-80 overflow-y-auto">
+            {eventsByRsvp.filter(e => e.rsvps > 0).map((evt, i) => (
+              <button key={evt.id} onClick={() => { setSelectedEvent(evt); setCurrentView('event-detail'); }} className="w-full p-3 flex items-center gap-3 hover:bg-gray-750 text-left">
+                <span className="text-gray-500 text-sm w-6">{i + 1}</span>
+                <div className="flex-1 min-w-0"><p className="text-white text-sm truncate">{evt.name}</p><p className="text-gray-500 text-xs">{evt.venue}</p></div>
+                <span className="text-amber-400 font-medium">{evt.rsvps || 0}</span>
+              </button>
+            ))}
+            {eventsByRsvp.filter(e => e.rsvps > 0).length === 0 && <div className="p-8 text-center text-gray-500">No RSVPs yet</div>}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ========== USER ANALYTICS ==========
+  const UserAnalytics = () => {
+    const recentUsers = users.filter(u => u.created_at && new Date(u.created_at) > new Date(Date.now() - 7*24*60*60*1000));
+    const vibeStats = {};
+    users.forEach(u => (u.vibes || []).forEach(v => { vibeStats[v] = (vibeStats[v] || 0) + 1; }));
+    const sortedVibes = Object.entries(vibeStats).sort((a, b) => b[1] - a[1]);
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <button onClick={() => setCurrentView('dashboard')} className="p-2 hover:bg-gray-800 rounded-lg"><ChevronLeft className="w-5 h-5 text-gray-400" /></button>
+          <div><h1 className="text-xl font-bold text-white">Users</h1></div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-gray-800 rounded-xl p-4 border border-gray-700"><Users className="w-6 h-6 text-violet-400 mb-2" /><p className="text-2xl font-bold text-white">{users.length}</p><p className="text-gray-400 text-sm">Total</p></div>
+          <div className="bg-gray-800 rounded-xl p-4 border border-gray-700"><Zap className="w-6 h-6 text-emerald-400 mb-2" /><p className="text-2xl font-bold text-white">{recentUsers.length}</p><p className="text-gray-400 text-sm">New This Week</p></div>
+        </div>
+        <div className="bg-gray-800 rounded-xl border border-gray-700 p-4">
+          <h3 className="text-white font-semibold mb-3">Popular Vibes</h3>
+          <div className="flex flex-wrap gap-2">{sortedVibes.slice(0, 12).map(([vibe, count]) => (<span key={vibe} className="px-3 py-1 bg-violet-500/20 text-violet-300 rounded-full text-sm">{vibe} ({count})</span>))}</div>
+        </div>
+        <div className="bg-gray-800 rounded-xl border border-gray-700">
+          <div className="p-4 border-b border-gray-700"><h3 className="text-white font-semibold">Recent Users</h3></div>
+          <div className="divide-y divide-gray-700 max-h-64 overflow-y-auto">
+            {users.slice(0, 20).map(user => (
+              <div key={user.id} className="p-3 flex items-center gap-3">
+                <div className="w-10 h-10 bg-gray-700 rounded-full flex items-center justify-center overflow-hidden">{user.profile_picture ? <img src={user.profile_picture} className="w-full h-full object-cover" /> : <User className="w-5 h-5 text-gray-400" />}</div>
+                <div className="flex-1 min-w-0"><p className="text-white text-sm truncate">{user.name || 'Anonymous'}</p><p className="text-gray-500 text-xs">{user.email || 'No email'}</p></div>
+                <p className="text-gray-500 text-xs">{user.created_at ? new Date(user.created_at).toLocaleDateString() : ''}</p>
               </div>
             ))}
-            {events.length === 0 && <div className="p-8 text-center text-gray-500">No events yet</div>}
           </div>
         </div>
       </div>
     );
   };
 
-  // Create Venue Form
+  // ========== EVENT DETAIL ==========
+  const EventDetail = () => {
+    if (!selectedEvent) return null;
+    const e = selectedEvent;
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <button onClick={() => { setSelectedEvent(null); setCurrentView('events'); }} className="p-2 hover:bg-gray-800 rounded-lg"><ChevronLeft className="w-5 h-5 text-gray-400" /></button>
+          <div className="flex-1"><h1 className="text-xl font-bold text-white truncate">{e.name}</h1></div>
+          <button onClick={() => setEditingEvent(e)} className="p-2 hover:bg-gray-800 rounded-lg"><Edit2 className="w-5 h-5 text-blue-400" /></button>
+        </div>
+        <div className="bg-gradient-to-br from-violet-600 to-purple-700 rounded-xl p-6">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="w-16 h-16 bg-white/20 rounded-xl flex items-center justify-center"><Calendar className="w-8 h-8 text-white" /></div>
+            <div><p className="text-white font-bold text-lg">{e.name}</p><p className="text-violet-200">{e.venue}</p></div>
+          </div>
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div><p className="text-2xl font-bold text-white">{e.views || 0}</p><p className="text-violet-200 text-xs">Views</p></div>
+            <div><p className="text-2xl font-bold text-white">{e.rsvps || 0}</p><p className="text-violet-200 text-xs">RSVPs</p></div>
+            <div><p className="text-2xl font-bold text-white">{e.checkins || 0}</p><p className="text-violet-200 text-xs">Check-ins</p></div>
+          </div>
+        </div>
+        <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 space-y-3">
+          <h3 className="text-white font-semibold">Details</h3>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div><p className="text-gray-500">Date</p><p className="text-white">{e.date || '-'}</p></div>
+            <div><p className="text-gray-500">Time</p><p className="text-white">{e.time || '-'}</p></div>
+            <div><p className="text-gray-500">Neighborhood</p><p className="text-white">{e.neighborhood || '-'}</p></div>
+            <div><p className="text-gray-500">Category</p><p className="text-white">{e.category || '-'}</p></div>
+            <div><p className="text-gray-500">Type</p><p className="text-white">{e.type || '-'}</p></div>
+            <div><p className="text-gray-500">Status</p><p className={e.status === 'live' || !e.status ? 'text-emerald-400' : 'text-amber-400'}>{e.status || 'live'}</p></div>
+          </div>
+          {e.drink_specials && <div><p className="text-gray-500 text-sm">Specials</p><p className="text-white">{e.drink_specials}</p></div>}
+          {e.description && <div><p className="text-gray-500 text-sm">Description</p><p className="text-white text-sm">{e.description}</p></div>}
+        </div>
+        <div className="flex gap-3">
+          <button onClick={() => setEditingEvent(e)} className="flex-1 px-4 py-3 bg-blue-500 text-white rounded-xl font-semibold">Edit</button>
+          <button onClick={() => handleDeleteEvent(e.id)} className="px-4 py-3 bg-red-500/20 text-red-400 rounded-xl font-semibold">Delete</button>
+        </div>
+      </div>
+    );
+  };
+
+  // ========== VENUE DETAIL ==========
+  const VenueDetail = () => {
+    if (!selectedVenue) return null;
+    const v = selectedVenue;
+    const venueEvents = events.filter(e => e.establishment_id === v.id || e.venue === v.name);
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <button onClick={() => { setSelectedVenue(null); setCurrentView('venues'); }} className="p-2 hover:bg-gray-800 rounded-lg"><ChevronLeft className="w-5 h-5 text-gray-400" /></button>
+          <div className="flex-1"><h1 className="text-xl font-bold text-white truncate">{v.name}</h1></div>
+          <button onClick={() => setEditingVenue(v)} className="p-2 hover:bg-gray-800 rounded-lg"><Edit2 className="w-5 h-5 text-blue-400" /></button>
+        </div>
+        <div className="bg-gradient-to-br from-blue-600 to-cyan-600 rounded-xl p-6">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="w-16 h-16 bg-white/20 rounded-xl flex items-center justify-center text-3xl">{BUSINESS_VENUE_TYPES.find(t => t.id === v.venue_type)?.icon || '🏢'}</div>
+            <div><p className="text-white font-bold text-lg">{v.name}</p><p className="text-blue-200">{v.neighborhood}</p></div>
+          </div>
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div><p className="text-2xl font-bold text-white">{venueEvents.length}</p><p className="text-blue-200 text-xs">Events</p></div>
+            <div><p className="text-2xl font-bold text-white">{venueEvents.reduce((s, e) => s + (e.views || 0), 0)}</p><p className="text-blue-200 text-xs">Views</p></div>
+            <div><p className="text-2xl font-bold text-white">{venueEvents.reduce((s, e) => s + (e.rsvps || 0), 0)}</p><p className="text-blue-200 text-xs">RSVPs</p></div>
+          </div>
+        </div>
+        <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 space-y-3">
+          <h3 className="text-white font-semibold">Details</h3>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div><p className="text-gray-500">Type</p><p className="text-white">{BUSINESS_VENUE_TYPES.find(t => t.id === v.venue_type)?.label || '-'}</p></div>
+            <div><p className="text-gray-500">Status</p><p className={v.status === 'approved' ? 'text-emerald-400' : 'text-amber-400'}>{v.status || 'pending'}</p></div>
+            {v.address && <div className="col-span-2"><p className="text-gray-500">Address</p><p className="text-white">{v.address}</p></div>}
+            {v.phone && <div><p className="text-gray-500">Phone</p><p className="text-white">{v.phone}</p></div>}
+            {v.email && <div><p className="text-gray-500">Email</p><p className="text-white">{v.email}</p></div>}
+          </div>
+        </div>
+        {venueEvents.length > 0 && (
+          <div className="bg-gray-800 rounded-xl border border-gray-700">
+            <div className="p-4 border-b border-gray-700"><h3 className="text-white font-semibold">Events</h3></div>
+            <div className="divide-y divide-gray-700">
+              {venueEvents.slice(0, 5).map(evt => (
+                <button key={evt.id} onClick={() => { setSelectedEvent(evt); setCurrentView('event-detail'); }} className="w-full p-3 flex items-center gap-3 hover:bg-gray-750 text-left">
+                  <Calendar className="w-5 h-5 text-gray-400" />
+                  <div className="flex-1 min-w-0"><p className="text-white text-sm truncate">{evt.name}</p><p className="text-gray-500 text-xs">{evt.date}</p></div>
+                  <span className="text-gray-400 text-sm">{evt.views || 0} views</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="flex gap-3">
+          <button onClick={() => setEditingVenue(v)} className="flex-1 px-4 py-3 bg-blue-500 text-white rounded-xl font-semibold">Edit</button>
+          <button onClick={() => handleDeleteVenue(v.id)} className="px-4 py-3 bg-red-500/20 text-red-400 rounded-xl font-semibold">Delete</button>
+        </div>
+      </div>
+    );
+  };
+
+  // ========== EDIT MODALS ==========
+  const EditVenueModal = () => {
+    const [form, setForm] = useState(editingVenue || {});
+    if (!editingVenue) return null;
+    return (
+      <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+        <div className="bg-gray-800 rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+          <div className="p-4 border-b border-gray-700 flex justify-between"><h2 className="text-lg font-bold text-white">Edit Venue</h2><button onClick={() => setEditingVenue(null)}><X className="w-5 h-5 text-gray-400" /></button></div>
+          <div className="p-4 space-y-4">
+            <div><label className="block text-sm text-gray-400 mb-1">Name</label><input value={form.name || ''} onChange={e => setForm({...form, name: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" /></div>
+            <div><label className="block text-sm text-gray-400 mb-1">Neighborhood</label><select value={form.neighborhood || ''} onChange={e => setForm({...form, neighborhood: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"><option value="">Select...</option>{DALLAS_NEIGHBORHOODS.map(n => <option key={n.id} value={n.name}>{n.name}</option>)}</select></div>
+            <div><label className="block text-sm text-gray-400 mb-1">Type</label><select value={form.venue_type || ''} onChange={e => setForm({...form, venue_type: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"><option value="">Select...</option>{BUSINESS_VENUE_TYPES.map(t => <option key={t.id} value={t.id}>{t.icon} {t.label}</option>)}</select></div>
+            <div><label className="block text-sm text-gray-400 mb-1">Address</label><input value={form.address || ''} onChange={e => setForm({...form, address: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" /></div>
+            <div><label className="block text-sm text-gray-400 mb-1">Phone</label><input value={form.phone || ''} onChange={e => setForm({...form, phone: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" /></div>
+            <div><label className="block text-sm text-gray-400 mb-1">Status</label><select value={form.status || 'pending'} onChange={e => setForm({...form, status: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"><option value="pending">Pending</option><option value="approved">Approved</option><option value="suspended">Suspended</option></select></div>
+          </div>
+          <div className="p-4 border-t border-gray-700 flex gap-3"><button onClick={() => setEditingVenue(null)} className="flex-1 px-4 py-2 border border-gray-600 text-gray-400 rounded-lg">Cancel</button><button onClick={() => handleUpdateVenue(editingVenue.id, form)} className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg font-semibold">Save</button></div>
+        </div>
+      </div>
+    );
+  };
+
+  const EditEventModal = () => {
+    const [form, setForm] = useState(editingEvent || {});
+    if (!editingEvent) return null;
+    return (
+      <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+        <div className="bg-gray-800 rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+          <div className="p-4 border-b border-gray-700 flex justify-between"><h2 className="text-lg font-bold text-white">Edit Event</h2><button onClick={() => setEditingEvent(null)}><X className="w-5 h-5 text-gray-400" /></button></div>
+          <div className="p-4 space-y-4">
+            <div><label className="block text-sm text-gray-400 mb-1">Name</label><input value={form.name || ''} onChange={e => setForm({...form, name: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" /></div>
+            <div><label className="block text-sm text-gray-400 mb-1">Venue</label><input value={form.venue || ''} onChange={e => setForm({...form, venue: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" /></div>
+            <div><label className="block text-sm text-gray-400 mb-1">Neighborhood</label><select value={form.neighborhood || ''} onChange={e => setForm({...form, neighborhood: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"><option value="">Select...</option>{DALLAS_NEIGHBORHOODS.map(n => <option key={n.id} value={n.name}>{n.name}</option>)}</select></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className="block text-sm text-gray-400 mb-1">Date</label><input type="date" value={form.date || ''} onChange={e => setForm({...form, date: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" /></div>
+              <div><label className="block text-sm text-gray-400 mb-1">Time</label><input type="time" value={form.time || ''} onChange={e => setForm({...form, time: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" /></div>
+            </div>
+            <div><label className="block text-sm text-gray-400 mb-1">Drink Specials</label><input value={form.drink_specials || ''} onChange={e => setForm({...form, drink_specials: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" /></div>
+            <div><label className="block text-sm text-gray-400 mb-1">Description</label><textarea value={form.description || ''} onChange={e => setForm({...form, description: e.target.value})} rows={2} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" /></div>
+            <div><label className="block text-sm text-gray-400 mb-1">Status</label><select value={form.status || 'live'} onChange={e => setForm({...form, status: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"><option value="live">Live</option><option value="draft">Draft</option><option value="ended">Ended</option></select></div>
+          </div>
+          <div className="p-4 border-t border-gray-700 flex gap-3"><button onClick={() => setEditingEvent(null)} className="flex-1 px-4 py-2 border border-gray-600 text-gray-400 rounded-lg">Cancel</button><button onClick={() => handleUpdateEvent(editingEvent.id, form)} className="flex-1 px-4 py-2 bg-emerald-500 text-white rounded-lg font-semibold">Save</button></div>
+        </div>
+      </div>
+    );
+  };
+
+  // ========== CREATE VENUE ==========
   const CreateVenueForm = () => {
     const [venueType, setVenueType] = useState('');
-    const [formData, setFormData] = useState({ name: '', neighborhood: '', address: '', phone: '', email: '', status: 'approved' });
+    const [neighborhood, setNeighborhood] = useState('');
+    const [name, setName] = useState('');
+    const [address, setAddress] = useState('');
+    const [phone, setPhone] = useState('');
+    const [email, setEmail] = useState('');
     const handleSubmit = () => {
-      if (!formData.name || !formData.neighborhood || !venueType) { showToastMsg('Please fill required fields', 'error'); return; }
-      handleCreateVenue({ ...formData, venue_type: venueType });
+      if (!name || !neighborhood || !venueType) { showToastMsg('Fill required fields', 'error'); return; }
+      handleCreateVenue({ name, neighborhood, venue_type: venueType, address, phone, email, status: 'approved' });
     };
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <button onClick={() => setCurrentView('dashboard')} className="p-2 hover:bg-gray-800 rounded-lg"><ChevronLeft className="w-5 h-5 text-gray-400" /></button>
-          <div><h1 className="text-xl font-bold text-white">Add New Venue</h1></div>
-        </div>
+        <div className="flex items-center gap-4"><button onClick={() => setCurrentView('dashboard')} className="p-2 hover:bg-gray-800 rounded-lg"><ChevronLeft className="w-5 h-5 text-gray-400" /></button><div><h1 className="text-xl font-bold text-white">Add Venue</h1></div></div>
         <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 space-y-4">
-          <div><label className="block text-sm font-medium text-gray-400 mb-2">Venue Name *</label><input type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="e.g., The Rustic" /></div>
-          <div><label className="block text-sm font-medium text-gray-400 mb-2">Venue Type *</label>
-            <div className="grid grid-cols-3 gap-2">
-              {BUSINESS_VENUE_TYPES.map(type => (<button key={type.id} onClick={() => setVenueType(type.id)} className={`p-3 rounded-xl border-2 text-center ${venueType === type.id ? 'border-blue-500 bg-blue-500 bg-opacity-20' : 'border-gray-600'}`}><span className="text-lg">{type.icon}</span><p className="text-xs text-white mt-1">{type.label}</p></button>))}
-            </div>
+          <div><label className="block text-sm text-gray-400 mb-2">Name *</label><input value={name} onChange={e => setName(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="Venue name" /></div>
+          <div><label className="block text-sm text-gray-400 mb-2">Type *</label><div className="grid grid-cols-3 gap-2">{BUSINESS_VENUE_TYPES.map(t => (<button key={t.id} type="button" onClick={() => setVenueType(t.id)} className={`p-3 rounded-xl border-2 text-center ${venueType === t.id ? 'border-blue-500 bg-blue-500/20' : 'border-gray-600'}`}><span className="text-lg">{t.icon}</span><p className="text-xs text-white mt-1">{t.label}</p></button>))}</div></div>
+          <div><label className="block text-sm text-gray-400 mb-2">Neighborhood *</label><select value={neighborhood} onChange={e => setNeighborhood(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white"><option value="">Select...</option>{DALLAS_NEIGHBORHOODS.map(n => <option key={n.id} value={n.name}>{n.name}</option>)}</select></div>
+          <div><label className="block text-sm text-gray-400 mb-2">Address</label><input value={address} onChange={e => setAddress(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="123 Main St" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="block text-sm text-gray-400 mb-2">Phone</label><input value={phone} onChange={e => setPhone(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" /></div>
+            <div><label className="block text-sm text-gray-400 mb-2">Email</label><input value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" /></div>
           </div>
-          <div><label className="block text-sm font-medium text-gray-400 mb-2">Neighborhood *</label>
-            <select value={formData.neighborhood} onChange={(e) => setFormData({...formData, neighborhood: e.target.value})} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white">
-              <option value="">Select...</option>{DALLAS_NEIGHBORHOODS.map(n => <option key={n.id} value={n.name}>{n.name}</option>)}
-            </select>
-          </div>
-          <div><label className="block text-sm font-medium text-gray-400 mb-2">Address</label><input type="text" value={formData.address} onChange={(e) => setFormData({...formData, address: e.target.value})} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="123 Main St, Dallas, TX" /></div>
         </div>
-        <div className="flex gap-3">
-          <button onClick={() => setCurrentView('dashboard')} className="flex-1 px-4 py-3 border border-gray-600 text-gray-400 rounded-xl">Cancel</button>
-          <button onClick={handleSubmit} className="flex-1 px-4 py-3 bg-blue-500 text-white rounded-xl font-semibold">Create Venue</button>
-        </div>
+        <div className="flex gap-3"><button onClick={() => setCurrentView('dashboard')} className="flex-1 px-4 py-3 border border-gray-600 text-gray-400 rounded-xl">Cancel</button><button onClick={handleSubmit} className="flex-1 px-4 py-3 bg-blue-500 text-white rounded-xl font-semibold">Create</button></div>
       </div>
     );
   };
 
-  // Create Event Form
+  // ========== CREATE EVENT ==========
   const CreateEventForm = () => {
-    const [category, setCategory] = useState('');
-    const [eventType, setEventType] = useState('');
-    const [formData, setFormData] = useState({ name: '', date: '', time: '', venue: '', neighborhood: '', drink_specials: '', status: 'live' });
+    const [cat, setCat] = useState('');
+    const [evtType, setEvtType] = useState('');
+    const [venueId, setVenueId] = useState('');
+    const [name, setName] = useState('');
+    const [date, setDate] = useState('');
+    const [time, setTime] = useState('');
+    const [specials, setSpecials] = useState('');
+    const [desc, setDesc] = useState('');
     const approvedVenues = establishments.filter(e => e.status === 'approved');
-    const handleVenueSelect = (venueId) => {
-      const venue = establishments.find(e => e.id === venueId);
-      if (venue) setFormData({ ...formData, venue: venue.name, neighborhood: venue.neighborhood, establishment_id: venue.id });
-    };
     const handleSubmit = () => {
-      if (!formData.name || !formData.date || !formData.time || !formData.venue) { showToastMsg('Please fill required fields', 'error'); return; }
-      handleCreateEvent({ ...formData, category, type: eventType || 'Event' });
+      const venue = establishments.find(e => e.id === venueId);
+      if (!name || !date || !time || !venue) { showToastMsg('Fill required fields', 'error'); return; }
+      handleCreateEvent({ name, date, time, venue: venue.name, neighborhood: venue.neighborhood, establishment_id: venue.id, category: cat, type: evtType || 'Event', drink_specials: specials, description: desc, status: 'live' });
     };
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <button onClick={() => setCurrentView('dashboard')} className="p-2 hover:bg-gray-800 rounded-lg"><ChevronLeft className="w-5 h-5 text-gray-400" /></button>
-          <div><h1 className="text-xl font-bold text-white">Create Event</h1></div>
-        </div>
+        <div className="flex items-center gap-4"><button onClick={() => setCurrentView('dashboard')} className="p-2 hover:bg-gray-800 rounded-lg"><ChevronLeft className="w-5 h-5 text-gray-400" /></button><div><h1 className="text-xl font-bold text-white">Create Event</h1></div></div>
         <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 space-y-4">
-          <div><label className="block text-sm font-medium text-gray-400 mb-2">Select Venue *</label>
-            {approvedVenues.length === 0 ? (
-              <div className="p-3 bg-amber-500 bg-opacity-10 border border-amber-500 border-opacity-30 rounded-lg"><p className="text-amber-400 text-sm">No venues. <button onClick={() => setCurrentView('create-venue')} className="underline">Create one first</button></p></div>
-            ) : (
-              <select value={formData.establishment_id || ''} onChange={(e) => handleVenueSelect(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white">
-                <option value="">Choose venue...</option>{approvedVenues.map(v => <option key={v.id} value={v.id}>{v.name} - {v.neighborhood}</option>)}
-              </select>
-            )}
-          </div>
-          <div><label className="block text-sm font-medium text-gray-400 mb-2">Event Name *</label><input type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="e.g., Friday Happy Hour" /></div>
+          <div><label className="block text-sm text-gray-400 mb-2">Venue *</label>{approvedVenues.length === 0 ? <p className="text-amber-400 text-sm">No venues. <button onClick={() => setCurrentView('create-venue')} className="underline">Create one</button></p> : <select value={venueId} onChange={e => setVenueId(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white"><option value="">Choose...</option>{approvedVenues.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</select>}</div>
+          <div><label className="block text-sm text-gray-400 mb-2">Name *</label><input value={name} onChange={e => setName(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="Event name" /></div>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="block text-sm font-medium text-gray-400 mb-2">Category</label><select value={category} onChange={(e) => { setCategory(e.target.value); setEventType(''); }} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white"><option value="">Select...</option>{BUSINESS_EVENT_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}</select></div>
-            <div><label className="block text-sm font-medium text-gray-400 mb-2">Type</label><select value={eventType} onChange={(e) => setEventType(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" disabled={!category}><option value="">Select...</option>{category && BUSINESS_EVENT_TYPES[category]?.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+            <div><label className="block text-sm text-gray-400 mb-2">Category</label><select value={cat} onChange={e => { setCat(e.target.value); setEvtType(''); }} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white"><option value="">Select...</option>{BUSINESS_EVENT_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+            <div><label className="block text-sm text-gray-400 mb-2">Type</label><select value={evtType} onChange={e => setEvtType(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" disabled={!cat}><option value="">Select...</option>{cat && BUSINESS_EVENT_TYPES[cat]?.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="block text-sm font-medium text-gray-400 mb-2">Date *</label><input type="date" value={formData.date} onChange={(e) => setFormData({...formData, date: e.target.value})} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" /></div>
-            <div><label className="block text-sm font-medium text-gray-400 mb-2">Start Time *</label><input type="time" value={formData.time} onChange={(e) => setFormData({...formData, time: e.target.value})} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" /></div>
+            <div><label className="block text-sm text-gray-400 mb-2">Date *</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" /></div>
+            <div><label className="block text-sm text-gray-400 mb-2">Time *</label><input type="time" value={time} onChange={e => setTime(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" /></div>
           </div>
-          <div><label className="block text-sm font-medium text-gray-400 mb-2">Drink Specials</label><input type="text" value={formData.drink_specials} onChange={(e) => setFormData({...formData, drink_specials: e.target.value})} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="e.g., $5 margaritas" /></div>
-          <div className="p-3 bg-emerald-500 bg-opacity-10 border border-emerald-500 border-opacity-30 rounded-lg"><p className="text-emerald-400 text-sm">✓ Event will go live immediately.</p></div>
+          <div><label className="block text-sm text-gray-400 mb-2">Specials</label><input value={specials} onChange={e => setSpecials(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="$5 drinks" /></div>
+          <div><label className="block text-sm text-gray-400 mb-2">Description</label><textarea value={desc} onChange={e => setDesc(e.target.value)} rows={2} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" /></div>
+          <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg"><p className="text-emerald-400 text-sm">✓ Goes live immediately</p></div>
         </div>
-        <div className="flex gap-3">
-          <button onClick={() => setCurrentView('dashboard')} className="flex-1 px-4 py-3 border border-gray-600 text-gray-400 rounded-xl">Cancel</button>
-          <button onClick={handleSubmit} disabled={approvedVenues.length === 0} className="flex-1 px-4 py-3 bg-emerald-500 text-white rounded-xl font-semibold disabled:opacity-50">Create Event</button>
-        </div>
+        <div className="flex gap-3"><button onClick={() => setCurrentView('dashboard')} className="flex-1 px-4 py-3 border border-gray-600 text-gray-400 rounded-xl">Cancel</button><button onClick={handleSubmit} disabled={!approvedVenues.length} className="flex-1 px-4 py-3 bg-emerald-500 text-white rounded-xl font-semibold disabled:opacity-50">Create</button></div>
       </div>
     );
   };
 
-  // Venues List
+  // ========== LISTS ==========
   const VenuesList = () => (
     <div className="space-y-6">
-      <div className="flex items-center justify-between"><div><h1 className="text-xl font-bold text-white">Venues</h1></div><button onClick={() => setCurrentView('create-venue')} className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-xl text-sm"><Plus className="w-4 h-4" /> Add</button></div>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4"><button onClick={() => setCurrentView('dashboard')} className="p-2 hover:bg-gray-800 rounded-lg"><ChevronLeft className="w-5 h-5 text-gray-400" /></button><div><h1 className="text-xl font-bold text-white">Venues</h1><p className="text-gray-400 text-sm">{establishments.length} total</p></div></div>
+        <button onClick={() => setCurrentView('create-venue')} className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-xl text-sm"><Plus className="w-4 h-4" />Add</button>
+      </div>
       <div className="space-y-3">
-        {establishments.map(venue => (
-          <div key={venue.id} className="bg-gray-800 rounded-xl border border-gray-700 p-4">
+        {establishments.map(v => (
+          <button key={v.id} onClick={() => { setSelectedVenue(v); setCurrentView('venue-detail'); }} className="w-full bg-gray-800 rounded-xl border border-gray-700 p-4 text-left hover:border-gray-600">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-gray-700 rounded-lg flex items-center justify-center text-xl">{BUSINESS_VENUE_TYPES.find(t => t.id === venue.venue_type)?.icon || '🏢'}</div>
-              <div className="flex-1"><p className="text-white font-medium">{venue.name}</p><p className="text-gray-500 text-sm">{venue.neighborhood}</p></div>
-              <span className={`px-2 py-1 rounded-full text-xs ${venue.status === 'approved' ? 'bg-emerald-500 bg-opacity-20 text-emerald-400' : 'bg-amber-500 bg-opacity-20 text-amber-400'}`}>{venue.status}</span>
+              <div className="w-12 h-12 bg-gray-700 rounded-lg flex items-center justify-center text-xl">{BUSINESS_VENUE_TYPES.find(t => t.id === v.venue_type)?.icon || '🏢'}</div>
+              <div className="flex-1 min-w-0"><p className="text-white font-medium truncate">{v.name}</p><p className="text-gray-500 text-sm">{v.neighborhood}</p></div>
+              <div className="text-right"><span className={`px-2 py-1 rounded-full text-xs ${v.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>{v.status || 'pending'}</span><p className="text-gray-500 text-xs mt-1">{events.filter(e => e.establishment_id === v.id || e.venue === v.name).length} events</p></div>
+              <ChevronRight className="w-4 h-4 text-gray-600" />
             </div>
-          </div>
+          </button>
         ))}
-        {establishments.length === 0 && <div className="text-center py-12 text-gray-500"><Building2 className="w-12 h-12 mx-auto mb-3 opacity-50" /><p>No venues yet</p></div>}
+        {establishments.length === 0 && <div className="text-center py-12 text-gray-500"><Building2 className="w-12 h-12 mx-auto mb-3 opacity-50" /><p>No venues</p><button onClick={() => setCurrentView('create-venue')} className="text-blue-400 mt-2">Add first venue</button></div>}
       </div>
     </div>
   );
 
-  // Events List
   const EventsList = () => (
     <div className="space-y-6">
-      <div className="flex items-center justify-between"><div><h1 className="text-xl font-bold text-white">Events</h1></div><button onClick={() => setCurrentView('create-event')} className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-xl text-sm"><Plus className="w-4 h-4" /> Create</button></div>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4"><button onClick={() => setCurrentView('dashboard')} className="p-2 hover:bg-gray-800 rounded-lg"><ChevronLeft className="w-5 h-5 text-gray-400" /></button><div><h1 className="text-xl font-bold text-white">Events</h1><p className="text-gray-400 text-sm">{events.length} total</p></div></div>
+        <button onClick={() => setCurrentView('create-event')} className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-xl text-sm"><Plus className="w-4 h-4" />Create</button>
+      </div>
       <div className="space-y-3">
-        {events.map(event => (
-          <div key={event.id} className="bg-gray-800 rounded-xl border border-gray-700 p-4">
+        {events.map(e => (
+          <button key={e.id} onClick={() => { setSelectedEvent(e); setCurrentView('event-detail'); }} className="w-full bg-gray-800 rounded-xl border border-gray-700 p-4 text-left hover:border-gray-600">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-gray-700 rounded-lg flex items-center justify-center"><Calendar className="w-5 h-5 text-gray-400" /></div>
-              <div className="flex-1"><p className="text-white font-medium">{event.name}</p><p className="text-gray-500 text-sm">{event.venue} • {event.date}</p></div>
-              <div className="text-right"><p className="text-white">{event.views || 0}</p><p className="text-gray-500 text-xs">views</p></div>
+              <div className="w-12 h-12 bg-gradient-to-br from-violet-500 to-purple-600 rounded-lg flex items-center justify-center"><Calendar className="w-5 h-5 text-white" /></div>
+              <div className="flex-1 min-w-0"><p className="text-white font-medium truncate">{e.name}</p><p className="text-gray-500 text-sm">{e.venue} • {e.date}</p></div>
+              <div className="text-right"><p className="text-white font-medium">{e.views || 0}</p><p className="text-gray-500 text-xs">views</p></div>
+              <ChevronRight className="w-4 h-4 text-gray-600" />
             </div>
-          </div>
+          </button>
         ))}
-        {events.length === 0 && <div className="text-center py-12 text-gray-500"><Calendar className="w-12 h-12 mx-auto mb-3 opacity-50" /><p>No events yet</p></div>}
+        {events.length === 0 && <div className="text-center py-12 text-gray-500"><Calendar className="w-12 h-12 mx-auto mb-3 opacity-50" /><p>No events</p></div>}
       </div>
     </div>
   );
 
-  const navItems = [{ id: 'dashboard', label: 'Home', icon: Home }, { id: 'venues', label: 'Venues', icon: Building2 }, { id: 'events', label: 'Events', icon: Calendar }];
+  // ========== NAVIGATION ==========
+  const navItems = [{ id: 'dashboard', label: 'Home', icon: Home }, { id: 'venues', label: 'Venues', icon: Building2 }, { id: 'events', label: 'Events', icon: Calendar }, { id: 'users', label: 'Users', icon: Users }];
+  const getActiveNav = () => {
+    if (['dashboard', 'analytics-views', 'analytics-engagement'].includes(currentView)) return 'dashboard';
+    if (['venues', 'venue-detail', 'create-venue'].includes(currentView)) return 'venues';
+    if (['events', 'event-detail', 'create-event'].includes(currentView)) return 'events';
+    if (currentView === 'users') return 'users';
+    return 'dashboard';
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-gray-900">
       <div className="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2"><div className="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center"><Shield className="w-5 h-5 text-white" /></div><div><span className="font-bold text-white">CrewQ</span><span className="text-xs block text-gray-400">Admin</span></div></div>
+        <div className="flex items-center gap-2"><div className="w-8 h-8 bg-gradient-to-br from-violet-500 to-purple-600 rounded-lg flex items-center justify-center"><Shield className="w-5 h-5 text-white" /></div><div><span className="font-bold text-white">CrewQ</span><span className="text-xs block text-gray-400">Admin</span></div></div>
         <button onClick={onClose} className="p-2 hover:bg-gray-700 rounded-lg"><X className="w-5 h-5 text-gray-400" /></button>
       </div>
       <div className="p-4 pb-24 overflow-y-auto" style={{ height: 'calc(100vh - 130px)' }}>
-        {loading ? <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin" /></div>
+        {loading ? <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" /></div>
           : currentView === 'dashboard' ? <AdminDashboard />
+          : currentView === 'analytics-views' ? <AnalyticsViews />
+          : currentView === 'analytics-engagement' ? <AnalyticsEngagement />
+          : currentView === 'users' ? <UserAnalytics />
           : currentView === 'create-venue' ? <CreateVenueForm />
           : currentView === 'create-event' ? <CreateEventForm />
           : currentView === 'venues' ? <VenuesList />
+          : currentView === 'venue-detail' ? <VenueDetail />
           : currentView === 'events' ? <EventsList />
+          : currentView === 'event-detail' ? <EventDetail />
           : <AdminDashboard />}
       </div>
       <div className="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 px-4 py-2">
         <div className="flex justify-around">
-          {navItems.map(item => (<button key={item.id} onClick={() => setCurrentView(item.id)} className={`flex flex-col items-center gap-1 px-4 py-2 ${currentView === item.id || currentView.startsWith('create') && item.id === 'dashboard' ? 'text-red-400' : 'text-gray-500'}`}><item.icon className="w-5 h-5" /><span className="text-xs">{item.label}</span></button>))}
+          {navItems.map(item => (<button key={item.id} onClick={() => setCurrentView(item.id)} className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg ${getActiveNav() === item.id ? 'text-violet-400 bg-violet-500/10' : 'text-gray-500'}`}><item.icon className="w-5 h-5" /><span className="text-xs">{item.label}</span></button>))}
         </div>
       </div>
-      {toast && <div className={`fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg ${toast.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'} text-white text-sm`}>{toast.message}</div>}
+      {editingVenue && <EditVenueModal />}
+      {editingEvent && <EditEventModal />}
+      {toast && <div className={`fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg text-white text-sm ${toast.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`}>{toast.message}</div>}
     </div>
   );
 }
 
-// Business Portal Login
 function BusinessPortalLogin({ onClose, darkMode }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
   const handleLogin = async () => {
-    if (!email || !password) { setError('Please enter email and password'); return; }
+    if (!email || !password) { setError('Enter email and password'); return; }
     setLoading(true); setError('');
     try {
-      const { data, error: queryError } = await supabaseClient.from('establishment_users').select('*, establishment:establishments(*)').eq('email', email.toLowerCase()).single();
-      if (queryError || !data) { setError('Invalid email or password'); setLoading(false); return; }
-      if (data.password_hash !== password) { setError('Invalid email or password'); setLoading(false); return; }
-      alert(`Welcome ${data.name}! Business dashboard coming soon.`);
+      const { data, error: err } = await supabaseClient.from('establishment_users').select('*, establishment:establishments(*)').eq('email', email.toLowerCase()).single();
+      if (err || !data) { setError('Invalid credentials'); setLoading(false); return; }
+      if (data.password_hash !== password) { setError('Invalid credentials'); setLoading(false); return; }
+      alert(`Welcome ${data.name}!`);
       onClose();
     } catch { setError('Login failed'); }
     setLoading(false);
   };
-
   return (
     <div className={`fixed inset-0 z-50 ${darkMode ? 'bg-black' : 'bg-white'}`}>
       <div className={`h-full max-w-md mx-auto ${darkMode ? 'bg-zinc-950' : 'bg-white'} flex flex-col`}>
-        <div className={`px-4 py-4 border-b ${darkMode ? 'border-zinc-800' : 'border-gray-200'} flex items-center justify-between`}>
-          <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Business Portal</h2>
-          <button onClick={onClose} className={darkMode ? 'text-zinc-400' : 'text-gray-600'}><X className="w-6 h-6" /></button>
-        </div>
+        <div className={`px-4 py-4 border-b ${darkMode ? 'border-zinc-800' : 'border-gray-200'} flex justify-between`}><h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Business Portal</h2><button onClick={onClose}><X className={`w-6 h-6 ${darkMode ? 'text-zinc-400' : 'text-gray-600'}`} /></button></div>
         <div className="flex-1 p-6 flex flex-col justify-center">
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-4"><Building2 className="w-8 h-8 text-white" /></div>
-            <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Crew<span className="text-orange-500">Q</span> Business</h1>
-            <p className={`mt-2 ${darkMode ? 'text-zinc-400' : 'text-gray-600'}`}>Manage your venue's events</p>
-          </div>
+          <div className="text-center mb-8"><div className="w-16 h-16 bg-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-4"><Building2 className="w-8 h-8 text-white" /></div><h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Crew<span className="text-orange-500">Q</span> Business</h1><p className={`mt-2 ${darkMode ? 'text-zinc-400' : 'text-gray-600'}`}>Manage your venue</p></div>
           <div className="space-y-4">
-            <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-zinc-400' : 'text-gray-700'}`}>Email</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-zinc-900 border-zinc-700 text-white' : 'bg-white border-gray-300'}`} placeholder="business@venue.com" /></div>
-            <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-zinc-400' : 'text-gray-700'}`}>Password</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-zinc-900 border-zinc-700 text-white' : 'bg-white border-gray-300'}`} placeholder="••••••••" /></div>
+            <div><label className={`block text-sm mb-1 ${darkMode ? 'text-zinc-400' : 'text-gray-700'}`}>Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-zinc-900 border-zinc-700 text-white' : 'bg-white border-gray-300'}`} /></div>
+            <div><label className={`block text-sm mb-1 ${darkMode ? 'text-zinc-400' : 'text-gray-700'}`}>Password</label><input type="password" value={password} onChange={e => setPassword(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-zinc-900 border-zinc-700 text-white' : 'bg-white border-gray-300'}`} /></div>
             {error && <p className="text-red-500 text-sm text-center">{error}</p>}
             <button onClick={handleLogin} disabled={loading} className="w-full bg-orange-500 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{loading ? 'Signing in...' : 'Sign In'}</button>
           </div>
-          <p className={`text-center text-sm mt-8 ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>Want to list your venue?<br/><a href="mailto:business@crewq.com" className="text-orange-500">business@crewq.com</a></p>
+          <p className={`text-center text-sm mt-8 ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>Contact <a href="mailto:business@crewq.com" className="text-orange-500">business@crewq.com</a></p>
         </div>
       </div>
     </div>
   );
 }
-
-// END BUSINESS PORTAL COMPONENTS
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState('discover');
@@ -6205,7 +6512,7 @@ export default function App() {
   const [showJoinRequestReview, setShowJoinRequestReview] = useState(null);
   const [toast, setToast] = useState(null);
   
-  // Admin & Business Portal
+  // Admin & Business Portal states
   const [showAdminPortal, setShowAdminPortal] = useState(false);
   const [showBusinessPortal, setShowBusinessPortal] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -7393,7 +7700,7 @@ export default function App() {
           setUserProfile(existingProfile);
           localStorage.setItem('crewq_user_id', existingProfile.id);
           
-          // Check if user is admin
+          // Check if admin
           if (existingProfile.email) {
             const adminCheck = await isAdminUser(existingProfile.email);
             setIsAdmin(adminCheck);
@@ -7433,7 +7740,7 @@ export default function App() {
         if (data && !error) {
           setUserProfile(data);
           
-          // Check if user is admin
+          // Check if admin
           if (data.email) {
             const adminCheck = await isAdminUser(data.email);
             setIsAdmin(adminCheck);
