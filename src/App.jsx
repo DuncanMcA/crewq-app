@@ -5939,10 +5939,146 @@ function AdminPortal({ onClose, userEmail }) {
     } catch { showToastMsg('Error deleting event', 'error'); }
   };
 
+  // Approval handlers
+  const handleApproveEvent = async (id) => {
+    try {
+      const { data, error } = await supabaseClient
+        .from('events')
+        .update({ status: 'live', approved_at: new Date().toISOString() })
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      setEvents(events.map(e => e.id === id ? data : e));
+      showToastMsg('Event approved! Now live in Discover.');
+    } catch { showToastMsg('Error approving event', 'error'); }
+  };
+
+  const handleRejectEvent = async (id, reason) => {
+    try {
+      const { data, error } = await supabaseClient
+        .from('events')
+        .update({ status: 'rejected', rejection_reason: reason || 'Did not meet guidelines' })
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      setEvents(events.map(e => e.id === id ? data : e));
+      showToastMsg('Event rejected.');
+    } catch { showToastMsg('Error rejecting event', 'error'); }
+  };
+
+  // Pending counts
+  const pendingEvents = events.filter(e => e.status === 'pending');
+
+  // ========== APPROVALS QUEUE ==========
+  const ApprovalsQueue = () => (
+    <div className="space-y-6">
+      <div className="flex items-center gap-4">
+        <button onClick={() => setCurrentView('dashboard')} className="p-2 hover:bg-gray-800 rounded-lg"><ChevronLeft className="w-5 h-5 text-gray-400" /></button>
+        <div>
+          <h1 className="text-xl font-bold text-white">Approvals Queue</h1>
+          <p className="text-gray-400 text-sm">{pendingEvents.length} pending review</p>
+        </div>
+      </div>
+
+      {pendingEvents.length === 0 ? (
+        <div className="bg-gray-800 rounded-xl border border-gray-700 p-12 text-center">
+          <CheckCircle className="w-16 h-16 mx-auto text-emerald-500 mb-4" />
+          <h2 className="text-xl font-bold text-white mb-2">All caught up!</h2>
+          <p className="text-gray-400">No events pending approval</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {pendingEvents.map(event => (
+            <div key={event.id} className="bg-gray-800 rounded-xl border border-amber-500/30 overflow-hidden">
+              <div className="p-4 bg-amber-500/10 border-b border-amber-500/30 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-amber-500/20 rounded-lg flex items-center justify-center">
+                    <Clock className="w-5 h-5 text-amber-400" />
+                  </div>
+                  <div>
+                    <p className="text-white font-semibold">{event.name}</p>
+                    <p className="text-amber-400 text-xs">Pending Review</p>
+                  </div>
+                </div>
+                <span className="text-gray-500 text-xs">{event.created_at ? new Date(event.created_at).toLocaleDateString() : ''}</span>
+              </div>
+              
+              <div className="p-4 space-y-3">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div><p className="text-gray-500">Venue</p><p className="text-white">{event.venue || '-'}</p></div>
+                  <div><p className="text-gray-500">Neighborhood</p><p className="text-white">{event.neighborhood || '-'}</p></div>
+                  <div><p className="text-gray-500">Date</p><p className="text-white">{event.date || '-'}</p></div>
+                  <div><p className="text-gray-500">Time</p><p className="text-white">{event.time || '-'}</p></div>
+                  <div><p className="text-gray-500">Category</p><p className="text-white">{event.category || '-'}</p></div>
+                  <div><p className="text-gray-500">Type</p><p className="text-white">{event.type || '-'}</p></div>
+                </div>
+                
+                {event.description && (
+                  <div><p className="text-gray-500 text-sm">Description</p><p className="text-gray-300 text-sm">{event.description}</p></div>
+                )}
+                
+                {event.drink_specials && (
+                  <div><p className="text-gray-500 text-sm">Drink Specials</p><p className="text-emerald-400 text-sm">{event.drink_specials}</p></div>
+                )}
+
+                {event.image_url && (
+                  <div>
+                    <p className="text-gray-500 text-sm mb-2">Event Image</p>
+                    <img src={event.image_url} alt={event.name} className="w-full h-32 object-cover rounded-lg" />
+                  </div>
+                )}
+
+                <div className="flex gap-3 pt-3 border-t border-gray-700">
+                  <button 
+                    onClick={() => handleApproveEvent(event.id)} 
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-emerald-500 text-white rounded-xl font-semibold hover:bg-emerald-600 transition"
+                  >
+                    <Check className="w-5 h-5" />
+                    Approve
+                  </button>
+                  <button 
+                    onClick={() => {
+                      const reason = prompt('Rejection reason (optional):');
+                      handleRejectEvent(event.id, reason);
+                    }} 
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-red-500/20 text-red-400 rounded-xl font-semibold hover:bg-red-500/30 transition"
+                  >
+                    <X className="w-5 h-5" />
+                    Reject
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
   // ========== DASHBOARD ==========
   const AdminDashboard = () => (
     <div className="space-y-6">
       <div><h1 className="text-2xl font-bold text-white">Admin Dashboard</h1><p className="text-gray-400">CrewQ Analytics & Management</p></div>
+      
+      {/* Approvals Queue Alert */}
+      {pendingEvents.length > 0 && (
+        <button onClick={() => setCurrentView('approvals')} className="w-full bg-gradient-to-r from-amber-500/20 to-orange-500/20 rounded-xl p-4 border border-amber-500/50 text-left hover:border-amber-400 transition">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-amber-500 rounded-xl flex items-center justify-center">
+                <Clock className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <p className="text-white font-semibold">Pending Approvals</p>
+                <p className="text-amber-400 text-sm">{pendingEvents.length} event{pendingEvents.length !== 1 ? 's' : ''} awaiting review</p>
+              </div>
+            </div>
+            <ChevronRight className="w-5 h-5 text-amber-400" />
+          </div>
+        </button>
+      )}
       
       <div className="grid grid-cols-2 gap-3">
         <button onClick={() => setCurrentView('venues')} className="bg-gray-800 rounded-xl p-4 border border-gray-700 text-left hover:border-blue-500 transition">
@@ -5980,8 +6116,8 @@ function AdminPortal({ onClose, userEmail }) {
       <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
         <h2 className="font-semibold text-white mb-3">Quick Actions</h2>
         <div className="grid grid-cols-2 gap-3">
-          <button onClick={() => setCurrentView('create-venue')} className="flex items-center gap-3 p-3 bg-blue-500/20 rounded-xl hover:bg-blue-500/30 border border-blue-500/30">
-            <Building2 className="w-5 h-5 text-blue-400" /><span className="text-white text-sm">Add Venue</span>
+          <button onClick={() => setCurrentView('approvals')} className="flex items-center gap-3 p-3 bg-amber-500/20 rounded-xl hover:bg-amber-500/30 border border-amber-500/30">
+            <Clock className="w-5 h-5 text-amber-400" /><span className="text-white text-sm">Review Queue {pendingEvents.length > 0 && `(${pendingEvents.length})`}</span>
           </button>
           <button onClick={() => setCurrentView('create-event')} className="flex items-center gap-3 p-3 bg-emerald-500/20 rounded-xl hover:bg-emerald-500/30 border border-emerald-500/30">
             <Calendar className="w-5 h-5 text-emerald-400" /><span className="text-white text-sm">Create Event</span>
@@ -6461,9 +6597,16 @@ function AdminPortal({ onClose, userEmail }) {
   );
 
   // ========== NAVIGATION ==========
-  const navItems = [{ id: 'dashboard', label: 'Home', icon: Home }, { id: 'venues', label: 'Venues', icon: Building2 }, { id: 'events', label: 'Events', icon: Calendar }, { id: 'users', label: 'Users', icon: Users }];
+  const navItems = [
+    { id: 'dashboard', label: 'Home', icon: Home }, 
+    { id: 'approvals', label: 'Approvals', icon: Clock, badge: pendingEvents.length },
+    { id: 'venues', label: 'Venues', icon: Building2 }, 
+    { id: 'events', label: 'Events', icon: Calendar }, 
+    { id: 'users', label: 'Users', icon: Users }
+  ];
   const getActiveNav = () => {
     if (['dashboard', 'analytics-views', 'analytics-engagement'].includes(currentView)) return 'dashboard';
+    if (currentView === 'approvals') return 'approvals';
     if (['venues', 'venue-detail', 'create-venue'].includes(currentView)) return 'venues';
     if (['events', 'event-detail', 'create-event'].includes(currentView)) return 'events';
     if (currentView === 'users') return 'users';
@@ -6479,6 +6622,7 @@ function AdminPortal({ onClose, userEmail }) {
       <div className="p-4 pb-24 overflow-y-auto" style={{ height: 'calc(100vh - 130px)' }}>
         {loading ? <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" /></div>
           : currentView === 'dashboard' ? <AdminDashboard />
+          : currentView === 'approvals' ? <ApprovalsQueue />
           : currentView === 'analytics-views' ? <AnalyticsViews />
           : currentView === 'analytics-engagement' ? <AnalyticsEngagement />
           : currentView === 'users' ? <UserAnalytics />
@@ -6492,7 +6636,13 @@ function AdminPortal({ onClose, userEmail }) {
       </div>
       <div className="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 px-4 py-2">
         <div className="flex justify-around">
-          {navItems.map(item => (<button key={item.id} onClick={() => setCurrentView(item.id)} className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg ${getActiveNav() === item.id ? 'text-violet-400 bg-violet-500/10' : 'text-gray-500'}`}><item.icon className="w-5 h-5" /><span className="text-xs">{item.label}</span></button>))}
+          {navItems.map(item => (
+            <button key={item.id} onClick={() => setCurrentView(item.id)} className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg relative ${getActiveNav() === item.id ? 'text-violet-400 bg-violet-500/10' : 'text-gray-500'}`}>
+              <item.icon className="w-5 h-5" />
+              <span className="text-xs">{item.label}</span>
+              {item.badge > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 bg-amber-500 text-white text-xs rounded-full flex items-center justify-center">{item.badge}</span>}
+            </button>
+          ))}
         </div>
       </div>
       {editingVenue && <EditVenueModal />}
@@ -8792,7 +8942,10 @@ export default function App() {
       // Store all events for squads, map, etc.
       setAllEvents(data || []);
       
-      let filteredEvents = data || [];
+      // Filter for only live/approved events for the Discover feed
+      let filteredEvents = (data || []).filter(event => 
+        !event.status || event.status === 'live' || event.status === 'approved'
+      );
       
       // Filter out seen events if user is logged in (for discover feed only)
       const effectiveUserId = userId || userProfile?.id;
