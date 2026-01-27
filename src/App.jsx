@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Heart, X, Share2, Bell, BellOff, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle, Trash2, Eye, EyeOff, Shield, Sparkles, ExternalLink, Globe, UtensilsCrossed, Award, Trophy, Star, Flame, Music, Mic, Beer, Coffee, Utensils, Sunrise, Moon, Key, Crown, Zap, Target, Navigation, Map, Filter, Car } from 'lucide-react';
+import { Heart, X, Share2, Bell, BellOff, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle, Trash2, Eye, EyeOff, Shield, Sparkles, ExternalLink, Globe, UtensilsCrossed, Award, Trophy, Star, Flame, Music, Mic, Beer, Coffee, Utensils, Sunrise, Moon, Key, Crown, Zap, Target, Navigation, Map, Filter, Car, Building2, Plus, DollarSign, BarChart3 } from 'lucide-react';
 
 // Theme color configuration
 // Dark mode: Purple neon nighttime vibe
@@ -2098,7 +2098,7 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
 }
 
 // Settings Modal
-function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, onLinkGoogle, onUpdateProfile, onResetEvents }) {
+function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, onLinkGoogle, onUpdateProfile, onResetEvents, isAdmin, onOpenAdmin }) {
   const [activeSection, setActiveSection] = useState(null);
   const [isLinkingGoogle, setIsLinkingGoogle] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -2796,6 +2796,29 @@ function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, 
               </button>
             ))}
           </div>
+
+          {/* Admin Portal Button - Only visible to admins */}
+          {isAdmin && (
+            <button
+              onClick={onOpenAdmin}
+              className={`w-full rounded-2xl p-4 text-left ${
+                darkMode ? 'bg-violet-500 bg-opacity-10' : 'bg-violet-50'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                  darkMode ? 'bg-violet-500 bg-opacity-20' : 'bg-violet-100'
+                }`}>
+                  <Shield className="w-5 h-5 text-violet-500" />
+                </div>
+                <div className="flex-1">
+                  <p className={`font-semibold ${darkMode ? 'text-violet-400' : 'text-violet-600'}`}>Admin Portal</p>
+                  <p className={`text-sm ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>Manage venues & events</p>
+                </div>
+                <ChevronRight className={`w-5 h-5 ${darkMode ? 'text-zinc-600' : 'text-zinc-400'}`} />
+              </div>
+            </button>
+          )}
 
           {/* Logout Button */}
           <button
@@ -5816,6 +5839,11 @@ export default function App() {
   const [pendingJoinRequests, setPendingJoinRequests] = useState([]);
   const [showJoinRequestReview, setShowJoinRequestReview] = useState(null);
   const [toast, setToast] = useState(null);
+  
+  // Admin & Business Portal
+  const [showAdminPortal, setShowAdminPortal] = useState(false);
+  const [showBusinessPortal, setShowBusinessPortal] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // Auto-switch theme based on time of day
   useEffect(() => {
@@ -6999,6 +7027,13 @@ export default function App() {
           console.log('checkAuth: Setting existing profile', existingProfile.id);
           setUserProfile(existingProfile);
           localStorage.setItem('crewq_user_id', existingProfile.id);
+          
+          // Check if user is admin
+          if (existingProfile.email) {
+            const adminCheck = await isAdminUser(existingProfile.email);
+            setIsAdmin(adminCheck);
+          }
+          
           await loadEvents();
           await loadCrewMembers(existingProfile.id);
           await loadSquads(existingProfile.id);
@@ -7032,6 +7067,13 @@ export default function App() {
         
         if (data && !error) {
           setUserProfile(data);
+          
+          // Check if user is admin
+          if (data.email) {
+            const adminCheck = await isAdminUser(data.email);
+            setIsAdmin(adminCheck);
+          }
+          
           await loadEvents();
           await loadCrewMembers(data.id);
           await loadSquads(data.id);
@@ -7660,6 +7702,13 @@ const loadSquads = async (userId) => {
               </button>
             ))}
           </div>
+          {/* Subtle Business Portal Link */}
+          <button
+            onClick={() => setShowBusinessPortal(true)}
+            className={`block mx-auto mt-1 text-[9px] ${darkMode ? 'text-zinc-600 hover:text-zinc-400' : 'text-zinc-400 hover:text-zinc-600'} transition`}
+          >
+            For Business →
+          </button>
         </div>
 
         {showShareModal && currentEvent && (
@@ -7795,6 +7844,8 @@ const loadSquads = async (userId) => {
             darkMode={darkMode}
             setDarkMode={setDarkMode}
             userProfile={userProfile}
+            isAdmin={isAdmin}
+            onOpenAdmin={() => { setShowSettings(false); setShowAdminPortal(true); }}
             onLogout={() => {
               handleLogout();
               setShowSettings(false);
@@ -7861,6 +7912,22 @@ const loadSquads = async (userId) => {
             onApprove={() => handleApproveJoinRequest(showJoinRequestReview)}
             onReject={(user, reason) => handleRejectJoinRequest(showJoinRequestReview, reason)}
             rejectionReasons={REJECTION_REASONS}
+          />
+        )}
+
+        {/* Admin Portal */}
+        {showAdminPortal && (
+          <AdminPortal
+            onClose={() => setShowAdminPortal(false)}
+            userEmail={userProfile?.email}
+          />
+        )}
+
+        {/* Business Portal */}
+        {showBusinessPortal && (
+          <BusinessPortalLogin
+            onClose={() => setShowBusinessPortal(false)}
+            darkMode={darkMode}
           />
         )}
 
