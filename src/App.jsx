@@ -6427,35 +6427,343 @@ function AdminPortal({ onClose, userEmail }) {
 }
 
 function BusinessPortalLogin({ onClose, darkMode }) {
+  const [mode, setMode] = useState('login'); // 'login' or 'signup'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [businessName, setBusinessName] = useState('');
+  const [contactName, setContactName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [loggedInUser, setLoggedInUser] = useState(null);
+
   const handleLogin = async () => {
     if (!email || !password) { setError('Enter email and password'); return; }
     setLoading(true); setError('');
     try {
-      const { data, error: err } = await supabaseClient.from('establishment_users').select('*, establishment:establishments(*)').eq('email', email.toLowerCase()).single();
-      if (err || !data) { setError('Invalid credentials'); setLoading(false); return; }
-      if (data.password_hash !== password) { setError('Invalid credentials'); setLoading(false); return; }
-      alert(`Welcome ${data.name}!`);
-      onClose();
-    } catch { setError('Login failed'); }
+      const { data, error: err } = await supabaseClient
+        .from('establishment_users')
+        .select('*, establishment:establishments(*)')
+        .eq('email', email.toLowerCase())
+        .single();
+      if (err || !data) { setError('Invalid email or password'); setLoading(false); return; }
+      if (data.password_hash !== password) { setError('Invalid email or password'); setLoading(false); return; }
+      setLoggedInUser(data);
+    } catch { setError('Login failed. Please try again.'); }
     setLoading(false);
   };
+
+  const handleSignup = async () => {
+    setError('');
+    if (!email || !password || !confirmPassword) { 
+      setError('Please fill in all required fields'); 
+      return; 
+    }
+    if (password !== confirmPassword) { 
+      setError('Passwords do not match'); 
+      return; 
+    }
+    if (password.length < 6) { 
+      setError('Password must be at least 6 characters'); 
+      return; 
+    }
+    
+    setLoading(true);
+    try {
+      // Check if email already exists
+      const { data: existing } = await supabaseClient
+        .from('establishment_users')
+        .select('email')
+        .eq('email', email.toLowerCase())
+        .single();
+      
+      if (existing) {
+        setError('An account with this email already exists');
+        setLoading(false);
+        return;
+      }
+
+      // Create a pending establishment if business name provided
+      let establishmentId = null;
+      if (businessName.trim()) {
+        const { data: estData, error: estError } = await supabaseClient
+          .from('establishments')
+          .insert([{
+            name: businessName.trim(),
+            status: 'pending',
+            neighborhood: 'TBD'
+          }])
+          .select()
+          .single();
+        
+        if (estData) {
+          establishmentId = estData.id;
+        }
+      }
+
+      // Create the business user account
+      const { data: userData, error: userError } = await supabaseClient
+        .from('establishment_users')
+        .insert([{
+          email: email.toLowerCase(),
+          password_hash: password, // In production, this should be properly hashed
+          name: contactName.trim() || email.split('@')[0],
+          establishment_id: establishmentId,
+          role: 'owner'
+        }])
+        .select('*, establishment:establishments(*)')
+        .single();
+
+      if (userError) throw userError;
+
+      setSuccess('Account created successfully!');
+      setTimeout(() => {
+        setLoggedInUser(userData);
+        setSuccess('');
+      }, 1500);
+
+    } catch (err) {
+      console.error('Signup error:', err);
+      setError('Failed to create account. Please try again.');
+    }
+    setLoading(false);
+  };
+
+  // Business Dashboard (after login)
+  if (loggedInUser) {
+    const establishment = loggedInUser.establishment;
+    return (
+      <div className={`fixed inset-0 z-50 ${darkMode ? 'bg-black' : 'bg-white'}`}>
+        <div className={`h-full max-w-md mx-auto ${darkMode ? 'bg-zinc-950' : 'bg-white'} flex flex-col`}>
+          <div className={`px-4 py-4 border-b ${darkMode ? 'border-zinc-800' : 'border-gray-200'} flex justify-between items-center`}>
+            <div>
+              <h2 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                {establishment?.name || 'Business Dashboard'}
+              </h2>
+              <p className={`text-sm ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>{loggedInUser.email}</p>
+            </div>
+            <button onClick={onClose}><X className={`w-6 h-6 ${darkMode ? 'text-zinc-400' : 'text-gray-600'}`} /></button>
+          </div>
+          
+          <div className="flex-1 p-6 overflow-y-auto">
+            <div className="text-center mb-6">
+              <div className={`w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-4 ${darkMode ? 'bg-zinc-800' : 'bg-gray-100'}`}>
+                <Building2 className={`w-10 h-10 ${darkMode ? 'text-orange-400' : 'text-orange-500'}`} />
+              </div>
+              <h1 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                Welcome, {loggedInUser.name}!
+              </h1>
+            </div>
+
+            {establishment ? (
+              <div className="space-y-4">
+                <div className={`p-4 rounded-xl ${darkMode ? 'bg-zinc-900 border border-zinc-800' : 'bg-gray-50 border border-gray-200'}`}>
+                  <h3 className={`font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Venue Status</h3>
+                  <div className="flex items-center justify-between">
+                    <span className={darkMode ? 'text-zinc-400' : 'text-gray-600'}>{establishment.name}</span>
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                      establishment.status === 'approved' 
+                        ? 'bg-emerald-500/20 text-emerald-400' 
+                        : 'bg-amber-500/20 text-amber-400'
+                    }`}>
+                      {establishment.status === 'approved' ? 'Active' : 'Pending Approval'}
+                    </span>
+                  </div>
+                </div>
+
+                {establishment.status === 'pending' && (
+                  <div className={`p-4 rounded-xl ${darkMode ? 'bg-amber-500/10 border border-amber-500/30' : 'bg-amber-50 border border-amber-200'}`}>
+                    <p className={`text-sm ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>
+                      Your venue is pending approval. You'll be notified once it's approved and you can start creating events.
+                    </p>
+                  </div>
+                )}
+
+                {establishment.status === 'approved' && (
+                  <div className="space-y-3">
+                    <button className="w-full p-4 bg-orange-500 text-white rounded-xl font-semibold flex items-center justify-center gap-2">
+                      <Calendar className="w-5 h-5" />
+                      Create Event
+                    </button>
+                    <button className={`w-full p-4 rounded-xl font-semibold flex items-center justify-center gap-2 ${darkMode ? 'bg-zinc-800 text-white' : 'bg-gray-100 text-gray-900'}`}>
+                      <Eye className="w-5 h-5" />
+                      View Analytics
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className={`p-4 rounded-xl ${darkMode ? 'bg-zinc-900 border border-zinc-800' : 'bg-gray-50 border border-gray-200'}`}>
+                <h3 className={`font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>No Venue Linked</h3>
+                <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-gray-600'}`}>
+                  Contact us to link your business account to a venue.
+                </p>
+              </div>
+            )}
+
+            <div className={`mt-6 p-4 rounded-xl ${darkMode ? 'bg-zinc-900' : 'bg-gray-50'}`}>
+              <h3 className={`font-semibold mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Need Help?</h3>
+              <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-gray-600'}`}>
+                Contact us at <a href="mailto:business@crewq.com" className="text-orange-500">business@crewq.com</a>
+              </p>
+            </div>
+          </div>
+
+          <div className={`p-4 border-t ${darkMode ? 'border-zinc-800' : 'border-gray-200'}`}>
+            <button 
+              onClick={() => setLoggedInUser(null)}
+              className={`w-full p-3 rounded-xl text-sm ${darkMode ? 'text-zinc-500 hover:text-zinc-300' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Login / Signup Form
   return (
     <div className={`fixed inset-0 z-50 ${darkMode ? 'bg-black' : 'bg-white'}`}>
       <div className={`h-full max-w-md mx-auto ${darkMode ? 'bg-zinc-950' : 'bg-white'} flex flex-col`}>
-        <div className={`px-4 py-4 border-b ${darkMode ? 'border-zinc-800' : 'border-gray-200'} flex justify-between`}><h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Business Portal</h2><button onClick={onClose}><X className={`w-6 h-6 ${darkMode ? 'text-zinc-400' : 'text-gray-600'}`} /></button></div>
-        <div className="flex-1 p-6 flex flex-col justify-center">
-          <div className="text-center mb-8"><div className="w-16 h-16 bg-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-4"><Building2 className="w-8 h-8 text-white" /></div><h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Crew<span className="text-orange-500">Q</span> Business</h1><p className={`mt-2 ${darkMode ? 'text-zinc-400' : 'text-gray-600'}`}>Manage your venue</p></div>
-          <div className="space-y-4">
-            <div><label className={`block text-sm mb-1 ${darkMode ? 'text-zinc-400' : 'text-gray-700'}`}>Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-zinc-900 border-zinc-700 text-white' : 'bg-white border-gray-300'}`} /></div>
-            <div><label className={`block text-sm mb-1 ${darkMode ? 'text-zinc-400' : 'text-gray-700'}`}>Password</label><input type="password" value={password} onChange={e => setPassword(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-zinc-900 border-zinc-700 text-white' : 'bg-white border-gray-300'}`} /></div>
-            {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-            <button onClick={handleLogin} disabled={loading} className="w-full bg-orange-500 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{loading ? 'Signing in...' : 'Sign In'}</button>
+        <div className={`px-4 py-4 border-b ${darkMode ? 'border-zinc-800' : 'border-gray-200'} flex justify-between`}>
+          <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Business Portal</h2>
+          <button onClick={onClose}><X className={`w-6 h-6 ${darkMode ? 'text-zinc-400' : 'text-gray-600'}`} /></button>
+        </div>
+        
+        <div className="flex-1 p-6 flex flex-col justify-center overflow-y-auto">
+          <div className="text-center mb-6">
+            <div className="w-16 h-16 bg-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Building2 className="w-8 h-8 text-white" />
+            </div>
+            <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+              Crew<span className="text-orange-500">Q</span> Business
+            </h1>
+            <p className={`mt-2 ${darkMode ? 'text-zinc-400' : 'text-gray-600'}`}>
+              {mode === 'login' ? 'Sign in to manage your venue' : 'Create your business account'}
+            </p>
           </div>
-          <p className={`text-center text-sm mt-8 ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>Contact <a href="mailto:business@crewq.com" className="text-orange-500">business@crewq.com</a></p>
+
+          {/* Tab Switcher */}
+          <div className={`flex rounded-xl p-1 mb-6 ${darkMode ? 'bg-zinc-900' : 'bg-gray-100'}`}>
+            <button 
+              onClick={() => { setMode('login'); setError(''); setSuccess(''); }}
+              className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${
+                mode === 'login' 
+                  ? 'bg-orange-500 text-white' 
+                  : darkMode ? 'text-zinc-400' : 'text-gray-600'
+              }`}
+            >
+              Sign In
+            </button>
+            <button 
+              onClick={() => { setMode('signup'); setError(''); setSuccess(''); }}
+              className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${
+                mode === 'signup' 
+                  ? 'bg-orange-500 text-white' 
+                  : darkMode ? 'text-zinc-400' : 'text-gray-600'
+              }`}
+            >
+              Sign Up
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            {mode === 'signup' && (
+              <>
+                <div>
+                  <label className={`block text-sm mb-1 ${darkMode ? 'text-zinc-400' : 'text-gray-700'}`}>
+                    Business Name <span className="text-zinc-500">(optional)</span>
+                  </label>
+                  <input 
+                    type="text" 
+                    value={businessName} 
+                    onChange={e => setBusinessName(e.target.value)} 
+                    className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-zinc-900 border-zinc-700 text-white' : 'bg-white border-gray-300'}`}
+                    placeholder="Your venue or business name"
+                  />
+                </div>
+                <div>
+                  <label className={`block text-sm mb-1 ${darkMode ? 'text-zinc-400' : 'text-gray-700'}`}>
+                    Your Name <span className="text-zinc-500">(optional)</span>
+                  </label>
+                  <input 
+                    type="text" 
+                    value={contactName} 
+                    onChange={e => setContactName(e.target.value)} 
+                    className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-zinc-900 border-zinc-700 text-white' : 'bg-white border-gray-300'}`}
+                    placeholder="Contact name"
+                  />
+                </div>
+              </>
+            )}
+
+            <div>
+              <label className={`block text-sm mb-1 ${darkMode ? 'text-zinc-400' : 'text-gray-700'}`}>
+                Email <span className="text-red-500">*</span>
+              </label>
+              <input 
+                type="email" 
+                value={email} 
+                onChange={e => setEmail(e.target.value)} 
+                className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-zinc-900 border-zinc-700 text-white' : 'bg-white border-gray-300'}`}
+                placeholder="business@example.com"
+              />
+            </div>
+
+            <div>
+              <label className={`block text-sm mb-1 ${darkMode ? 'text-zinc-400' : 'text-gray-700'}`}>
+                Password <span className="text-red-500">*</span>
+              </label>
+              <input 
+                type="password" 
+                value={password} 
+                onChange={e => setPassword(e.target.value)} 
+                className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-zinc-900 border-zinc-700 text-white' : 'bg-white border-gray-300'}`}
+                placeholder="••••••••"
+              />
+            </div>
+
+            {mode === 'signup' && (
+              <div>
+                <label className={`block text-sm mb-1 ${darkMode ? 'text-zinc-400' : 'text-gray-700'}`}>
+                  Confirm Password <span className="text-red-500">*</span>
+                </label>
+                <input 
+                  type="password" 
+                  value={confirmPassword} 
+                  onChange={e => setConfirmPassword(e.target.value)} 
+                  className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-zinc-900 border-zinc-700 text-white' : 'bg-white border-gray-300'}`}
+                  placeholder="••••••••"
+                />
+              </div>
+            )}
+
+            {error && (
+              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30">
+                <p className="text-red-500 text-sm text-center">{error}</p>
+              </div>
+            )}
+
+            {success && (
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
+                <p className="text-emerald-500 text-sm text-center">{success}</p>
+              </div>
+            )}
+
+            <button 
+              onClick={mode === 'login' ? handleLogin : handleSignup} 
+              disabled={loading} 
+              className="w-full bg-orange-500 text-white py-3 rounded-xl font-semibold disabled:opacity-50 transition hover:bg-orange-600"
+            >
+              {loading ? (mode === 'login' ? 'Signing in...' : 'Creating account...') : (mode === 'login' ? 'Sign In' : 'Create Account')}
+            </button>
+          </div>
+
+          <p className={`text-center text-sm mt-6 ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>
+            Questions? Contact <a href="mailto:business@crewq.com" className="text-orange-500">business@crewq.com</a>
+          </p>
         </div>
       </div>
     </div>
@@ -6596,8 +6904,9 @@ export default function App() {
   }, [userProfile?.id]);
 
   // Auto-refresh data every 30 seconds for real-time updates
+  // Pause when admin portal is open to prevent form data loss
   useEffect(() => {
-    if (!userProfile?.id) return;
+    if (!userProfile?.id || showAdminPortal) return;
     
     const refreshInterval = setInterval(() => {
       // Refresh notifications
@@ -6618,7 +6927,7 @@ export default function App() {
     }, 30000); // 30 seconds
     
     return () => clearInterval(refreshInterval);
-  }, [userProfile?.id]);
+  }, [userProfile?.id, showAdminPortal]);
 
   const loadNotifications = async () => {
     if (!supabaseClient || !userProfile) return;
