@@ -5328,7 +5328,7 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
   );
 }
 
-function AuthScreen({ onAuth, onGoogleAuth }) {
+function AuthScreen({ onAuth, onGoogleAuth, onOpenBusinessPortal }) {
   const [step, setStep] = useState(0); // 0 = welcome/login choice, 1 = basic info, 2 = vibes
   const [name, setName] = useState('');
   const [age, setAge] = useState('');
@@ -5461,6 +5461,15 @@ function AuthScreen({ onAuth, onGoogleAuth }) {
             <p className={`text-xs ${textSecondaryClass} text-center mt-4`}>
               Sign in with Google to sync your profile across devices
             </p>
+
+            {/* For Business Link */}
+            <button
+              onClick={onOpenBusinessPortal}
+              className={`w-full mt-6 py-3 text-sm ${textSecondaryClass} hover:${isNightMode ? 'text-violet-400' : 'text-orange-500'} transition flex items-center justify-center gap-2`}
+            >
+              <Building2 className="w-4 h-4" />
+              For Business
+            </button>
           </div>
         )}
 
@@ -5789,6 +5798,362 @@ function GoogleOnboardingModal({ pendingUser, onComplete }) {
     </div>
   );
 }
+
+// ============================================
+// BUSINESS PORTAL & ADMIN PORTAL COMPONENTS
+// ============================================
+
+const BUSINESS_VENUE_TYPES = [
+  { id: 'bar', label: 'Bar', icon: '🍺' },
+  { id: 'restaurant', label: 'Restaurant', icon: '🍽️' },
+  { id: 'club', label: 'Nightclub', icon: '🎵' },
+  { id: 'lounge', label: 'Lounge', icon: '🛋️' },
+  { id: 'brewery', label: 'Brewery', icon: '🍻' },
+  { id: 'rooftop', label: 'Rooftop', icon: '🌃' },
+];
+
+const BUSINESS_EVENT_CATEGORIES = [
+  { id: 'nightlife', name: 'Nightlife', icon: '🌙' },
+  { id: 'social', name: 'Social', icon: '👥' },
+  { id: 'wellness', name: 'Wellness', icon: '💪' },
+  { id: 'professional', name: 'Professional', icon: '💼' },
+  { id: 'special', name: 'Special Interest', icon: '⭐' },
+];
+
+const BUSINESS_EVENT_TYPES = {
+  nightlife: ['Happy Hour', 'DJ Night', 'Live Music', 'Ladies Night', 'Karaoke', 'Industry Night'],
+  social: ['Trivia Night', 'Game Night', 'Watch Party', 'Speed Dating', 'Singles Mixer'],
+  wellness: ['Yoga & Brunch', 'Sober Social', 'Meditation'],
+  professional: ['Networking Event', 'Corporate Happy Hour', 'Mixer'],
+  special: ['Wine Tasting', 'Beer Tasting', 'Comedy Show', 'Art Night', 'Themed Party'],
+};
+
+// Admin email check
+const ADMIN_EMAILS = ['duncan.mcaloon@gmail.com'];
+
+const isAdminUser = async (email) => {
+  if (!email) return false;
+  if (ADMIN_EMAILS.includes(email.toLowerCase())) return true;
+  try {
+    if (supabaseClient) {
+      const { data } = await supabaseClient
+        .from('admin_users')
+        .select('email')
+        .eq('email', email.toLowerCase())
+        .single();
+      return !!data;
+    }
+  } catch { }
+  return false;
+};
+
+// Admin Portal Component
+function AdminPortal({ onClose, userEmail }) {
+  const [currentView, setCurrentView] = useState('dashboard');
+  const [establishments, setEstablishments] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState(null);
+
+  useEffect(() => { loadData(); }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const { data: estData } = await supabaseClient.from('establishments').select('*').order('created_at', { ascending: false });
+      setEstablishments(estData || []);
+      const { data: evtData } = await supabaseClient.from('events').select('*').order('date', { ascending: false });
+      setEvents(evtData || []);
+    } catch (error) { console.error('Error loading data:', error); }
+    setLoading(false);
+  };
+
+  const showToastMsg = (message, type = 'success') => { setToast({ message, type }); setTimeout(() => setToast(null), 3000); };
+
+  const handleCreateVenue = async (venueData) => {
+    try {
+      const { data, error } = await supabaseClient.from('establishments').insert([venueData]).select().single();
+      if (error) throw error;
+      setEstablishments([data, ...establishments]);
+      showToastMsg(`Venue "${venueData.name}" created!`);
+      setCurrentView('venues');
+    } catch (error) { showToastMsg('Error creating venue', 'error'); }
+  };
+
+  const handleCreateEvent = async (eventData) => {
+    try {
+      const { data, error } = await supabaseClient.from('events').insert([eventData]).select().single();
+      if (error) throw error;
+      setEvents([data, ...events]);
+      showToastMsg(`Event "${eventData.name}" created!`);
+      setCurrentView('events');
+    } catch (error) { showToastMsg('Error creating event', 'error'); }
+  };
+
+  const handleApproveVenue = async (id) => {
+    try {
+      await supabaseClient.from('establishments').update({ status: 'approved' }).eq('id', id);
+      setEstablishments(establishments.map(e => e.id === id ? { ...e, status: 'approved' } : e));
+      showToastMsg('Venue approved!');
+    } catch (error) { console.error('Error:', error); }
+  };
+
+  // Dashboard
+  const AdminDashboard = () => {
+    const pendingVenues = establishments.filter(e => e.status === 'pending');
+    const totalViews = events.reduce((sum, e) => sum + (e.views || 0), 0);
+    return (
+      <div className="space-y-6">
+        <div><h1 className="text-2xl font-bold text-white">Admin Dashboard</h1><p className="text-gray-400">CrewQ Business Portal</p></div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+            <Building2 className="w-8 h-8 text-blue-400 mb-2" />
+            <p className="text-2xl font-bold text-white">{establishments.length}</p>
+            <p className="text-gray-400 text-sm">Venues</p>
+            {pendingVenues.length > 0 && <p className="text-amber-400 text-xs mt-1">{pendingVenues.length} pending</p>}
+          </div>
+          <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+            <Calendar className="w-8 h-8 text-emerald-400 mb-2" />
+            <p className="text-2xl font-bold text-white">{events.length}</p>
+            <p className="text-gray-400 text-sm">Events</p>
+          </div>
+          <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+            <Eye className="w-8 h-8 text-purple-400 mb-2" />
+            <p className="text-2xl font-bold text-white">{totalViews.toLocaleString()}</p>
+            <p className="text-gray-400 text-sm">Total Views</p>
+          </div>
+          <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+            <Users className="w-8 h-8 text-amber-400 mb-2" />
+            <p className="text-2xl font-bold text-white">{events.reduce((sum, e) => sum + (e.rsvps || 0), 0)}</p>
+            <p className="text-gray-400 text-sm">Total RSVPs</p>
+          </div>
+        </div>
+        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+          <h2 className="font-semibold text-white mb-4">Quick Actions</h2>
+          <div className="grid grid-cols-2 gap-3">
+            <button onClick={() => setCurrentView('create-venue')} className="flex flex-col items-center gap-2 p-4 bg-blue-500 bg-opacity-20 rounded-xl hover:bg-opacity-30 border border-blue-500 border-opacity-30">
+              <Building2 className="w-6 h-6 text-blue-400" /><span className="text-white text-sm font-medium">Add Venue</span>
+            </button>
+            <button onClick={() => setCurrentView('create-event')} className="flex flex-col items-center gap-2 p-4 bg-emerald-500 bg-opacity-20 rounded-xl hover:bg-opacity-30 border border-emerald-500 border-opacity-30">
+              <Calendar className="w-6 h-6 text-emerald-400" /><span className="text-white text-sm font-medium">Create Event</span>
+            </button>
+          </div>
+        </div>
+        <div className="bg-gray-800 rounded-xl border border-gray-700">
+          <div className="p-4 border-b border-gray-700 flex justify-between"><h2 className="font-semibold text-white">Recent Events</h2><button onClick={() => setCurrentView('events')} className="text-red-400 text-sm">View All</button></div>
+          <div className="divide-y divide-gray-700">
+            {events.slice(0, 5).map(event => (
+              <div key={event.id} className="p-4 flex items-center gap-3">
+                <div className="w-10 h-10 bg-gray-700 rounded-lg flex items-center justify-center"><Calendar className="w-5 h-5 text-gray-400" /></div>
+                <div className="flex-1 min-w-0"><p className="text-white font-medium truncate">{event.name}</p><p className="text-gray-500 text-xs">{event.venue} • {event.date}</p></div>
+                <div className="text-right"><p className="text-white text-sm">{event.views || 0}</p><p className="text-gray-500 text-xs">views</p></div>
+              </div>
+            ))}
+            {events.length === 0 && <div className="p-8 text-center text-gray-500">No events yet</div>}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Create Venue Form
+  const CreateVenueForm = () => {
+    const [venueType, setVenueType] = useState('');
+    const [formData, setFormData] = useState({ name: '', neighborhood: '', address: '', phone: '', email: '', status: 'approved' });
+    const handleSubmit = () => {
+      if (!formData.name || !formData.neighborhood || !venueType) { showToastMsg('Please fill required fields', 'error'); return; }
+      handleCreateVenue({ ...formData, venue_type: venueType });
+    };
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <button onClick={() => setCurrentView('dashboard')} className="p-2 hover:bg-gray-800 rounded-lg"><ChevronLeft className="w-5 h-5 text-gray-400" /></button>
+          <div><h1 className="text-xl font-bold text-white">Add New Venue</h1></div>
+        </div>
+        <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 space-y-4">
+          <div><label className="block text-sm font-medium text-gray-400 mb-2">Venue Name *</label><input type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="e.g., The Rustic" /></div>
+          <div><label className="block text-sm font-medium text-gray-400 mb-2">Venue Type *</label>
+            <div className="grid grid-cols-3 gap-2">
+              {BUSINESS_VENUE_TYPES.map(type => (<button key={type.id} onClick={() => setVenueType(type.id)} className={`p-3 rounded-xl border-2 text-center ${venueType === type.id ? 'border-blue-500 bg-blue-500 bg-opacity-20' : 'border-gray-600'}`}><span className="text-lg">{type.icon}</span><p className="text-xs text-white mt-1">{type.label}</p></button>))}
+            </div>
+          </div>
+          <div><label className="block text-sm font-medium text-gray-400 mb-2">Neighborhood *</label>
+            <select value={formData.neighborhood} onChange={(e) => setFormData({...formData, neighborhood: e.target.value})} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white">
+              <option value="">Select...</option>{DALLAS_NEIGHBORHOODS.map(n => <option key={n.id} value={n.name}>{n.name}</option>)}
+            </select>
+          </div>
+          <div><label className="block text-sm font-medium text-gray-400 mb-2">Address</label><input type="text" value={formData.address} onChange={(e) => setFormData({...formData, address: e.target.value})} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="123 Main St, Dallas, TX" /></div>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={() => setCurrentView('dashboard')} className="flex-1 px-4 py-3 border border-gray-600 text-gray-400 rounded-xl">Cancel</button>
+          <button onClick={handleSubmit} className="flex-1 px-4 py-3 bg-blue-500 text-white rounded-xl font-semibold">Create Venue</button>
+        </div>
+      </div>
+    );
+  };
+
+  // Create Event Form
+  const CreateEventForm = () => {
+    const [category, setCategory] = useState('');
+    const [eventType, setEventType] = useState('');
+    const [formData, setFormData] = useState({ name: '', date: '', time: '', venue: '', neighborhood: '', drink_specials: '', status: 'live' });
+    const approvedVenues = establishments.filter(e => e.status === 'approved');
+    const handleVenueSelect = (venueId) => {
+      const venue = establishments.find(e => e.id === venueId);
+      if (venue) setFormData({ ...formData, venue: venue.name, neighborhood: venue.neighborhood, establishment_id: venue.id });
+    };
+    const handleSubmit = () => {
+      if (!formData.name || !formData.date || !formData.time || !formData.venue) { showToastMsg('Please fill required fields', 'error'); return; }
+      handleCreateEvent({ ...formData, category, type: eventType || 'Event' });
+    };
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <button onClick={() => setCurrentView('dashboard')} className="p-2 hover:bg-gray-800 rounded-lg"><ChevronLeft className="w-5 h-5 text-gray-400" /></button>
+          <div><h1 className="text-xl font-bold text-white">Create Event</h1></div>
+        </div>
+        <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 space-y-4">
+          <div><label className="block text-sm font-medium text-gray-400 mb-2">Select Venue *</label>
+            {approvedVenues.length === 0 ? (
+              <div className="p-3 bg-amber-500 bg-opacity-10 border border-amber-500 border-opacity-30 rounded-lg"><p className="text-amber-400 text-sm">No venues. <button onClick={() => setCurrentView('create-venue')} className="underline">Create one first</button></p></div>
+            ) : (
+              <select value={formData.establishment_id || ''} onChange={(e) => handleVenueSelect(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white">
+                <option value="">Choose venue...</option>{approvedVenues.map(v => <option key={v.id} value={v.id}>{v.name} - {v.neighborhood}</option>)}
+              </select>
+            )}
+          </div>
+          <div><label className="block text-sm font-medium text-gray-400 mb-2">Event Name *</label><input type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="e.g., Friday Happy Hour" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="block text-sm font-medium text-gray-400 mb-2">Category</label><select value={category} onChange={(e) => { setCategory(e.target.value); setEventType(''); }} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white"><option value="">Select...</option>{BUSINESS_EVENT_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}</select></div>
+            <div><label className="block text-sm font-medium text-gray-400 mb-2">Type</label><select value={eventType} onChange={(e) => setEventType(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" disabled={!category}><option value="">Select...</option>{category && BUSINESS_EVENT_TYPES[category]?.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="block text-sm font-medium text-gray-400 mb-2">Date *</label><input type="date" value={formData.date} onChange={(e) => setFormData({...formData, date: e.target.value})} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" /></div>
+            <div><label className="block text-sm font-medium text-gray-400 mb-2">Start Time *</label><input type="time" value={formData.time} onChange={(e) => setFormData({...formData, time: e.target.value})} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" /></div>
+          </div>
+          <div><label className="block text-sm font-medium text-gray-400 mb-2">Drink Specials</label><input type="text" value={formData.drink_specials} onChange={(e) => setFormData({...formData, drink_specials: e.target.value})} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="e.g., $5 margaritas" /></div>
+          <div className="p-3 bg-emerald-500 bg-opacity-10 border border-emerald-500 border-opacity-30 rounded-lg"><p className="text-emerald-400 text-sm">✓ Event will go live immediately.</p></div>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={() => setCurrentView('dashboard')} className="flex-1 px-4 py-3 border border-gray-600 text-gray-400 rounded-xl">Cancel</button>
+          <button onClick={handleSubmit} disabled={approvedVenues.length === 0} className="flex-1 px-4 py-3 bg-emerald-500 text-white rounded-xl font-semibold disabled:opacity-50">Create Event</button>
+        </div>
+      </div>
+    );
+  };
+
+  // Venues List
+  const VenuesList = () => (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between"><div><h1 className="text-xl font-bold text-white">Venues</h1></div><button onClick={() => setCurrentView('create-venue')} className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-xl text-sm"><Plus className="w-4 h-4" /> Add</button></div>
+      <div className="space-y-3">
+        {establishments.map(venue => (
+          <div key={venue.id} className="bg-gray-800 rounded-xl border border-gray-700 p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-gray-700 rounded-lg flex items-center justify-center text-xl">{BUSINESS_VENUE_TYPES.find(t => t.id === venue.venue_type)?.icon || '🏢'}</div>
+              <div className="flex-1"><p className="text-white font-medium">{venue.name}</p><p className="text-gray-500 text-sm">{venue.neighborhood}</p></div>
+              <span className={`px-2 py-1 rounded-full text-xs ${venue.status === 'approved' ? 'bg-emerald-500 bg-opacity-20 text-emerald-400' : 'bg-amber-500 bg-opacity-20 text-amber-400'}`}>{venue.status}</span>
+            </div>
+          </div>
+        ))}
+        {establishments.length === 0 && <div className="text-center py-12 text-gray-500"><Building2 className="w-12 h-12 mx-auto mb-3 opacity-50" /><p>No venues yet</p></div>}
+      </div>
+    </div>
+  );
+
+  // Events List
+  const EventsList = () => (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between"><div><h1 className="text-xl font-bold text-white">Events</h1></div><button onClick={() => setCurrentView('create-event')} className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-xl text-sm"><Plus className="w-4 h-4" /> Create</button></div>
+      <div className="space-y-3">
+        {events.map(event => (
+          <div key={event.id} className="bg-gray-800 rounded-xl border border-gray-700 p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-gray-700 rounded-lg flex items-center justify-center"><Calendar className="w-5 h-5 text-gray-400" /></div>
+              <div className="flex-1"><p className="text-white font-medium">{event.name}</p><p className="text-gray-500 text-sm">{event.venue} • {event.date}</p></div>
+              <div className="text-right"><p className="text-white">{event.views || 0}</p><p className="text-gray-500 text-xs">views</p></div>
+            </div>
+          </div>
+        ))}
+        {events.length === 0 && <div className="text-center py-12 text-gray-500"><Calendar className="w-12 h-12 mx-auto mb-3 opacity-50" /><p>No events yet</p></div>}
+      </div>
+    </div>
+  );
+
+  const navItems = [{ id: 'dashboard', label: 'Home', icon: Home }, { id: 'venues', label: 'Venues', icon: Building2 }, { id: 'events', label: 'Events', icon: Calendar }];
+
+  return (
+    <div className="fixed inset-0 z-50 bg-gray-900">
+      <div className="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-2"><div className="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center"><Shield className="w-5 h-5 text-white" /></div><div><span className="font-bold text-white">CrewQ</span><span className="text-xs block text-gray-400">Admin</span></div></div>
+        <button onClick={onClose} className="p-2 hover:bg-gray-700 rounded-lg"><X className="w-5 h-5 text-gray-400" /></button>
+      </div>
+      <div className="p-4 pb-24 overflow-y-auto" style={{ height: 'calc(100vh - 130px)' }}>
+        {loading ? <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin" /></div>
+          : currentView === 'dashboard' ? <AdminDashboard />
+          : currentView === 'create-venue' ? <CreateVenueForm />
+          : currentView === 'create-event' ? <CreateEventForm />
+          : currentView === 'venues' ? <VenuesList />
+          : currentView === 'events' ? <EventsList />
+          : <AdminDashboard />}
+      </div>
+      <div className="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 px-4 py-2">
+        <div className="flex justify-around">
+          {navItems.map(item => (<button key={item.id} onClick={() => setCurrentView(item.id)} className={`flex flex-col items-center gap-1 px-4 py-2 ${currentView === item.id || currentView.startsWith('create') && item.id === 'dashboard' ? 'text-red-400' : 'text-gray-500'}`}><item.icon className="w-5 h-5" /><span className="text-xs">{item.label}</span></button>))}
+        </div>
+      </div>
+      {toast && <div className={`fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg ${toast.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'} text-white text-sm`}>{toast.message}</div>}
+    </div>
+  );
+}
+
+// Business Portal Login
+function BusinessPortalLogin({ onClose, darkMode }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleLogin = async () => {
+    if (!email || !password) { setError('Please enter email and password'); return; }
+    setLoading(true); setError('');
+    try {
+      const { data, error: queryError } = await supabaseClient.from('establishment_users').select('*, establishment:establishments(*)').eq('email', email.toLowerCase()).single();
+      if (queryError || !data) { setError('Invalid email or password'); setLoading(false); return; }
+      if (data.password_hash !== password) { setError('Invalid email or password'); setLoading(false); return; }
+      alert(`Welcome ${data.name}! Business dashboard coming soon.`);
+      onClose();
+    } catch { setError('Login failed'); }
+    setLoading(false);
+  };
+
+  return (
+    <div className={`fixed inset-0 z-50 ${darkMode ? 'bg-black' : 'bg-white'}`}>
+      <div className={`h-full max-w-md mx-auto ${darkMode ? 'bg-zinc-950' : 'bg-white'} flex flex-col`}>
+        <div className={`px-4 py-4 border-b ${darkMode ? 'border-zinc-800' : 'border-gray-200'} flex items-center justify-between`}>
+          <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Business Portal</h2>
+          <button onClick={onClose} className={darkMode ? 'text-zinc-400' : 'text-gray-600'}><X className="w-6 h-6" /></button>
+        </div>
+        <div className="flex-1 p-6 flex flex-col justify-center">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-4"><Building2 className="w-8 h-8 text-white" /></div>
+            <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Crew<span className="text-orange-500">Q</span> Business</h1>
+            <p className={`mt-2 ${darkMode ? 'text-zinc-400' : 'text-gray-600'}`}>Manage your venue's events</p>
+          </div>
+          <div className="space-y-4">
+            <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-zinc-400' : 'text-gray-700'}`}>Email</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-zinc-900 border-zinc-700 text-white' : 'bg-white border-gray-300'}`} placeholder="business@venue.com" /></div>
+            <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-zinc-400' : 'text-gray-700'}`}>Password</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-zinc-900 border-zinc-700 text-white' : 'bg-white border-gray-300'}`} placeholder="••••••••" /></div>
+            {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+            <button onClick={handleLogin} disabled={loading} className="w-full bg-orange-500 text-white py-3 rounded-xl font-semibold disabled:opacity-50">{loading ? 'Signing in...' : 'Sign In'}</button>
+          </div>
+          <p className={`text-center text-sm mt-8 ${darkMode ? 'text-zinc-500' : 'text-gray-500'}`}>Want to list your venue?<br/><a href="mailto:business@crewq.com" className="text-orange-500">business@crewq.com</a></p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// END BUSINESS PORTAL COMPONENTS
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState('discover');
@@ -7463,7 +7828,17 @@ const loadSquads = async (userId) => {
   }
 
   if (!userProfile) {
-    return <AuthScreen onAuth={handleAuth} onGoogleAuth={handleGoogleAuth} />;
+    return (
+      <>
+        <AuthScreen onAuth={handleAuth} onGoogleAuth={handleGoogleAuth} onOpenBusinessPortal={() => setShowBusinessPortal(true)} />
+        {showBusinessPortal && (
+          <BusinessPortalLogin
+            onClose={() => setShowBusinessPortal(false)}
+            darkMode={true}
+          />
+        )}
+      </>
+    );
   }
 
   const currentEvent = events[currentIndex];
@@ -7702,13 +8077,6 @@ const loadSquads = async (userId) => {
               </button>
             ))}
           </div>
-          {/* Subtle Business Portal Link */}
-          <button
-            onClick={() => setShowBusinessPortal(true)}
-            className={`block mx-auto mt-1 text-[9px] ${darkMode ? 'text-zinc-600 hover:text-zinc-400' : 'text-zinc-400 hover:text-zinc-600'} transition`}
-          >
-            For Business →
-          </button>
         </div>
 
         {showShareModal && currentEvent && (
