@@ -2163,99 +2163,70 @@ function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, 
               </div>
             </div>
 
-            {/* Name */}
+            {/* Account Info (Read-only) */}
             <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
-              <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
-                Display Name
-              </label>
-              <input
-                type="text"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                className={`w-full rounded-xl px-4 py-3 outline-none ${
-                  darkMode ? 'bg-zinc-800 text-white' : 'bg-amber-50 text-zinc-900'
-                }`}
-                placeholder="Your name"
-              />
-            </div>
-
-            {/* Age */}
-            <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
-              <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
-                Age
-              </label>
-              <input
-                type="number"
-                value={editAge}
-                onChange={(e) => setEditAge(e.target.value)}
-                className={`w-full rounded-xl px-4 py-3 outline-none ${
-                  darkMode ? 'bg-zinc-800 text-white' : 'bg-amber-50 text-zinc-900'
-                }`}
-                placeholder="Your age"
-              />
-              <p className={`text-xs mt-2 ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                Used for 21+ event filtering
+              <h3 className={`font-semibold mb-4 ${darkMode ? 'text-white' : 'text-zinc-900'}`}>Your Info</h3>
+              
+              <div className="space-y-3">
+                <div className="flex justify-between">
+                  <span className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>Name</span>
+                  <span className={darkMode ? 'text-white' : 'text-zinc-900'}>{userProfile?.name || 'Not set'}</span>
+                </div>
+                
+                <div className="flex justify-between">
+                  <span className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>Age</span>
+                  <span className={darkMode ? 'text-white' : 'text-zinc-900'}>{userProfile?.age || 'Not set'}</span>
+                </div>
+                
+                <div className="flex justify-between">
+                  <span className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>Gender</span>
+                  <span className={darkMode ? 'text-white' : 'text-zinc-900'}>
+                    {GENDER_OPTIONS.find(g => g.id === userProfile?.gender)?.label || 'Not set'}
+                  </span>
+                </div>
+                
+                {userProfile?.email && (
+                  <div className="flex justify-between">
+                    <span className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>Email</span>
+                    <span className={darkMode ? 'text-white' : 'text-zinc-900'}>{userProfile.email}</span>
+                  </div>
+                )}
+              </div>
+              
+              <p className={`text-xs mt-4 ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                Contact support to update your age or gender.
               </p>
             </div>
 
-            {/* Gender */}
+            {/* Public/Private Profile Toggle */}
             <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
-              <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
-                Gender
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {GENDER_OPTIONS.map(option => (
-                  <button
-                    key={option.id}
-                    onClick={() => setEditGender(option.id)}
-                    className={`px-4 py-3 rounded-xl text-sm font-semibold transition ${
-                      editGender === option.id
-                        ? 'bg-orange-500 text-white'
-                        : darkMode ? 'bg-zinc-800 text-zinc-400' : 'bg-amber-50 text-zinc-600'
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <p className={`font-semibold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
+                    Public Profile
+                  </p>
+                  <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                    {showProfilePublicly 
+                      ? 'Others can see your profile when browsing squads' 
+                      : 'Your profile is hidden from others'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowProfilePublicly(!showProfilePublicly)}
+                  className={`relative w-14 h-8 rounded-full transition ${
+                    showProfilePublicly ? 'bg-orange-500' : darkMode ? 'bg-zinc-700' : 'bg-zinc-300'
+                  }`}
+                >
+                  <div className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full transition-transform shadow ${
+                    showProfilePublicly ? 'transform translate-x-6' : ''
+                  }`} />
+                </button>
               </div>
             </div>
-
-            {/* Bio */}
-            <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
-              <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
-                Bio
-              </label>
-              <textarea
-                value={editBio}
-                onChange={(e) => setEditBio(e.target.value)}
-                className={`w-full rounded-xl px-4 py-3 outline-none resize-none ${
-                  darkMode ? 'bg-zinc-800 text-white' : 'bg-amber-50 text-zinc-900'
-                }`}
-                placeholder="Tell people about yourself..."
-                rows={3}
-                maxLength={150}
-              />
-              <p className={`text-xs text-right ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                {editBio.length}/150
-              </p>
-            </div>
-
-            {/* Email (read-only) */}
-            {userProfile?.email && (
-              <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
-                <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
-                  Email
-                </label>
-                <p className={darkMode ? 'text-white' : 'text-zinc-900'}>{userProfile.email}</p>
-                <p className={`text-xs mt-1 ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                  Connected via Google
-                </p>
-              </div>
-            )}
 
             {/* Save Button */}
             <button
-              onClick={handleSaveAccount}
+              onClick={handleSavePrivacy}
               disabled={isSaving}
               className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold hover:shadow-lg transition disabled:opacity-50"
             >
@@ -2576,7 +2547,7 @@ function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, 
                 <div className="flex justify-between">
                   <span className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>Total Swipes</span>
                   <span className={darkMode ? 'text-white' : 'text-zinc-900'}>
-                    {localStorage.getItem(`crewq_${userProfile?.id}_swipes`) || '0'}
+                    {JSON.parse(localStorage.getItem(`crewq_${userProfile?.id}_seen`) || '[]').length}
                   </span>
                 </div>
               </div>
@@ -5881,6 +5852,9 @@ export default function App() {
   const loadNotifications = async () => {
     if (!supabaseClient || !userProfile) return;
     
+    // Get cleared notification IDs from localStorage
+    const clearedNotifs = JSON.parse(localStorage.getItem(`crewq_${userProfile.id}_cleared_notifs`) || '[]');
+    
     // Build notifications from various sources
     const notifs = [];
     
@@ -5892,15 +5866,18 @@ export default function App() {
     likedEventsData.forEach(event => {
       const eventDate = new Date(event.date);
       if (eventDate >= now && eventDate <= tomorrow) {
-        notifs.push({
-          id: `reminder-${event.id}`,
-          type: 'event_reminder',
-          title: 'Upcoming Event!',
-          message: `${event.name} is happening soon`,
-          event: event,
-          time: 'Today',
-          read: false
-        });
+        const notifId = `reminder-${event.id}`;
+        if (!clearedNotifs.includes(notifId)) {
+          notifs.push({
+            id: notifId,
+            type: 'event_reminder',
+            title: 'Upcoming Event!',
+            message: `${event.name} is happening soon`,
+            event: event,
+            time: 'Today',
+            read: false
+          });
+        }
       }
     });
     
@@ -5926,16 +5903,19 @@ export default function App() {
       const eventEnd = new Date(eventStart.getTime() + 4 * 60 * 60 * 1000);
       
       if (now >= checkInWindow && now <= eventEnd && !checkedInEvents.includes(event.id)) {
-        notifs.push({
-          id: `checkin-${event.id}`,
-          type: 'checkin_reminder',
-          title: 'Check In Now!',
-          message: `${event.name} is happening - don't forget to check in!`,
-          event: event,
-          time: 'Now',
-          read: false,
-          priority: true
-        });
+        const notifId = `checkin-${event.id}`;
+        if (!clearedNotifs.includes(notifId)) {
+          notifs.push({
+            id: notifId,
+            type: 'checkin_reminder',
+            title: 'Check In Now!',
+            message: `${event.name} is happening - don't forget to check in!`,
+            event: event,
+            time: 'Now',
+            read: false,
+            priority: true
+          });
+        }
       }
     });
     
@@ -6229,7 +6209,9 @@ export default function App() {
 
       // Get local engagement stats - user specific
       const userKey = `crewq_${userId}`;
-      const totalSwipes = parseInt(localStorage.getItem(`${userKey}_swipes`) || '0');
+      // Use seen events count for swipes (ensures uniqueness)
+      const seenEvents = JSON.parse(localStorage.getItem(`${userKey}_seen`) || '[]');
+      const totalSwipes = seenEvents.length;
       const totalLikes = JSON.parse(localStorage.getItem(`${userKey}_liked`) || '[]').length;
       const daysActive = parseInt(localStorage.getItem(`${userKey}_days_active`) || '0');
       const currentStreak = parseInt(localStorage.getItem(`${userKey}_streak`) || '0');
@@ -7782,7 +7764,14 @@ const loadSquads = async (userId) => {
             }}
             onCheckIn={handleCheckIn}
             onEventClick={handleEventClick}
-            onClearAll={() => setNotifications([])}
+            onClearAll={() => {
+              // Save cleared notification IDs to localStorage
+              const clearedIds = notifications.map(n => n.id);
+              const existingCleared = JSON.parse(localStorage.getItem(`crewq_${userProfile?.id}_cleared_notifs`) || '[]');
+              const allCleared = [...new Set([...existingCleared, ...clearedIds])];
+              localStorage.setItem(`crewq_${userProfile?.id}_cleared_notifs`, JSON.stringify(allCleared));
+              setNotifications([]);
+            }}
           />
         )}
 
