@@ -1,6 +1,51 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Heart, X, Share2, Bell, BellOff, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle, Trash2, Eye, EyeOff, Shield, Sparkles, ExternalLink, Globe, UtensilsCrossed, Award, Trophy, Star, Flame, Music, Mic, Beer, Coffee, Utensils, Sunrise, Moon, Key, Crown, Zap, Target, Navigation, Map, Filter, Car } from 'lucide-react';
 
+// Theme color configuration
+// Dark mode: Purple neon nighttime vibe
+// Light mode: Orange/yellow sunny daytime vibe
+const THEME = {
+  dark: {
+    primary: 'violet-500',
+    primaryHover: 'violet-600',
+    primaryBg: 'violet-500',
+    primaryText: 'violet-400',
+    primaryBorder: 'violet-500',
+    primaryGlow: 'violet-500/20',
+    gradient: 'from-violet-500 to-purple-600',
+    gradientAlt: 'from-purple-500 to-pink-500',
+    accent: 'purple-400',
+    bg: 'black',
+    bgSecondary: 'zinc-900',
+    bgTertiary: 'zinc-800',
+    text: 'white',
+    textSecondary: 'zinc-400',
+    border: 'zinc-800',
+  },
+  light: {
+    primary: 'orange-500',
+    primaryHover: 'orange-600',
+    primaryBg: 'orange-500',
+    primaryText: 'orange-600',
+    primaryBorder: 'orange-400',
+    primaryGlow: 'orange-500/20',
+    gradient: 'from-orange-400 to-yellow-500',
+    gradientAlt: 'from-yellow-400 to-orange-500',
+    accent: 'amber-500',
+    bg: 'amber-50',
+    bgSecondary: 'white',
+    bgTertiary: 'amber-100',
+    text: 'zinc-900',
+    textSecondary: 'zinc-600',
+    border: 'amber-200',
+  }
+};
+
+// Helper function to get theme-aware classes
+const getThemeColor = (darkMode, type) => {
+  return darkMode ? THEME.dark[type] : THEME.light[type];
+};
+
 // Toast Notification Component
 function Toast({ message, type = 'success', onClose }) {
   useEffect(() => {
@@ -5271,6 +5316,10 @@ function AuthScreen({ onAuth, onGoogleAuth }) {
   const [bio, setBio] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  
+  // Time-based theming for auth screen
+  const hour = new Date().getHours();
+  const isNightMode = hour >= 17 || hour < 6;
 
   const handleVibeToggle = (vibeId) => {
     setVibes(prev =>
@@ -5320,22 +5369,32 @@ function AuthScreen({ onAuth, onGoogleAuth }) {
     setIsLoading(false);
   };
 
+  // Theme colors based on time
+  const accentColor = isNightMode ? 'violet' : 'orange';
+  const gradientClasses = isNightMode ? 'from-violet-500 to-purple-600' : 'from-orange-400 to-yellow-500';
+  const bgClass = isNightMode ? 'bg-black' : 'bg-amber-50';
+  const cardBgClass = isNightMode ? 'bg-zinc-900' : 'bg-white';
+  const textClass = isNightMode ? 'text-white' : 'text-zinc-900';
+  const textSecondaryClass = isNightMode ? 'text-zinc-400' : 'text-zinc-600';
+  const inputBgClass = isNightMode ? 'bg-zinc-800 text-white' : 'bg-amber-50 text-zinc-900';
+  const progressBgClass = isNightMode ? 'bg-zinc-800' : 'bg-amber-200';
+
   return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
-      <div className="bg-zinc-900 rounded-3xl p-8 max-w-md w-full max-h-[90vh] overflow-y-auto">
-        <h1 className="text-3xl font-bold text-white mb-2">
-          Crew<span className="text-orange-500">Q</span>
+    <div className={`min-h-screen ${bgClass} flex items-center justify-center p-4`}>
+      <div className={`${cardBgClass} rounded-3xl p-8 max-w-md w-full max-h-[90vh] overflow-y-auto shadow-2xl`}>
+        <h1 className={`text-3xl font-bold ${textClass} mb-2`}>
+          Crew<span className={isNightMode ? 'text-violet-400' : 'text-orange-500'}>Q</span>
         </h1>
-        <p className="text-zinc-400 mb-6">Dallas Nightlife, Solved</p>
+        <p className={`${textSecondaryClass} mb-6`}>Dallas Nightlife, Solved</p>
 
         {step === 0 && (
           <div className="space-y-4">
             <div className="text-center mb-8">
-              <div className="w-24 h-24 bg-gradient-to-br from-orange-500 to-orange-600 rounded-full mx-auto mb-6 flex items-center justify-center">
+              <div className={`w-24 h-24 bg-gradient-to-br ${gradientClasses} rounded-full mx-auto mb-6 flex items-center justify-center shadow-lg ${isNightMode ? 'shadow-violet-500/25' : 'shadow-orange-500/25'}`}>
                 <Users className="w-12 h-12 text-white" />
               </div>
-              <h2 className="text-xl font-bold text-white mb-2">Welcome to CrewQ</h2>
-              <p className="text-zinc-400 text-sm">
+              <h2 className={`text-xl font-bold ${textClass} mb-2`}>Welcome to CrewQ</h2>
+              <p className={`${textSecondaryClass} text-sm`}>
                 Discover events, build your crew, and experience Dallas nightlife like never before.
               </p>
             </div>
@@ -5344,7 +5403,7 @@ function AuthScreen({ onAuth, onGoogleAuth }) {
             <button
               onClick={handleGoogleSignIn}
               disabled={isGoogleLoading}
-              className="w-full bg-white text-zinc-800 py-4 rounded-xl font-bold text-lg hover:bg-zinc-100 transition disabled:opacity-50 flex items-center justify-center gap-3"
+              className={`w-full ${isNightMode ? 'bg-white text-zinc-800 hover:bg-zinc-100' : 'bg-zinc-900 text-white hover:bg-zinc-800'} py-4 rounded-xl font-bold text-lg transition disabled:opacity-50 flex items-center justify-center gap-3`}
             >
               {isGoogleLoading ? (
                 <div className="w-5 h-5 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin" />
@@ -5361,22 +5420,22 @@ function AuthScreen({ onAuth, onGoogleAuth }) {
 
             <div className="relative my-6">
               <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-zinc-800"></div>
+                <div className={`w-full border-t ${isNightMode ? 'border-zinc-800' : 'border-amber-200'}`}></div>
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="px-4 bg-zinc-900 text-zinc-500">or</span>
+                <span className={`px-4 ${cardBgClass} ${textSecondaryClass}`}>or</span>
               </div>
             </div>
 
             {/* Continue without account */}
             <button
               onClick={() => setStep(1)}
-              className="w-full bg-zinc-800 text-white py-4 rounded-xl font-bold text-lg hover:bg-zinc-700 transition"
+              className={`w-full ${isNightMode ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-amber-100 hover:bg-amber-200'} ${textClass} py-4 rounded-xl font-bold text-lg transition`}
             >
               Continue as Guest
             </button>
 
-            <p className="text-xs text-zinc-500 text-center mt-4">
+            <p className={`text-xs ${textSecondaryClass} text-center mt-4`}>
               Sign in with Google to sync your profile across devices
             </p>
           </div>
@@ -5390,7 +5449,7 @@ function AuthScreen({ onAuth, onGoogleAuth }) {
                 <div
                   key={s}
                   className={`flex-1 h-1 rounded-full ${
-                    step >= s ? 'bg-orange-500' : 'bg-zinc-800'
+                    step >= s ? (isNightMode ? 'bg-violet-500' : 'bg-orange-500') : progressBgClass
                   }`}
                 />
               ))}
@@ -5401,30 +5460,30 @@ function AuthScreen({ onAuth, onGoogleAuth }) {
         {step === 1 && (
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-semibold text-zinc-300 mb-2">First Name *</label>
+              <label className={`block text-sm font-semibold ${textSecondaryClass} mb-2`}>First Name *</label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
-                placeholder="Enter your first name"
+                className={`w-full ${inputBgClass} rounded-xl px-4 py-3 outline-none focus:ring-2 ${isNightMode ? 'focus:ring-violet-500' : 'focus:ring-orange-500'}`}
+                placeholder="What should we call you?"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-zinc-300 mb-2">Age</label>
+              <label className={`block text-sm font-semibold ${textSecondaryClass} mb-2`}>Age</label>
               <input
                 type="number"
                 value={age}
                 onChange={(e) => setAge(e.target.value)}
-                className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
+                className={`w-full ${inputBgClass} rounded-xl px-4 py-3 outline-none focus:ring-2 ${isNightMode ? 'focus:ring-violet-500' : 'focus:ring-orange-500'}`}
                 placeholder="Your age"
               />
-              <p className="text-xs text-zinc-500 mt-1">Used for 21+ event filtering</p>
+              <p className={`text-xs ${textSecondaryClass} mt-1`}>Used for 21+ event filtering</p>
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-zinc-300 mb-2">Gender</label>
+              <label className={`block text-sm font-semibold ${textSecondaryClass} mb-2`}>Gender</label>
               <div className="grid grid-cols-2 gap-2">
                 {GENDER_OPTIONS.map(option => (
                   <button
@@ -5432,46 +5491,23 @@ function AuthScreen({ onAuth, onGoogleAuth }) {
                     onClick={() => setGender(option.id)}
                     className={`px-4 py-3 rounded-xl text-sm font-semibold transition ${
                       gender === option.id
-                        ? 'bg-orange-500 text-white'
-                        : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                        ? (isNightMode ? 'bg-violet-500 text-white' : 'bg-orange-500 text-white')
+                        : (isNightMode ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700' : 'bg-amber-100 text-zinc-600 hover:bg-amber-200')
                     }`}
                   >
                     {option.label}
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-zinc-500 mt-1">Helps match you with the right squads</p>
             </div>
 
-            <div>
-              <label className="block text-sm font-semibold text-zinc-300 mb-2">
-                Phone (Optional)
-              </label>
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
-                placeholder="(555) 123-4567"
-              />
-              <p className="text-xs text-zinc-500 mt-1">For squad invites from friends</p>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setStep(0)}
-                className="flex-1 bg-zinc-800 text-white py-4 rounded-xl font-bold hover:bg-zinc-700 transition"
-              >
-                Back
-              </button>
-              <button
-                onClick={() => setStep(2)}
-                disabled={!name}
-                className="flex-1 bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold text-lg hover:shadow-lg transition disabled:opacity-50"
-              >
-                Next
-              </button>
-            </div>
+            <button
+              onClick={() => setStep(2)}
+              disabled={!name}
+              className={`w-full bg-gradient-to-r ${gradientClasses} text-white py-4 rounded-xl font-bold text-lg hover:shadow-lg transition disabled:opacity-50 ${isNightMode ? 'shadow-violet-500/25' : 'shadow-orange-500/25'}`}
+            >
+              Next
+            </button>
           </div>
         )}
 
@@ -5479,8 +5515,8 @@ function AuthScreen({ onAuth, onGoogleAuth }) {
           <div className="space-y-6">
             {/* What are you here for? */}
             <div>
-              <label className="block text-sm font-semibold text-zinc-300 mb-2">What are you here for?</label>
-              <p className="text-xs text-zinc-500 mb-3">Select all that apply</p>
+              <label className={`block text-sm font-semibold ${textSecondaryClass} mb-2`}>What are you here for?</label>
+              <p className={`text-xs ${textSecondaryClass} mb-3`}>Select all that apply</p>
               <div className="space-y-2">
                 {INTENT_OPTIONS.map(intent => (
                   <button
@@ -5488,16 +5524,16 @@ function AuthScreen({ onAuth, onGoogleAuth }) {
                     onClick={() => handleIntentToggle(intent.id)}
                     className={`w-full p-3 rounded-xl text-left transition flex items-center gap-3 ${
                       intents.includes(intent.id)
-                        ? 'bg-orange-500 bg-opacity-20 border-2 border-orange-500'
-                        : 'bg-zinc-800 border-2 border-transparent hover:border-zinc-700'
+                        ? (isNightMode ? 'bg-violet-500 bg-opacity-20 border-2 border-violet-500' : 'bg-orange-500 bg-opacity-20 border-2 border-orange-500')
+                        : (isNightMode ? 'bg-zinc-800 border-2 border-transparent hover:border-zinc-700' : 'bg-amber-100 border-2 border-transparent hover:border-amber-300')
                     }`}
                   >
                     <span className="text-2xl">{intent.icon}</span>
                     <div>
-                      <p className={`font-semibold ${intents.includes(intent.id) ? 'text-orange-400' : 'text-white'}`}>
+                      <p className={`font-semibold ${intents.includes(intent.id) ? (isNightMode ? 'text-violet-400' : 'text-orange-600') : textClass}`}>
                         {intent.label}
                       </p>
-                      <p className="text-xs text-zinc-500">{intent.description}</p>
+                      <p className={`text-xs ${textSecondaryClass}`}>{intent.description}</p>
                     </div>
                   </button>
                 ))}
@@ -5506,8 +5542,8 @@ function AuthScreen({ onAuth, onGoogleAuth }) {
 
             {/* What's your vibe? */}
             <div>
-              <label className="block text-sm font-semibold text-zinc-300 mb-2">What's your vibe?</label>
-              <p className="text-xs text-zinc-500 mb-3">Select all that apply</p>
+              <label className={`block text-sm font-semibold ${textSecondaryClass} mb-2`}>What's your vibe?</label>
+              <p className={`text-xs ${textSecondaryClass} mb-3`}>Select all that apply</p>
               <div className="flex flex-wrap gap-2">
                 {VIBE_OPTIONS.map(vibe => (
                   <button
@@ -5515,8 +5551,8 @@ function AuthScreen({ onAuth, onGoogleAuth }) {
                     onClick={() => handleVibeToggle(vibe.id)}
                     className={`px-3 py-2 rounded-full text-sm font-semibold transition ${
                       vibes.includes(vibe.id)
-                        ? 'bg-orange-500 text-white'
-                        : 'bg-zinc-800 text-zinc-400'
+                        ? (isNightMode ? 'bg-violet-500 text-white' : 'bg-orange-500 text-white')
+                        : (isNightMode ? 'bg-zinc-800 text-zinc-400' : 'bg-amber-100 text-zinc-600')
                     }`}
                   >
                     {vibe.label}
@@ -5528,14 +5564,14 @@ function AuthScreen({ onAuth, onGoogleAuth }) {
             <div className="flex gap-3">
               <button
                 onClick={() => setStep(1)}
-                className="flex-1 bg-zinc-800 text-white py-4 rounded-xl font-bold hover:bg-zinc-700 transition"
+                className={`flex-1 ${isNightMode ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-amber-100 hover:bg-amber-200'} ${textClass} py-4 rounded-xl font-bold transition`}
               >
                 Back
               </button>
               <button
                 onClick={handleSubmit}
                 disabled={isLoading}
-                className="flex-1 bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold text-lg hover:shadow-lg transition disabled:opacity-50"
+                className={`flex-1 bg-gradient-to-r ${gradientClasses} text-white py-4 rounded-xl font-bold text-lg hover:shadow-lg transition disabled:opacity-50`}
               >
                 {isLoading ? 'Creating...' : 'Get Started'}
               </button>
@@ -5767,12 +5803,36 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [darkMode, setDarkMode] = useState(() => {
-    return localStorage.getItem('crewq_theme') !== 'light';
+    // Check if user has manual preference
+    const savedTheme = localStorage.getItem('crewq_theme');
+    if (savedTheme === 'light' || savedTheme === 'dark') {
+      return savedTheme === 'dark';
+    }
+    // Auto-switch based on time: dark mode after 5PM (17:00) until 6AM
+    const hour = new Date().getHours();
+    return hour >= 17 || hour < 6;
   });
   const [notifications, setNotifications] = useState([]);
   const [pendingJoinRequests, setPendingJoinRequests] = useState([]);
   const [showJoinRequestReview, setShowJoinRequestReview] = useState(null);
   const [toast, setToast] = useState(null);
+
+  // Auto-switch theme based on time of day
+  useEffect(() => {
+    const checkTimeAndSwitchTheme = () => {
+      const savedTheme = localStorage.getItem('crewq_theme');
+      // Only auto-switch if user hasn't set a manual preference
+      if (savedTheme !== 'light' && savedTheme !== 'dark') {
+        const hour = new Date().getHours();
+        const shouldBeDark = hour >= 17 || hour < 6;
+        setDarkMode(shouldBeDark);
+      }
+    };
+    
+    // Check every minute
+    const interval = setInterval(checkTimeAndSwitchTheme, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Helper function to show toast instead of alert
   const showToast = (message, type = 'success') => {
@@ -5807,6 +5867,16 @@ export default function App() {
         50% { transform: scale(1.5); opacity: 0.1; }
       }
       .mapboxgl-canvas { outline: none; }
+      
+      /* Neon glow effects for dark/night mode */
+      @keyframes neon-pulse {
+        0%, 100% { box-shadow: 0 0 5px rgba(139, 92, 246, 0.5), 0 0 20px rgba(139, 92, 246, 0.3); }
+        50% { box-shadow: 0 0 10px rgba(139, 92, 246, 0.8), 0 0 40px rgba(139, 92, 246, 0.5); }
+      }
+      .neon-glow { animation: neon-pulse 2s ease-in-out infinite; }
+      
+      /* Smooth theme transition */
+      * { transition: background-color 0.3s ease, border-color 0.3s ease; }
     `;
     document.head.appendChild(style);
     return () => document.head.removeChild(style);
@@ -7356,15 +7426,19 @@ const loadSquads = async (userId) => {
 
   const currentEvent = events[currentIndex];
 
+  // Theme-aware accent color
+  const accentColor = darkMode ? 'violet' : 'orange';
+  const accentGradient = darkMode ? 'from-violet-500 to-purple-600' : 'from-orange-400 to-yellow-500';
+
   return (
-    <div className={`min-h-screen ${darkMode ? 'bg-zinc-950 text-white' : 'bg-amber-50 text-zinc-900'}`}>
-      <div className={`w-full max-w-md mx-auto ${darkMode ? 'bg-zinc-950' : 'bg-amber-50'} min-h-screen relative flex flex-col`}>
+    <div className={`min-h-screen ${darkMode ? 'bg-black text-white' : 'bg-amber-50 text-zinc-900'}`}>
+      <div className={`w-full max-w-md mx-auto ${darkMode ? 'bg-black' : 'bg-amber-50'} min-h-screen relative flex flex-col`}>
         {/* Fixed Header */}
-        <div className={`sticky top-0 z-40 ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-amber-100 border-amber-200'} border-b px-4 py-4`}>
+        <div className={`sticky top-0 z-40 ${darkMode ? 'bg-zinc-900/95 backdrop-blur-sm border-zinc-800' : 'bg-amber-100 border-amber-200'} border-b px-4 py-4`}>
           <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-2xl font-bold">
-                Crew<span className="text-orange-500">Q</span>
+                Crew<span className={darkMode ? 'text-violet-400' : 'text-orange-500'}>Q</span>
               </h1>
             </div>
             <div className="flex items-center gap-3">
@@ -7374,7 +7448,7 @@ const loadSquads = async (userId) => {
               >
                 <Bell className={`w-6 h-6 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`} />
                 {(notifications.length + pendingJoinRequests.length) > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
+                  <span className={`absolute -top-1 -right-1 ${darkMode ? 'bg-violet-500' : 'bg-orange-500'} text-white text-xs w-5 h-5 rounded-full flex items-center justify-center`}>
                     {notifications.length + pendingJoinRequests.length}
                   </span>
                 )}
@@ -7389,13 +7463,13 @@ const loadSquads = async (userId) => {
             <div className={`flex gap-2 rounded-full p-1.5 transition-all duration-300 ${
               mode === 'crew' 
                 ? (darkMode ? 'bg-zinc-800' : 'bg-amber-200') 
-                : 'bg-orange-500'
+                : (darkMode ? 'bg-violet-500' : 'bg-orange-500')
             }`}>
               <button
                 onClick={() => setMode('crew')}
                 className={`px-8 py-2.5 rounded-full text-base font-bold transition-all duration-300 ${
                   mode === 'crew' 
-                    ? 'bg-orange-500 text-white' 
+                    ? (darkMode ? 'bg-violet-500 text-white' : 'bg-orange-500 text-white')
                     : (darkMode ? 'bg-transparent text-zinc-900' : 'bg-transparent text-white')
                 }`}
               >
@@ -7426,11 +7500,11 @@ const loadSquads = async (userId) => {
             <div className="px-3 py-3 sm:px-4 sm:py-6">
               {currentIndex >= events.length || events.length === 0 ? (
                 <div className="text-center py-16">
-                  <div className="w-20 h-20 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <Calendar className="w-10 h-10 text-orange-500" />
+                  <div className={`w-20 h-20 ${darkMode ? 'bg-zinc-800' : 'bg-amber-100'} rounded-full flex items-center justify-center mx-auto mb-6`}>
+                    <Calendar className={`w-10 h-10 ${darkMode ? 'text-violet-400' : 'text-orange-500'}`} />
                   </div>
                   <h2 className="text-2xl font-bold mb-3">You've Seen All Events!</h2>
-                  <p className="text-zinc-400 mb-8 px-4">
+                  <p className={`${darkMode ? 'text-zinc-400' : 'text-zinc-600'} mb-8 px-4`}>
                     You've swiped through all available events. Check back later for new ones or reset to see them again.
                   </p>
                   
@@ -7444,7 +7518,7 @@ const loadSquads = async (userId) => {
                           showToast('Events reset! Swipe away 🎉', 'success');
                         }
                       }}
-                      className="bg-gradient-to-r from-orange-500 to-orange-600 text-white px-8 py-4 rounded-xl font-bold hover:shadow-lg transition flex items-center justify-center gap-2 mx-auto w-full"
+                      className={`bg-gradient-to-r ${darkMode ? 'from-violet-500 to-purple-600' : 'from-orange-400 to-yellow-500'} text-white px-8 py-4 rounded-xl font-bold hover:shadow-lg transition flex items-center justify-center gap-2 mx-auto w-full`}
                     >
                       <Zap className="w-5 h-5" />
                       Reset & See All Events Again
@@ -7452,7 +7526,7 @@ const loadSquads = async (userId) => {
                     
                     <button
                       onClick={() => setShowSuggestionModal(true)}
-                      className="bg-zinc-800 text-white px-8 py-4 rounded-xl font-bold hover:bg-zinc-700 transition flex items-center justify-center gap-2 mx-auto w-full"
+                      className={`${darkMode ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-amber-100 hover:bg-amber-200'} ${darkMode ? 'text-white' : 'text-zinc-900'} px-8 py-4 rounded-xl font-bold transition flex items-center justify-center gap-2 mx-auto w-full`}
                     >
                       <MessageCircle className="w-5 h-5" />
                       Suggest an Event
@@ -7460,11 +7534,11 @@ const loadSquads = async (userId) => {
                   </div>
 
                   {likedEvents.length > 0 && (
-                    <div className="mt-8 pt-6 border-t border-zinc-800">
-                      <p className="text-zinc-500 text-sm mb-3">Meanwhile, check out your liked events:</p>
+                    <div className={`mt-8 pt-6 border-t ${darkMode ? 'border-zinc-800' : 'border-amber-200'}`}>
+                      <p className={`${darkMode ? 'text-zinc-500' : 'text-zinc-400'} text-sm mb-3`}>Meanwhile, check out your liked events:</p>
                       <button
                         onClick={() => setCurrentTab('events')}
-                        className="text-orange-500 font-semibold hover:text-orange-400 transition"
+                        className={`${darkMode ? 'text-violet-400 hover:text-violet-300' : 'text-orange-500 hover:text-orange-400'} font-semibold transition`}
                       >
                         View {likedEvents.length} Liked Event{likedEvents.length !== 1 ? 's' : ''} →
                       </button>
@@ -7496,7 +7570,7 @@ const loadSquads = async (userId) => {
 
                     <button
                       onClick={() => setShowShareModal(true)}
-                      className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-zinc-800 bg-opacity-90 backdrop-blur-sm border border-zinc-700 flex items-center justify-center hover:bg-orange-500 hover:border-orange-500 transition shadow-lg"
+                      className={`w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-zinc-800 bg-opacity-90 backdrop-blur-sm border border-zinc-700 flex items-center justify-center transition shadow-lg ${darkMode ? 'hover:bg-violet-500 hover:border-violet-500' : 'hover:bg-orange-500 hover:border-orange-500'}`}
                     >
                       <Share2 className="w-5 h-5 sm:w-7 sm:h-7 text-white" />
                     </button>
@@ -7565,7 +7639,7 @@ const loadSquads = async (userId) => {
         </div>
 
         {/* Fixed Bottom Navigation */}
-        <div className={`fixed bottom-0 left-0 right-0 z-50 ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-amber-200'} border-t px-4 py-2 pb-safe`}>
+        <div className={`fixed bottom-0 left-0 right-0 z-50 ${darkMode ? 'bg-zinc-900/95 backdrop-blur-sm border-zinc-800' : 'bg-white border-amber-200'} border-t px-4 py-2 pb-safe`}>
           <div className="flex justify-around items-center max-w-md mx-auto">
             {[
               { id: 'discover', icon: Home, label: 'Discover' },
@@ -7579,8 +7653,8 @@ const loadSquads = async (userId) => {
                 onClick={() => setCurrentTab(tab.id)}
                 className="flex flex-col items-center gap-0.5 py-1 px-2"
               >
-                <tab.icon className={`w-5 h-5 ${currentTab === tab.id ? 'text-orange-500' : (darkMode ? 'text-zinc-500' : 'text-zinc-400')}`} />
-                <span className={`text-[10px] ${currentTab === tab.id ? 'text-orange-500' : (darkMode ? 'text-zinc-500' : 'text-zinc-400')}`}>
+                <tab.icon className={`w-5 h-5 ${currentTab === tab.id ? (darkMode ? 'text-violet-400' : 'text-orange-500') : (darkMode ? 'text-zinc-500' : 'text-zinc-400')}`} />
+                <span className={`text-[10px] ${currentTab === tab.id ? (darkMode ? 'text-violet-400' : 'text-orange-500') : (darkMode ? 'text-zinc-500' : 'text-zinc-400')}`}>
                   {tab.label}
                 </span>
               </button>
