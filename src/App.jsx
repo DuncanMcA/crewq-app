@@ -1799,6 +1799,42 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
   const [viewingMember, setViewingMember] = useState(null);
   const [memberBadges, setMemberBadges] = useState([]);
   const [loadingMemberBadges, setLoadingMemberBadges] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [squadLeader, setSquadLeader] = useState(null);
+
+  // Check if squad is muted
+  useEffect(() => {
+    if (userProfile?.id && squad?.id) {
+      const mutedSquads = JSON.parse(localStorage.getItem(`crewq_${userProfile.id}_muted_squads`) || '[]');
+      setIsMuted(mutedSquads.includes(squad.id));
+    }
+  }, [userProfile?.id, squad?.id]);
+
+  // Load squad leader info
+  useEffect(() => {
+    const loadLeader = async () => {
+      if (!supabaseClient || !squad?.created_by) return;
+      try {
+        const { data } = await supabaseClient
+          .from('users')
+          .select('id, name, profile_picture')
+          .eq('id', squad.created_by)
+          .single();
+        if (data) setSquadLeader(data);
+      } catch (error) {
+        console.error('Error loading squad leader:', error);
+      }
+    };
+    loadLeader();
+  }, [squad?.created_by]);
+
+  // Handle mute toggle
+  const handleMuteToggle = () => {
+    if (onMute) {
+      onMute(squad);
+      setIsMuted(!isMuted);
+    }
+  };
 
   // Load member's badges when viewing their profile
   const loadMemberBadges = async (memberId) => {
@@ -1857,8 +1893,9 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
   const totalVotes = (squad.votes_yes || 0) + (squad.votes_no || 0);
   const yesPercentage = totalVotes > 0 ? Math.round(((squad.votes_yes || 0) / totalVotes) * 100) : 0;
 
-  // Use loaded members or fallback to squad.members
+  // Use loaded members or fallback to squad.members - actual count takes precedence
   const displayMembers = squadMembers.length > 0 ? squadMembers : (squad.members || []);
+  const actualMemberCount = squadMembers.length > 0 ? squadMembers.length : (squad.member_count || displayMembers.length || 0);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
@@ -1973,7 +2010,7 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
           {/* Squad Members Section */}
           <div className="mb-4">
             <p className="text-sm font-semibold text-zinc-400 mb-3">
-              Members ({squad.member_count || displayMembers.length || 0})
+              Members ({actualMemberCount})
             </p>
             {loadingMembers ? (
               <div className="flex items-center gap-2 text-zinc-500 text-sm">
@@ -2031,9 +2068,9 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
                     )}
                   </div>
                 ))}
-                {(squad.member_count || 0) > 6 && (
+                {actualMemberCount > 6 && (
                   <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 text-xs font-semibold">
-                    +{squad.member_count - 6}
+                    +{actualMemberCount - 6}
                   </div>
                 )}
               </div>
@@ -2111,6 +2148,28 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
             </div>
           )}
 
+          {/* Squad Leader */}
+          {squadLeader && (
+            <div className="bg-violet-500 bg-opacity-10 border border-violet-500 border-opacity-30 rounded-xl p-4 mb-4">
+              <p className="text-violet-400 text-xs font-semibold uppercase mb-2">👑 Squad Leader</p>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-violet-500/20 flex items-center justify-center overflow-hidden">
+                  {squadLeader.profile_picture ? (
+                    <img src={squadLeader.profile_picture} alt={squadLeader.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <Crown className="w-5 h-5 text-violet-400" />
+                  )}
+                </div>
+                <div>
+                  <p className="text-white font-semibold">{squadLeader.name}</p>
+                  {squadLeader.id === userProfile?.id && (
+                    <span className="text-xs text-violet-400">That's you!</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Meeting Spot */}
           {(squad.meeting_spot || squad.meeting_instructions) && (
             <div className="bg-emerald-500 bg-opacity-10 border border-emerald-500 border-opacity-30 rounded-xl p-4 mb-4">
@@ -2127,19 +2186,19 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
           {/* Member Cap Status */}
           {squad.max_members && (
             <div className={`rounded-xl p-3 mb-4 ${
-              (squad.member_count || 0) >= squad.max_members
+              actualMemberCount >= squad.max_members
                 ? 'bg-red-500 bg-opacity-10 border border-red-500 border-opacity-30'
                 : 'bg-zinc-800'
             }`}>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-zinc-400">Squad Capacity</span>
                 <span className={`text-sm font-semibold ${
-                  (squad.member_count || 0) >= squad.max_members ? 'text-red-400' : 'text-white'
+                  actualMemberCount >= squad.max_members ? 'text-red-400' : 'text-white'
                 }`}>
-                  {squad.member_count || 0} / {squad.max_members}
+                  {actualMemberCount} / {squad.max_members}
                 </span>
               </div>
-              {(squad.member_count || 0) >= squad.max_members && (
+              {actualMemberCount >= squad.max_members && (
                 <p className="text-red-400 text-xs mt-1">🔒 Squad is full</p>
               )}
             </div>
@@ -2147,7 +2206,7 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
 
           {/* Action Buttons */}
           {!isMember ? (
-            squad.max_members && (squad.member_count || 0) >= squad.max_members ? (
+            squad.max_members && actualMemberCount >= squad.max_members ? (
               <div className="w-full bg-zinc-800 text-zinc-500 py-4 rounded-xl font-bold text-center">
                 Squad is Full
               </div>
@@ -2195,14 +2254,25 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
                 </div>
               )}
               
-              {/* Mute notifications option for all members */}
-              <button
-                onClick={() => onMute && onMute(squad)}
-                className="w-full flex items-center justify-center gap-2 text-zinc-500 py-2 hover:text-zinc-300 transition text-sm"
-              >
-                <BellOff className="w-4 h-4" />
-                Mute Notifications
-              </button>
+              {/* Mute notifications toggle for all members */}
+              <div className="flex items-center justify-between py-3 border-t border-zinc-800 mt-3">
+                <div className="flex items-center gap-2">
+                  {isMuted ? <BellOff className="w-4 h-4 text-zinc-500" /> : <Bell className="w-4 h-4 text-zinc-400" />}
+                  <span className="text-sm text-zinc-400">Notifications {isMuted ? '(Muted)' : '(On)'}</span>
+                </div>
+                <button
+                  onClick={handleMuteToggle}
+                  className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${
+                    isMuted ? 'bg-zinc-600' : 'bg-orange-500'
+                  }`}
+                >
+                  <div
+                    className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-md transition-all duration-200 ${
+                      isMuted ? 'left-1' : 'left-7'
+                    }`}
+                  />
+                </button>
+              </div>
             </div>
           )}
 
@@ -2739,20 +2809,17 @@ function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, 
               </div>
             </div>
 
-            {/* Danger Zone */}
-            <div className={`rounded-2xl p-4 ${darkMode ? 'bg-red-500 bg-opacity-10' : 'bg-red-50'}`}>
-              <h3 className="font-semibold text-red-500 mb-3">Danger Zone</h3>
-              <button
-                onClick={() => {
-                  if (confirm('Are you sure you want to delete your account? This cannot be undone.')) {
-                    alert('Please contact support@crewq.app to delete your account.');
-                  }
-                }}
-                className="w-full py-3 rounded-xl font-semibold bg-red-500 bg-opacity-20 text-red-500 hover:bg-opacity-30 transition"
-              >
-                Delete Account
-              </button>
-            </div>
+            {/* Delete Account - Simplified */}
+            <button
+              onClick={() => {
+                if (confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
+                  alert('Please contact support@crewq.app to complete account deletion.');
+                }
+              }}
+              className={`w-full py-3 rounded-xl text-sm ${darkMode ? 'text-zinc-500 hover:text-red-400' : 'text-zinc-400 hover:text-red-500'} transition`}
+            >
+              Delete Account
+            </button>
           </div>
         </div>
       </div>
@@ -5390,7 +5457,7 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
             <div className="flex-1 pr-4">
               <p className="text-white font-semibold mb-1">Profile Visibility</p>
               <p className="text-zinc-400 text-sm">
-                {userProfile.profile_visibility === 'public' 
+                {(editedProfile.profile_visibility || userProfile.profile_visibility) === 'public' 
                   ? 'Public: Anyone can see your profile in Solo mode' 
                   : 'Private: Only squad members can see your profile'}
               </p>
@@ -5399,21 +5466,22 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
               <span className="text-xs text-zinc-500">Public</span>
               <button
                 onClick={async () => {
-                  const currentVisibility = userProfile.profile_visibility || 'squad_only';
+                  const currentVisibility = editedProfile.profile_visibility || userProfile.profile_visibility || 'squad_only';
                   const newVisibility = currentVisibility === 'public' ? 'squad_only' : 'public';
-                  const updatedProfile = { ...userProfile, profile_visibility: newVisibility };
+                  const updatedProfile = { ...editedProfile, profile_visibility: newVisibility };
+                  setEditedProfile(updatedProfile);
                   await onUpdateProfile(updatedProfile);
                 }}
                 className={`relative w-14 h-8 rounded-full transition-colors duration-200 cursor-pointer ${
-                  userProfile.profile_visibility === 'public'
+                  (editedProfile.profile_visibility || userProfile.profile_visibility) === 'public'
                     ? 'bg-zinc-600'
                     : 'bg-orange-500'
                 }`}
-                title={userProfile.profile_visibility === 'public' ? 'Switch to Private' : 'Switch to Public'}
+                title={(editedProfile.profile_visibility || userProfile.profile_visibility) === 'public' ? 'Switch to Private' : 'Switch to Public'}
               >
                 <div
                   className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow-md transition-all duration-200 ${
-                    userProfile.profile_visibility === 'public'
+                    (editedProfile.profile_visibility || userProfile.profile_visibility) === 'public'
                       ? 'left-1'
                       : 'left-7'
                   }`}
@@ -5425,11 +5493,11 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
 
           {/* Status Indicator */}
           <div className={`flex items-center gap-3 p-4 rounded-xl ${
-            userProfile.profile_visibility === 'public'
+            (editedProfile.profile_visibility || userProfile.profile_visibility) === 'public'
               ? 'bg-emerald-500 bg-opacity-10 border border-emerald-500 border-opacity-30'
               : 'bg-orange-500 bg-opacity-10 border border-orange-500 border-opacity-30'
           }`}>
-            {userProfile.profile_visibility === 'public' ? (
+            {(editedProfile.profile_visibility || userProfile.profile_visibility) === 'public' ? (
               <>
                 <Eye className="w-5 h-5 text-emerald-400" />
                 <div>
