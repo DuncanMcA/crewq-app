@@ -3263,14 +3263,24 @@ function SoloFriendlySquadsView({ squads, onSquadClick, userProfile }) {
   );
 }
 
-function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount, userProfile, historicalCount = 0 }) {
+function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount, userProfile, historicalCount = 0, onRSVP, hasRSVPed }) {
   const [checking, setChecking] = useState(false);
+  const [rsvping, setRsvping] = useState(false);
 
   const handleCheckIn = async () => {
     setChecking(true);
     await onCheckIn(event);
     setChecking(false);
   };
+
+  const handleRSVPClick = async () => {
+    if (!onRSVP) return;
+    setRsvping(true);
+    await onRSVP(event);
+    setRsvping(false);
+  };
+
+  const isRSVPed = hasRSVPed && hasRSVPed(event.id);
 
   // Get ambience details if available
   const ambience = event.ambience ? AMBIENCE_OPTIONS.find(a => a.id === event.ambience) : null;
@@ -3360,6 +3370,27 @@ function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount
                   Menu
                   <ExternalLink className="w-3 h-3 text-zinc-400" />
                 </a>
+              )}
+            </div>
+          )}
+
+          {/* RSVP Button */}
+          {onRSVP && (
+            <div className="mb-3">
+              {isRSVPed ? (
+                <div className="bg-emerald-500 bg-opacity-20 border-2 border-emerald-500 text-emerald-400 py-3 rounded-xl font-bold flex items-center justify-center gap-2">
+                  <CheckCircle className="w-5 h-5" />
+                  RSVP Confirmed!
+                </div>
+              ) : (
+                <button
+                  onClick={handleRSVPClick}
+                  disabled={rsvping}
+                  className="w-full bg-gradient-to-r from-violet-500 to-purple-600 text-white py-3 rounded-xl font-bold hover:shadow-lg transition disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  <Calendar className="w-5 h-5" />
+                  {rsvping ? 'RSVPing...' : 'RSVP to This Event'}
+                </button>
               )}
             </div>
           )}
@@ -3856,7 +3887,7 @@ Be friendly, concise, and enthusiastic. Give specific recommendations based on t
 }
 
 // Events Tab with Live Map and Calendar views
-function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocation, onRequestLocation }) {
+function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocation, onRequestLocation, onRSVP, hasRSVPed }) {
   const [viewMode, setViewMode] = useState('live'); // 'live', 'calendar', 'liked'
   const [showAllEvents, setShowAllEvents] = useState(true); // Toggle between live only vs all events
   const [currentDate, setCurrentDate] = useState(new Date(2026, 0, 1));
@@ -4399,8 +4430,8 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
           {likedEvents.length > 0 ? (
             <div className="space-y-3">
               {eventsWithDistance(likedEvents).map((event, idx) => (
-                <div key={idx} className="bg-zinc-800 rounded-2xl p-4 flex items-center gap-3">
-                  <button onClick={() => onEventClick(event)} className="flex-1 text-left">
+                <div key={idx} className="bg-zinc-800 rounded-2xl p-4">
+                  <button onClick={() => onEventClick(event)} className="w-full text-left mb-3">
                     <h4 className="text-white font-semibold mb-1">{event.name}</h4>
                     <p className="text-zinc-400 text-sm mb-1">{event.venue}</p>
                     <div className="flex items-center gap-3 text-xs text-zinc-500">
@@ -4415,12 +4446,37 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
                       )}
                     </div>
                   </button>
-                  <button
-                    onClick={() => onUnlikeEvent(event)}
-                    className="p-2 bg-red-500 bg-opacity-20 rounded-full hover:bg-opacity-40 transition"
-                  >
-                    <Trash2 className="w-4 h-4 text-red-500" />
-                  </button>
+                  <div className="flex gap-2">
+                    {onRSVP && (
+                      <button
+                        onClick={() => onRSVP(event)}
+                        disabled={hasRSVPed && hasRSVPed(event.id)}
+                        className={`flex-1 py-2 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition ${
+                          hasRSVPed && hasRSVPed(event.id)
+                            ? 'bg-emerald-500/20 text-emerald-400 cursor-default'
+                            : 'bg-orange-500 text-white hover:bg-orange-600'
+                        }`}
+                      >
+                        {hasRSVPed && hasRSVPed(event.id) ? (
+                          <>
+                            <CheckCircle className="w-4 h-4" />
+                            RSVP'd
+                          </>
+                        ) : (
+                          <>
+                            <Calendar className="w-4 h-4" />
+                            RSVP
+                          </>
+                        )}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => onUnlikeEvent(event)}
+                      className="p-2 bg-red-500 bg-opacity-20 rounded-xl hover:bg-opacity-40 transition"
+                    >
+                      <Trash2 className="w-4 h-4 text-red-500" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -5853,6 +5909,14 @@ function AdminPortal({ onClose, userEmail }) {
 
   useEffect(() => { loadData(); }, []);
 
+  // Auto-refresh every 15 seconds
+  useEffect(() => {
+    const refreshInterval = setInterval(() => {
+      loadData();
+    }, 15000);
+    return () => clearInterval(refreshInterval);
+  }, []);
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -6771,6 +6835,7 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
   const [evtImageUrl, setEvtImageUrl] = useState('');
   const [evtRecurring, setEvtRecurring] = useState(false);
   const [evtRecurringType, setEvtRecurringType] = useState('weekly');
+  const [editingEvent, setEditingEvent] = useState(null);
 
   // Constants
   const VENUE_TYPES = [
@@ -6837,6 +6902,29 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
     }
     setLoading(false);
   };
+
+  // Auto-refresh data every 30 seconds when on dashboard
+  useEffect(() => {
+    if (!businessUser?.id || !venue?.id) return;
+    
+    const refreshInterval = setInterval(async () => {
+      // Only refresh if on dashboard or events view
+      if (currentView === 'dashboard' || currentView === 'events') {
+        try {
+          const { data: eventsData } = await supabaseClient
+            .from('events')
+            .select('*')
+            .eq('establishment_id', venue.id)
+            .order('date', { ascending: false });
+          if (eventsData) setEvents(eventsData);
+        } catch (err) {
+          console.log('Refresh error:', err);
+        }
+      }
+    }, 30000); // 30 seconds
+    
+    return () => clearInterval(refreshInterval);
+  }, [businessUser?.id, venue?.id, currentView]);
 
   // Auth: Login
   const handleLogin = async () => {
@@ -7309,14 +7397,187 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
                 </div>
                 <div className="bg-slate-800 rounded-xl border border-slate-700">
                   {events.map(event => (
-                    <div key={event.id} className="p-4 border-b border-slate-700 last:border-0 flex items-center gap-4">
+                    <button 
+                      key={event.id} 
+                      onClick={() => { setEditingEvent(event); setCurrentView('edit-event'); }}
+                      className="w-full p-4 border-b border-slate-700 last:border-0 flex items-center gap-4 hover:bg-slate-750 transition text-left"
+                    >
                       <Calendar className="w-6 h-6 text-slate-400" />
-                      <div className="flex-1"><p className="text-white font-medium">{event.name}</p><p className="text-slate-500 text-sm">{event.venue} • {event.date}</p></div>
-                      <span className={`px-2 py-1 rounded-full text-xs ${event.status === 'pending' ? 'bg-amber-500/20 text-amber-400' : event.status === 'live' || event.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-600 text-slate-400'}`}>{event.status === 'approved' ? 'Live' : event.status}</span>
-                      <div className="text-right min-w-[60px]"><p className="text-white">{event.views || 0}</p><p className="text-slate-500 text-xs">views</p></div>
-                    </div>
+                      <div className="flex-1">
+                        <p className="text-white font-medium">{event.name}</p>
+                        <p className="text-slate-500 text-sm">{event.venue} • {event.date}</p>
+                      </div>
+                      <span className={`px-2 py-1 rounded-full text-xs ${event.status === 'pending' ? 'bg-amber-500/20 text-amber-400' : event.status === 'live' || event.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400' : event.status === 'rejected' ? 'bg-red-500/20 text-red-400' : 'bg-slate-600 text-slate-400'}`}>
+                        {event.status === 'approved' ? 'Live' : event.status || 'live'}
+                      </span>
+                      <div className="text-right min-w-[80px]">
+                        <p className="text-white font-medium">{event.views || 0}</p>
+                        <p className="text-slate-500 text-xs">views</p>
+                      </div>
+                      <div className="text-right min-w-[60px]">
+                        <p className="text-emerald-400 font-medium">{event.rsvps || 0}</p>
+                        <p className="text-slate-500 text-xs">RSVPs</p>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-slate-600" />
+                    </button>
                   ))}
                   {events.length === 0 && <div className="p-12 text-center"><Calendar className="w-12 h-12 mx-auto text-slate-600 mb-4" /><p className="text-slate-400">No events yet</p></div>}
+                </div>
+              </div>
+            )}
+
+            {/* EDIT EVENT VIEW */}
+            {currentView === 'edit-event' && editingEvent && (
+              <div className="max-w-3xl space-y-6">
+                <div className="flex items-center gap-4">
+                  <button onClick={() => { setEditingEvent(null); setCurrentView('events'); }} className="p-2 hover:bg-slate-800 rounded-lg">
+                    <ChevronLeft className="w-5 h-5 text-slate-400" />
+                  </button>
+                  <div>
+                    <h1 className="text-2xl font-bold text-white">Edit Event</h1>
+                    <p className="text-slate-400">{editingEvent.name}</p>
+                  </div>
+                </div>
+                
+                {/* Event Stats */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="bg-slate-800 rounded-xl p-4 border border-slate-700 text-center">
+                    <Eye className="w-6 h-6 text-blue-400 mx-auto mb-2" />
+                    <p className="text-2xl font-bold text-white">{editingEvent.views || 0}</p>
+                    <p className="text-slate-500 text-xs">Views</p>
+                  </div>
+                  <div className="bg-slate-800 rounded-xl p-4 border border-slate-700 text-center">
+                    <Users className="w-6 h-6 text-emerald-400 mx-auto mb-2" />
+                    <p className="text-2xl font-bold text-white">{editingEvent.rsvps || 0}</p>
+                    <p className="text-slate-500 text-xs">RSVPs</p>
+                  </div>
+                  <div className="bg-slate-800 rounded-xl p-4 border border-slate-700 text-center">
+                    <CheckCircle className="w-6 h-6 text-amber-400 mx-auto mb-2" />
+                    <p className="text-2xl font-bold text-white">{editingEvent.checkins || 0}</p>
+                    <p className="text-slate-500 text-xs">Check-ins</p>
+                  </div>
+                </div>
+                
+                {/* Status Banner */}
+                <div className={`p-4 rounded-xl border ${
+                  editingEvent.status === 'pending' ? 'bg-amber-500/10 border-amber-500/30' :
+                  editingEvent.status === 'rejected' ? 'bg-red-500/10 border-red-500/30' :
+                  'bg-emerald-500/10 border-emerald-500/30'
+                }`}>
+                  <div className="flex items-center gap-3">
+                    {editingEvent.status === 'pending' ? <Clock className="w-5 h-5 text-amber-400" /> :
+                     editingEvent.status === 'rejected' ? <X className="w-5 h-5 text-red-400" /> :
+                     <CheckCircle className="w-5 h-5 text-emerald-400" />}
+                    <div>
+                      <p className={`font-medium ${
+                        editingEvent.status === 'pending' ? 'text-amber-400' :
+                        editingEvent.status === 'rejected' ? 'text-red-400' :
+                        'text-emerald-400'
+                      }`}>
+                        {editingEvent.status === 'pending' ? 'Pending Approval' :
+                         editingEvent.status === 'rejected' ? 'Rejected' :
+                         'Live & Active'}
+                      </p>
+                      {editingEvent.status === 'rejected' && editingEvent.rejection_reason && (
+                        <p className="text-slate-400 text-sm">Reason: {editingEvent.rejection_reason}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 space-y-4">
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1">Event Name</label>
+                    <input 
+                      type="text" 
+                      value={editingEvent.name || ''} 
+                      onChange={e => setEditingEvent({...editingEvent, name: e.target.value})}
+                      className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" 
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm text-slate-400 mb-1">Date</label>
+                      <input 
+                        type="date" 
+                        value={editingEvent.date || ''} 
+                        onChange={e => setEditingEvent({...editingEvent, date: e.target.value})}
+                        className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-slate-400 mb-1">Time</label>
+                      <input 
+                        type="time" 
+                        value={editingEvent.time || ''} 
+                        onChange={e => setEditingEvent({...editingEvent, time: e.target.value})}
+                        className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" 
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1">Description</label>
+                    <textarea 
+                      value={editingEvent.description || ''} 
+                      onChange={e => setEditingEvent({...editingEvent, description: e.target.value})}
+                      rows={3}
+                      className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none resize-none" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1">Drink Specials</label>
+                    <input 
+                      type="text" 
+                      value={editingEvent.drink_specials || ''} 
+                      onChange={e => setEditingEvent({...editingEvent, drink_specials: e.target.value})}
+                      className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1">Image URL</label>
+                    <input 
+                      type="url" 
+                      value={editingEvent.image_url || ''} 
+                      onChange={e => setEditingEvent({...editingEvent, image_url: e.target.value})}
+                      className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" 
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => { setEditingEvent(null); setCurrentView('events'); }} 
+                    className="flex-1 py-3 border border-slate-600 text-slate-400 rounded-lg hover:bg-slate-700 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={async () => {
+                      try {
+                        const { error } = await supabaseClient
+                          .from('events')
+                          .update({
+                            name: editingEvent.name,
+                            date: editingEvent.date,
+                            time: editingEvent.time,
+                            description: editingEvent.description,
+                            drink_specials: editingEvent.drink_specials,
+                            image_url: editingEvent.image_url
+                          })
+                          .eq('id', editingEvent.id);
+                        if (error) throw error;
+                        setEvents(events.map(e => e.id === editingEvent.id ? editingEvent : e));
+                        showToastMsg('Event updated!');
+                        setEditingEvent(null);
+                        setCurrentView('events');
+                      } catch (err) {
+                        showToastMsg('Failed to update event', 'error');
+                      }
+                    }}
+                    className="flex-1 py-3 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition"
+                  >
+                    Save Changes
+                  </button>
                 </div>
               </div>
             )}
@@ -7610,8 +7871,8 @@ export default function App() {
       loadSquads(userProfile.id);
       loadAllSquads();
       
-      // Refresh events
-      loadEvents();
+      // Refresh events - pass userId to filter out seen events
+      loadEvents(userProfile.id);
       
       // Refresh badges and stats
       loadUserBadges(userProfile.id);
@@ -8708,7 +8969,7 @@ export default function App() {
             setIsAdmin(adminCheck);
           }
           
-          await loadEvents();
+          await loadEvents(existingProfile.id);
           await loadCrewMembers(existingProfile.id);
           await loadSquads(existingProfile.id);
           await loadAllSquads();
@@ -8748,7 +9009,7 @@ export default function App() {
             setIsAdmin(adminCheck);
           }
           
-          await loadEvents();
+          await loadEvents(data.id);
           await loadCrewMembers(data.id);
           await loadSquads(data.id);
           await loadAllSquads();
@@ -9079,16 +9340,33 @@ const loadSquads = async (userId) => {
     const seenEvents = JSON.parse(localStorage.getItem(`${userKey}_seen`) || '[]');
     const isNewSwipe = currentEvent && !seenEvents.includes(currentEvent.id);
     
-    if (isNewSwipe) {
+    if (isNewSwipe && currentEvent) {
       seenEvents.push(currentEvent.id);
       localStorage.setItem(`${userKey}_seen`, JSON.stringify(seenEvents));
       
       // Only count UNIQUE swipes for badges
       const currentSwipes = parseInt(localStorage.getItem(`${userKey}_swipes`) || '0');
       localStorage.setItem(`${userKey}_swipes`, (currentSwipes + 1).toString());
+      
+      // INCREMENT VIEW COUNT in database (only for unique views)
+      if (supabaseClient) {
+        try {
+          await supabaseClient.rpc('increment_event_views', { event_uuid: currentEvent.id });
+        } catch (err) {
+          // Fallback: direct update if RPC doesn't exist
+          try {
+            await supabaseClient
+              .from('events')
+              .update({ views: (currentEvent.views || 0) + 1 })
+              .eq('id', currentEvent.id);
+          } catch (e) {
+            console.log('View tracking:', e.message);
+          }
+        }
+      }
     }
     
-    if (direction === 'right') {
+    if (direction === 'right' && currentEvent) {
       const liked = JSON.parse(localStorage.getItem(`${userKey}_liked`) || '[]');
       // Prevent duplicates
       if (!liked.find(e => e.id === currentEvent.id)) {
@@ -9098,7 +9376,8 @@ const loadSquads = async (userId) => {
         // Trigger refresh so Events tab updates
         setLikedEventsRefresh(prev => prev + 1);
 
-        if (supabaseClient && userProfile) {
+        // Save to liked_events table (this is "interested", not RSVP)
+        if (supabaseClient) {
           try {
             await supabaseClient
               .from('liked_events')
@@ -9119,6 +9398,63 @@ const loadSquads = async (userId) => {
     if (userProfile?.id) {
       setTimeout(() => loadUserStats(userProfile.id), 100);
     }
+  };
+
+  // Handle RSVP - explicit user action
+  const handleRSVP = async (event) => {
+    if (!userProfile?.id || !supabaseClient) return;
+    
+    const userKey = `crewq_${userProfile.id}`;
+    const rsvpedEvents = JSON.parse(localStorage.getItem(`${userKey}_rsvped`) || '[]');
+    
+    // Check if already RSVPed
+    if (rsvpedEvents.includes(event.id)) {
+      showToast('You\'ve already RSVPed to this event!', 'info');
+      return;
+    }
+    
+    try {
+      // Increment RSVP count in database
+      await supabaseClient
+        .from('events')
+        .update({ rsvps: (event.rsvps || 0) + 1 })
+        .eq('id', event.id);
+      
+      // Save RSVP to user's list
+      rsvpedEvents.push(event.id);
+      localStorage.setItem(`${userKey}_rsvped`, JSON.stringify(rsvpedEvents));
+      
+      // Also save to event_rsvps table if it exists
+      try {
+        await supabaseClient
+          .from('event_rsvps')
+          .insert([{
+            user_id: userProfile.id,
+            event_id: event.id,
+            created_at: new Date().toISOString()
+          }]);
+      } catch (e) {
+        // Table might not exist, that's ok
+      }
+      
+      showToast('🎉 RSVP confirmed! See you there!', 'success');
+      
+      // Update local events data
+      setEvents(events.map(e => e.id === event.id ? {...e, rsvps: (e.rsvps || 0) + 1} : e));
+      setAllEvents(allEvents.map(e => e.id === event.id ? {...e, rsvps: (e.rsvps || 0) + 1} : e));
+      
+    } catch (error) {
+      console.error('RSVP error:', error);
+      showToast('Failed to RSVP. Please try again.', 'error');
+    }
+  };
+
+  // Check if user has RSVPed to an event
+  const hasRSVPed = (eventId) => {
+    if (!userProfile?.id) return false;
+    const userKey = `crewq_${userProfile.id}`;
+    const rsvpedEvents = JSON.parse(localStorage.getItem(`${userKey}_rsvped`) || '[]');
+    return rsvpedEvents.includes(eventId);
   };
 
   if (loading) {
@@ -9327,6 +9663,8 @@ const loadSquads = async (userId) => {
               onUnlikeEvent={handleUnlikeEvent}
               userLocation={userLocation}
               onRequestLocation={requestUserLocation}
+              onRSVP={handleRSVP}
+              hasRSVPed={hasRSVPed}
             />
           )}
           {currentTab === 'crew' && mode === 'crew' && (
@@ -9421,6 +9759,8 @@ const loadSquads = async (userId) => {
             checkInCount={0}
             userProfile={userProfile}
             historicalCount={selectedEventHistoricalCount}
+            onRSVP={handleRSVP}
+            hasRSVPed={hasRSVPed}
           />
         )}
 
