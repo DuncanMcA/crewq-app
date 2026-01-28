@@ -404,12 +404,12 @@ const generateBioFromAnswers = (answers, userName) => {
   const yesAnswers = Object.entries(answers).filter(([_, value]) => value === true);
   const tags = yesAnswers.map(([id]) => BIO_QUESTIONS.find(q => q.id === id)?.tag).filter(Boolean);
   
-  // Varied opening phrases for new users
+  // Varied opening phrases for new users (first person)
   const newUserOpenings = [
-    `${userName} is new to the Dallas nightlife scene and ready to explore!`,
-    `${userName} just landed in Dallas and is ready to discover the best spots!`,
-    `${userName} is here to find their new favorite Dallas hangouts!`,
-    `Fresh to the Dallas scene, ${userName} is eager to explore what the city has to offer!`
+    `I'm new to the Dallas nightlife scene and ready to explore!`,
+    `Just landed in Dallas and ready to discover the best spots!`,
+    `I'm here to find my new favorite Dallas hangouts!`,
+    `Fresh to the Dallas scene, I'm eager to explore what the city has to offer!`
   ];
   
   if (tags.length === 0) {
@@ -427,24 +427,24 @@ const generateBioFromAnswers = (answers, userName) => {
 
   let bio = '';
   
-  // Varied openings based on traits
+  // Varied openings based on traits (first person)
   const regularOpenings = [
-    `${userName} is a Dallas nightlife regular who's always down for a good time. `,
-    `${userName} knows the Dallas scene inside and out. `,
-    `A true Dallas local, ${userName} is always in the know about what's happening. `
+    `I'm a Dallas nightlife regular who's always down for a good time. `,
+    `I know the Dallas scene inside and out. `,
+    `A true Dallas local – I'm always in the know about what's happening. `
   ];
   
   const soloOpenings = [
-    `${userName} isn't afraid to explore Dallas solo and loves meeting new people. `,
-    `${userName} embraces solo adventures and is always up for making new connections. `,
-    `Flying solo doesn't faze ${userName} – they're here to explore and connect. `
+    `I'm not afraid to explore Dallas solo and love meeting new people. `,
+    `I embrace solo adventures and am always up for making new connections. `,
+    `Flying solo doesn't faze me – I'm here to explore and connect. `
   ];
   
   const generalOpenings = [
-    `${userName} loves exploring what Dallas has to offer. `,
-    `${userName} is all about discovering Dallas's best kept secrets. `,
-    `${userName} brings good energy wherever they go in Dallas. `,
-    `Always up for something new, ${userName} is exploring the Dallas scene. `
+    `I love exploring what Dallas has to offer. `,
+    `I'm all about discovering Dallas's best kept secrets. `,
+    `I bring good energy wherever I go in Dallas. `,
+    `Always up for something new – I'm exploring the Dallas scene. `
   ];
   
   // Opening
@@ -456,22 +456,22 @@ const generateBioFromAnswers = (answers, userName) => {
     bio = generalOpenings[Math.floor(Math.random() * generalOpenings.length)];
   }
 
-  // Drinks preference with variety
+  // Drinks preference with variety (first person)
   if (drinks.length > 0) {
     const cocktailPhrases = [
-      "Craft cocktails are definitely their thing. ",
-      "A well-made cocktail is their love language. ",
-      "They appreciate a bar with a solid cocktail program. "
+      "Craft cocktails are definitely my thing. ",
+      "A well-made cocktail is my love language. ",
+      "I appreciate a bar with a solid cocktail program. "
     ];
     const beerPhrases = [
-      "You'll find them checking out the latest craft beer spots. ",
-      "Craft beer is their go-to. ",
-      "They're always on the hunt for new breweries and taprooms. "
+      "You'll find me checking out the latest craft beer spots. ",
+      "Craft beer is my go-to. ",
+      "I'm always on the hunt for new breweries and taprooms. "
     ];
     const hhPhrases = [
-      "They know all the best happy hour deals in town. ",
-      "Happy hour? They've got the inside scoop on every deal. ",
-      "Never paying full price – they know every happy hour in Dallas. "
+      "I know all the best happy hour deals in town. ",
+      "Happy hour? I've got the inside scoop on every deal. ",
+      "Never paying full price – I know every happy hour in Dallas. "
     ];
     
     if (drinks.includes('cocktail connoisseur') || drinks.includes('cocktail menu hunter')) {
@@ -483,7 +483,7 @@ const generateBioFromAnswers = (answers, userName) => {
     }
   }
 
-  // Venue vibes
+  // Venue vibes (first person)
   if (vibes.length > 0) {
     const vibeList = [];
     if (vibes.includes('rooftop lover')) vibeList.push('rooftops');
@@ -494,30 +494,30 @@ const generateBioFromAnswers = (answers, userName) => {
     
     if (vibeList.length > 0) {
       const vibePhrases = [
-        `They're drawn to ${vibeList.slice(0, 2).join(' and ')}. `,
-        `${vibeList.slice(0, 2).join(' and ').charAt(0).toUpperCase() + vibeList.slice(0, 2).join(' and ').slice(1)} are their scene. `,
-        `You'll often catch them at ${vibeList.slice(0, 2).join(' or ')}. `
+        `I'm drawn to ${vibeList.slice(0, 2).join(' and ')}. `,
+        `${vibeList.slice(0, 2).join(' and ').charAt(0).toUpperCase() + vibeList.slice(0, 2).join(' and ').slice(1)} are my scene. `,
+        `You'll often catch me at ${vibeList.slice(0, 2).join(' or ')}. `
       ];
       bio += vibePhrases[Math.floor(Math.random() * vibePhrases.length)];
     }
   }
 
-  // Sports with variety
+  // Sports with variety (first person)
   if (sports.length > 0) {
     const cowboysPhrases = [
       "Game days mean finding the perfect sports bar for Cowboys action. ",
       "Sundays are for Cowboys games at the best sports bars. ",
-      "How 'bout them Cowboys? They're always watching. "
+      "How 'bout them Cowboys? I'm always watching. "
     ];
     const ufcPhrases = [
-      "They never miss a big UFC fight night. ",
-      "Fight nights are a must – they're always locked in for UFC. ",
-      "Big fights mean big nights out for them. "
+      "I never miss a big UFC fight night. ",
+      "Fight nights are a must – I'm always locked in for UFC. ",
+      "Big fights mean big nights out for me. "
     ];
     const soccerPhrases = [
-      "Early mornings for Premier League? Count them in. ",
-      "Soccer fans unite – they're watching every match. ",
-      "Whether it's MLS or Premier League, they're there for it. "
+      "Early mornings for Premier League? Count me in. ",
+      "Soccer fans unite – I'm watching every match. ",
+      "Whether it's MLS or Premier League, I'm there for it. "
     ];
     
     if (sports.includes('Cowboys fan')) {
@@ -529,12 +529,12 @@ const generateBioFromAnswers = (answers, userName) => {
     }
   }
 
-  // Food with variety
+  // Food with variety (first person)
   if (food.length > 0) {
     const foodiePhrases = [
       "Always hunting for the next great restaurant to try. ",
-      "Food is an adventure – they're always exploring new spots. ",
-      "Their restaurant list is never-ending (in the best way). "
+      "Food is an adventure – I'm always exploring new spots. ",
+      "My restaurant list is never-ending (in the best way). "
     ];
     const brunchPhrases = [
       "Weekend brunch is a must. ",
@@ -543,7 +543,7 @@ const generateBioFromAnswers = (answers, userName) => {
     ];
     const lateNightPhrases = [
       "Late-night eats after the bars? Absolutely. ",
-      "The night doesn't end until they find good late-night food. ",
+      "The night doesn't end until I find good late-night food. ",
       "Post-bar tacos are a requirement. "
     ];
     
@@ -558,27 +558,27 @@ const generateBioFromAnswers = (answers, userName) => {
     }
   }
 
-  // Entertainment with variety
+  // Entertainment with variety (first person)
   if (entertainment.length > 0) {
     const musicPhrases = [
-      "Live music and DJ nights are their jam. ",
-      "If there's a good DJ or live band, they're there. ",
-      "Music is the vibe – live shows are always on the agenda. "
+      "Live music and DJ nights are my jam. ",
+      "If there's a good DJ or live band, I'm there. ",
+      "Music is the vibe – live shows are always on my agenda. "
     ];
     const triviaPhrases = [
       "Trivia nights are a weekly tradition. ",
-      "They take trivia seriously (in a fun way). ",
+      "I take trivia seriously (in a fun way). ",
       "Quiz night champion in the making. "
     ];
     const comedyPhrases = [
-      "Comedy nights and open mics are always on the radar. ",
+      "Comedy nights and open mics are always on my radar. ",
       "A good laugh is always on the schedule. ",
-      "Comedy shows are their thing – the funnier, the better. "
+      "Comedy shows are my thing – the funnier, the better. "
     ];
     const nightOwlPhrases = [
-      "The party really starts after 10 PM for them. ",
-      "Night owl energy – they come alive when the sun goes down. ",
-      "Early nights? Not in their vocabulary. "
+      "The party really starts after 10 PM for me. ",
+      "Night owl energy – I come alive when the sun goes down. ",
+      "Early nights? Not in my vocabulary. "
     ];
     
     if (entertainment.includes('music lover')) {
@@ -605,16 +605,16 @@ const generateBioFromAnswers = (answers, userName) => {
     bio += dogPhrases[Math.floor(Math.random() * dogPhrases.length)];
   }
 
-  // Social style closing
+  // Social style closing (first person)
   const groupClosings = [
-    "They love bringing the crew together at spots with big tables.",
-    "Squad hangs at spacious spots are their specialty.",
-    "Big tables, bigger groups – that's their style."
+    "I love bringing the crew together at spots with big tables.",
+    "Squad hangs at spacious spots are my specialty.",
+    "Big tables, bigger groups – that's my style."
   ];
   const loyalClosings = [
-    "Once they find a spot they love, they keep coming back.",
-    "Loyalty runs deep – their favorite spots know them by name.",
-    "When they find a gem, they're a regular for life."
+    "Once I find a spot I love, I keep coming back.",
+    "Loyalty runs deep – my favorite spots know me by name.",
+    "When I find a gem, I'm a regular for life."
   ];
   
   if (social.includes('group hangout person')) {
@@ -698,7 +698,7 @@ function BioBuilderModal({ onClose, onSaveBio, userName, currentAnswers, current
               <div className="flex gap-4 mb-6">
                 <button
                   onClick={() => handleAnswer(true)}
-                  className="flex-1 bg-emerald-500 bg-opacity-20 border-2 border-emerald-500 text-emerald-400 py-4 rounded-xl font-bold text-lg hover:bg-opacity-30 transition"
+                  className="flex-1 bg-orange-500 text-white py-4 rounded-xl font-bold text-lg hover:bg-orange-600 transition"
                 >
                   👍 Yes
                 </button>
@@ -1448,6 +1448,45 @@ function CreateSquadModal({ onClose, onCreate, userProfile, events }) {
                 </p>
               </div>
 
+              {/* Access Contacts Button */}
+              <button
+                onClick={async () => {
+                  try {
+                    // Request contacts permission using Contacts API
+                    if ('contacts' in navigator && 'ContactsManager' in window) {
+                      const props = ['tel', 'name'];
+                      const opts = { multiple: true };
+                      const contacts = await navigator.contacts.select(props, opts);
+                      const phones = contacts
+                        .filter(c => c.tel && c.tel.length > 0)
+                        .map(c => c.tel[0])
+                        .filter(Boolean);
+                      if (phones.length > 0) {
+                        setInvitedMembers(prev => [...new Set([...prev, ...phones])]);
+                      }
+                    } else {
+                      // Fallback for browsers that don't support Contacts API
+                      alert('Contact access requires a mobile device. Please enter phone numbers manually below.');
+                    }
+                  } catch (err) {
+                    console.log('Contacts access:', err);
+                    if (err.name !== 'TypeError') {
+                      alert('Unable to access contacts. Please enter phone numbers manually.');
+                    }
+                  }
+                }}
+                className="w-full bg-gradient-to-r from-violet-500 to-purple-600 text-white py-3 rounded-xl font-semibold hover:opacity-90 transition flex items-center justify-center gap-2"
+              >
+                <Phone className="w-5 h-5" />
+                Import from Contacts
+              </button>
+
+              <div className="relative flex items-center gap-4">
+                <div className="flex-1 h-px bg-zinc-700" />
+                <span className="text-zinc-500 text-sm">or enter manually</span>
+                <div className="flex-1 h-px bg-zinc-700" />
+              </div>
+
               <div>
                 <label className="block text-sm font-semibold text-zinc-300 mb-2">
                   Phone Numbers
@@ -1757,6 +1796,35 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
   const [vote, setVote] = useState(null);
   const [squadMembers, setSquadMembers] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
+  const [viewingMember, setViewingMember] = useState(null);
+  const [memberBadges, setMemberBadges] = useState([]);
+  const [loadingMemberBadges, setLoadingMemberBadges] = useState(false);
+
+  // Load member's badges when viewing their profile
+  const loadMemberBadges = async (memberId) => {
+    if (!supabaseClient || !memberId) return;
+    setLoadingMemberBadges(true);
+    try {
+      const { data } = await supabaseClient
+        .from('user_badges')
+        .select('badge_id')
+        .eq('user_id', memberId);
+      setMemberBadges(data?.map(b => b.badge_id) || []);
+    } catch (error) {
+      console.error('Error loading member badges:', error);
+    }
+    setLoadingMemberBadges(false);
+  };
+
+  const handleViewMember = async (member) => {
+    // Respect privacy settings
+    if (member.profile_visibility === 'squad_only' && member.id !== userProfile?.id) {
+      // For squad_only profiles, only show if we're in the same squad
+      if (!isMember) return;
+    }
+    setViewingMember(member);
+    await loadMemberBadges(member.id);
+  };
 
   // Load squad members when modal opens
   useEffect(() => {
@@ -1916,9 +1984,10 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
               // Show detailed member list for squad members
               <div className="space-y-2">
                 {displayMembers.map(member => (
-                  <div
+                  <button
                     key={member.id}
-                    className="flex items-center gap-3 bg-zinc-800 rounded-xl p-3"
+                    onClick={() => handleViewMember(member)}
+                    className="w-full flex items-center gap-3 bg-zinc-800 rounded-xl p-3 hover:bg-zinc-700 transition text-left"
                   >
                     <div className="w-10 h-10 rounded-full bg-zinc-700 flex items-center justify-center text-white text-sm font-semibold overflow-hidden">
                       {member.profile_picture ? (
@@ -1943,7 +2012,8 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
                     {member.id === userProfile?.id && (
                       <span className="text-xs text-orange-500 bg-orange-500 bg-opacity-20 px-2 py-1 rounded-full">You</span>
                     )}
-                  </div>
+                    <ChevronRight className="w-4 h-4 text-zinc-500" />
+                  </button>
                 ))}
               </div>
             ) : (
@@ -1969,6 +2039,77 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
               </div>
             )}
           </div>
+
+          {/* Member Profile Popup */}
+          {viewingMember && (
+            <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[60] p-4">
+              <div className="bg-zinc-900 rounded-2xl max-w-sm w-full p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-bold text-white">Member Profile</h3>
+                  <button onClick={() => setViewingMember(null)} className="text-zinc-400 hover:text-white">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                
+                <div className="text-center mb-4">
+                  <div className="w-20 h-20 rounded-full bg-zinc-700 flex items-center justify-center mx-auto mb-3 overflow-hidden">
+                    {viewingMember.profile_picture ? (
+                      <img src={viewingMember.profile_picture} alt={viewingMember.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-2xl text-white">{viewingMember.name?.charAt(0).toUpperCase() || '?'}</span>
+                    )}
+                  </div>
+                  <h4 className="text-xl font-bold text-white">{viewingMember.name}</h4>
+                  {viewingMember.gender && (
+                    <span className={`text-sm ${
+                      viewingMember.gender === 'woman' ? 'text-pink-400' :
+                      viewingMember.gender === 'man' ? 'text-blue-400' :
+                      'text-zinc-400'
+                    }`}>
+                      {viewingMember.gender === 'woman' ? '♀ Woman' : 
+                       viewingMember.gender === 'man' ? '♂ Man' : 
+                       viewingMember.gender}
+                    </span>
+                  )}
+                </div>
+
+                {viewingMember.bio && (
+                  <div className="bg-zinc-800 rounded-xl p-3 mb-4">
+                    <p className="text-zinc-300 text-sm">{viewingMember.bio}</p>
+                  </div>
+                )}
+
+                {/* Member's Badges */}
+                <div>
+                  <p className="text-sm font-semibold text-zinc-400 mb-2">Badges Earned</p>
+                  {loadingMemberBadges ? (
+                    <div className="text-zinc-500 text-sm">Loading badges...</div>
+                  ) : memberBadges.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {memberBadges.map(badgeId => {
+                        const badge = BADGES.find(b => b.id === badgeId);
+                        return badge ? (
+                          <div key={badgeId} className="flex items-center gap-1 bg-zinc-800 rounded-lg px-2 py-1" title={badge.description}>
+                            <span>{badge.icon}</span>
+                            <span className="text-xs text-zinc-300">{badge.name}</span>
+                          </div>
+                        ) : null;
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-zinc-500 text-sm">No badges yet</p>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => setViewingMember(null)}
+                  className="w-full mt-4 bg-zinc-800 text-white py-3 rounded-xl font-semibold hover:bg-zinc-700 transition"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Meeting Spot */}
           {(squad.meeting_spot || squad.meeting_instructions) && (
@@ -3263,7 +3404,7 @@ function SoloFriendlySquadsView({ squads, onSquadClick, userProfile }) {
   );
 }
 
-function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount, userProfile, historicalCount = 0, onRSVP, hasRSVPed }) {
+function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount, userProfile, historicalCount = 0, onRSVP, onUndoRSVP, hasRSVPed }) {
   const [checking, setChecking] = useState(false);
   const [rsvping, setRsvping] = useState(false);
 
@@ -3277,6 +3418,13 @@ function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount
     if (!onRSVP) return;
     setRsvping(true);
     await onRSVP(event);
+    setRsvping(false);
+  };
+
+  const handleUndoRSVPClick = async () => {
+    if (!onUndoRSVP) return;
+    setRsvping(true);
+    await onUndoRSVP(event);
     setRsvping(false);
   };
 
@@ -3378,9 +3526,21 @@ function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount
           {onRSVP && (
             <div className="mb-3">
               {isRSVPed ? (
-                <div className="bg-emerald-500 bg-opacity-20 border-2 border-emerald-500 text-emerald-400 py-3 rounded-xl font-bold flex items-center justify-center gap-2">
-                  <CheckCircle className="w-5 h-5" />
-                  RSVP Confirmed!
+                <div className="space-y-2">
+                  <div className="bg-emerald-500 bg-opacity-20 border-2 border-emerald-500 text-emerald-400 py-3 rounded-xl font-bold flex items-center justify-center gap-2">
+                    <CheckCircle className="w-5 h-5" />
+                    RSVP Confirmed!
+                  </div>
+                  {onUndoRSVP && (
+                    <button
+                      onClick={handleUndoRSVPClick}
+                      disabled={rsvping}
+                      className="w-full py-2 text-zinc-400 text-sm hover:text-red-400 transition flex items-center justify-center gap-2"
+                    >
+                      <X className="w-4 h-4" />
+                      {rsvping ? 'Cancelling...' : 'Cancel RSVP'}
+                    </button>
+                  )}
                 </div>
               ) : (
                 <button
@@ -3887,7 +4047,7 @@ Be friendly, concise, and enthusiastic. Give specific recommendations based on t
 }
 
 // Events Tab with Live Map and Calendar views
-function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocation, onRequestLocation, onRSVP, hasRSVPed }) {
+function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocation, onRequestLocation, onRSVP, onUndoRSVP, hasRSVPed }) {
   const [viewMode, setViewMode] = useState('live'); // 'live', 'calendar', 'liked'
   const [showAllEvents, setShowAllEvents] = useState(true); // Toggle between live only vs all events
   const [currentDate, setCurrentDate] = useState(new Date(2026, 0, 1));
@@ -4447,29 +4607,33 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
                     </div>
                   </button>
                   <div className="flex gap-2">
-                    {onRSVP && (
+                    {onRSVP && hasRSVPed && hasRSVPed(event.id) ? (
+                      // Already RSVPed - show confirmed with undo option
+                      <div className="flex-1 flex items-center gap-2">
+                        <div className="flex-1 py-2 bg-emerald-500/20 text-emerald-400 rounded-xl font-semibold text-sm flex items-center justify-center gap-2">
+                          <CheckCircle className="w-4 h-4" />
+                          RSVP'd
+                        </div>
+                        {onUndoRSVP && (
+                          <button
+                            onClick={() => onUndoRSVP(event)}
+                            className="p-2 text-zinc-500 hover:text-red-400 transition"
+                            title="Cancel RSVP"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    ) : onRSVP ? (
+                      // Not RSVPed - show RSVP button
                       <button
                         onClick={() => onRSVP(event)}
-                        disabled={hasRSVPed && hasRSVPed(event.id)}
-                        className={`flex-1 py-2 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition ${
-                          hasRSVPed && hasRSVPed(event.id)
-                            ? 'bg-emerald-500/20 text-emerald-400 cursor-default'
-                            : 'bg-orange-500 text-white hover:bg-orange-600'
-                        }`}
+                        className="flex-1 py-2 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 bg-orange-500 text-white hover:bg-orange-600 transition"
                       >
-                        {hasRSVPed && hasRSVPed(event.id) ? (
-                          <>
-                            <CheckCircle className="w-4 h-4" />
-                            RSVP'd
-                          </>
-                        ) : (
-                          <>
-                            <Calendar className="w-4 h-4" />
-                            RSVP
-                          </>
-                        )}
+                        <Calendar className="w-4 h-4" />
+                        RSVP
                       </button>
-                    )}
+                    ) : null}
                     <button
                       onClick={() => onUnlikeEvent(event)}
                       className="p-2 bg-red-500 bg-opacity-20 rounded-xl hover:bg-opacity-40 transition"
@@ -5227,38 +5391,43 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
               <p className="text-white font-semibold mb-1">Profile Visibility</p>
               <p className="text-zinc-400 text-sm">
                 {userProfile.profile_visibility === 'public' 
-                  ? 'Anyone can see your profile in Solo mode' 
-                  : 'Only squad members and squad leaders you request to join can see your profile'}
+                  ? 'Public: Anyone can see your profile in Solo mode' 
+                  : 'Private: Only squad members can see your profile'}
               </p>
             </div>
-            <button
-              onClick={async () => {
-                const currentVisibility = userProfile.profile_visibility || 'squad_only';
-                const newVisibility = currentVisibility === 'public' ? 'squad_only' : 'public';
-                const updatedProfile = { ...userProfile, profile_visibility: newVisibility };
-                await onUpdateProfile(updatedProfile);
-              }}
-              className={`relative w-14 h-8 rounded-full transition-colors duration-200 cursor-pointer ${
-                userProfile.profile_visibility === 'public'
-                  ? 'bg-orange-500'
-                  : 'bg-zinc-600'
-              }`}
-            >
-              <div
-                className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow-md transition-all duration-200 ${
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-zinc-500">Public</span>
+              <button
+                onClick={async () => {
+                  const currentVisibility = userProfile.profile_visibility || 'squad_only';
+                  const newVisibility = currentVisibility === 'public' ? 'squad_only' : 'public';
+                  const updatedProfile = { ...userProfile, profile_visibility: newVisibility };
+                  await onUpdateProfile(updatedProfile);
+                }}
+                className={`relative w-14 h-8 rounded-full transition-colors duration-200 cursor-pointer ${
                   userProfile.profile_visibility === 'public'
-                    ? 'left-7'
-                    : 'left-1'
+                    ? 'bg-zinc-600'
+                    : 'bg-orange-500'
                 }`}
-              />
-            </button>
+                title={userProfile.profile_visibility === 'public' ? 'Switch to Private' : 'Switch to Public'}
+              >
+                <div
+                  className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow-md transition-all duration-200 ${
+                    userProfile.profile_visibility === 'public'
+                      ? 'left-1'
+                      : 'left-7'
+                  }`}
+                />
+              </button>
+              <span className="text-xs text-zinc-500">Private</span>
+            </div>
           </div>
 
           {/* Status Indicator */}
           <div className={`flex items-center gap-3 p-4 rounded-xl ${
             userProfile.profile_visibility === 'public'
               ? 'bg-emerald-500 bg-opacity-10 border border-emerald-500 border-opacity-30'
-              : 'bg-zinc-800'
+              : 'bg-orange-500 bg-opacity-10 border border-orange-500 border-opacity-30'
           }`}>
             {userProfile.profile_visibility === 'public' ? (
               <>
@@ -5270,10 +5439,10 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
               </>
             ) : (
               <>
-                <EyeOff className="w-5 h-5 text-zinc-500" />
+                <EyeOff className="w-5 h-5 text-orange-400" />
                 <div>
-                  <p className="text-zinc-300 font-semibold">Squad Only</p>
-                  <p className="text-zinc-500 text-xs">Only squad members and leaders you request to join can see your profile</p>
+                  <p className="text-orange-400 font-semibold">Private Profile</p>
+                  <p className="text-orange-400 text-opacity-70 text-xs">Only squad members can see your profile</p>
                 </div>
               </>
             )}
@@ -8822,9 +8991,15 @@ export default function App() {
         .eq('id', updatedSquad.id);
 
       showToast('Squad updated!', 'success');
-      setShowEditSquad(null);
+      
+      // Reload squads to get fresh data
       await loadSquads(userProfile.id);
       await loadAllSquads();
+      
+      // Return to squad detail with updated squad
+      setShowEditSquad(null);
+      setSelectedSquad(updatedSquad);
+      setShowSquadDetail(true);
     } catch (error) {
       console.error('Error updating squad:', error);
       showToast('Error updating squad. Please try again.', 'error');
@@ -9449,6 +9624,53 @@ const loadSquads = async (userId) => {
     }
   };
 
+  // Undo RSVP - cancel attendance
+  const handleUndoRSVP = async (event) => {
+    if (!userProfile?.id || !supabaseClient) return;
+    
+    const userKey = `crewq_${userProfile.id}`;
+    let rsvpedEvents = JSON.parse(localStorage.getItem(`${userKey}_rsvped`) || '[]');
+    
+    // Check if not RSVPed
+    if (!rsvpedEvents.includes(event.id)) {
+      return;
+    }
+    
+    try {
+      // Decrement RSVP count in database (don't go below 0)
+      const newCount = Math.max((event.rsvps || 1) - 1, 0);
+      await supabaseClient
+        .from('events')
+        .update({ rsvps: newCount })
+        .eq('id', event.id);
+      
+      // Remove from user's RSVP list
+      rsvpedEvents = rsvpedEvents.filter(id => id !== event.id);
+      localStorage.setItem(`${userKey}_rsvped`, JSON.stringify(rsvpedEvents));
+      
+      // Remove from event_rsvps table if it exists
+      try {
+        await supabaseClient
+          .from('event_rsvps')
+          .delete()
+          .eq('user_id', userProfile.id)
+          .eq('event_id', event.id);
+      } catch (e) {
+        // Table might not exist, that's ok
+      }
+      
+      showToast('RSVP cancelled', 'info');
+      
+      // Update local events data
+      setEvents(events.map(e => e.id === event.id ? {...e, rsvps: newCount} : e));
+      setAllEvents(allEvents.map(e => e.id === event.id ? {...e, rsvps: newCount} : e));
+      
+    } catch (error) {
+      console.error('Undo RSVP error:', error);
+      showToast('Failed to cancel RSVP. Please try again.', 'error');
+    }
+  };
+
   // Check if user has RSVPed to an event
   const hasRSVPed = (eventId) => {
     if (!userProfile?.id) return false;
@@ -9664,6 +9886,7 @@ const loadSquads = async (userId) => {
               userLocation={userLocation}
               onRequestLocation={requestUserLocation}
               onRSVP={handleRSVP}
+              onUndoRSVP={handleUndoRSVP}
               hasRSVPed={hasRSVPed}
             />
           )}
@@ -9760,6 +9983,7 @@ const loadSquads = async (userId) => {
             userProfile={userProfile}
             historicalCount={selectedEventHistoricalCount}
             onRSVP={handleRSVP}
+            onUndoRSVP={handleUndoRSVP}
             hasRSVPed={hasRSVPed}
           />
         )}
@@ -9827,6 +10051,17 @@ const loadSquads = async (userId) => {
               
               <div className="space-y-3">
                 <button
+                  onClick={() => {
+                    setShowBadgeEarned(null);
+                    setCurrentTab('awards');
+                  }}
+                  className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:shadow-lg transition"
+                >
+                  <Award className="w-5 h-5" />
+                  View All Awards
+                </button>
+                
+                <button
                   onClick={async () => {
                     const shareText = `🏆 I just earned the "${showBadgeEarned.name}" badge on CrewQ!\n\n${showBadgeEarned.icon} ${showBadgeEarned.description}\n\nJoin me in exploring Dallas nightlife!`;
                     try {
@@ -9842,7 +10077,7 @@ const loadSquads = async (userId) => {
                       }
                     } catch (err) {}
                   }}
-                  className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:shadow-lg transition"
+                  className="w-full bg-zinc-800 text-white py-3 rounded-xl font-semibold hover:bg-zinc-700 transition flex items-center justify-center gap-2"
                 >
                   <Share2 className="w-5 h-5" />
                   Share Achievement
@@ -9850,9 +10085,9 @@ const loadSquads = async (userId) => {
                 
                 <button
                   onClick={() => setShowBadgeEarned(null)}
-                  className="w-full bg-zinc-800 text-white py-3 rounded-xl font-semibold hover:bg-zinc-700 transition"
+                  className="w-full text-zinc-500 hover:text-white py-2 transition"
                 >
-                  Awesome!
+                  Continue
                 </button>
               </div>
             </div>
