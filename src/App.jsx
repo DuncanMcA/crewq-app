@@ -245,6 +245,18 @@ const BADGES = [
   { id: 'streak-14', name: 'Unstoppable', description: 'Use the app 14 days in a row', icon: '🚀', category: 'streaks', requirement: { type: 'streak', count: 14 }, points: 150 },
   { id: 'streak-30', name: 'Month of Madness', description: 'Use the app 30 days in a row', icon: '🌟', category: 'streaks', requirement: { type: 'streak', count: 30 }, points: 300 },
   
+  // Weekend Check-in Streaks
+  { id: 'weekend-streak-2', name: 'Weekend Regular', description: 'Check in 2 weekends in a row', icon: '🎊', category: 'streaks', requirement: { type: 'weekend-streak', count: 2 }, points: 40 },
+  { id: 'weekend-streak-4', name: 'Month of Weekends', description: 'Check in 4 weekends in a row', icon: '🔥', category: 'streaks', requirement: { type: 'weekend-streak', count: 4 }, points: 100 },
+  { id: 'weekend-streak-8', name: 'Two Month Terror', description: 'Check in 8 weekends in a row', icon: '💪', category: 'streaks', requirement: { type: 'weekend-streak', count: 8 }, points: 250 },
+  { id: 'weekend-streak-12', name: 'Quarter Champion', description: 'Check in 12 weekends in a row', icon: '👑', category: 'streaks', requirement: { type: 'weekend-streak', count: 12 }, points: 500 },
+  
+  // Monthly Goals
+  { id: 'monthly-venues-4', name: 'Explorer', description: 'Visit 4 different venues this month', icon: '🧭', category: 'monthly', requirement: { type: 'monthly-venues', count: 4 }, points: 50 },
+  { id: 'monthly-venues-8', name: 'Adventurer', description: 'Visit 8 different venues this month', icon: '🗺️', category: 'monthly', requirement: { type: 'monthly-venues', count: 8 }, points: 100 },
+  { id: 'monthly-checkins-6', name: 'Active Month', description: 'Check in to 6 events this month', icon: '📅', category: 'monthly', requirement: { type: 'monthly-checkins', count: 6 }, points: 75 },
+  { id: 'monthly-checkins-12', name: 'Party Animal', description: 'Check in to 12 events this month', icon: '🎉', category: 'monthly', requirement: { type: 'monthly-checkins', count: 12 }, points: 200 },
+  
   // Event Type Badges
   { id: 'karaoke-king', name: 'Karaoke King', description: 'Check in to 3 karaoke nights', icon: '🎤', category: 'event-types', requirement: { type: 'category-checkins', category: 'karaoke', count: 3 }, points: 40 },
   { id: 'trivia-master', name: 'Trivia Master', description: 'Check in to 3 trivia nights', icon: '🧠', category: 'event-types', requirement: { type: 'category-checkins', category: 'trivia', count: 3 }, points: 40 },
@@ -824,7 +836,7 @@ function BioBuilderModal({ onClose, onSaveBio, userName, currentAnswers, current
   );
 }
 
-function EventCard({ event, onSwipe, style }) {
+function EventCard({ event, onSwipe, style, isTrending, vibeMatch, countdown, goingCount, rsvpUsers }) {
   const [dragStart, setDragStart] = useState(0);
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -975,7 +987,62 @@ function EventCard({ event, onSwipe, style }) {
               <Calendar className="w-3 h-3 sm:w-4 sm:h-4 text-zinc-400" />
               <span className="text-zinc-300">{event.time}</span>
             </div>
+            {countdown && (
+              <div className="flex items-center gap-1 text-orange-400">
+                <Clock className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="font-semibold">{countdown}</span>
+              </div>
+            )}
           </div>
+
+          {/* Social Proof Row */}
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            {isTrending && (
+              <div className="flex items-center gap-1 bg-red-500 bg-opacity-20 text-red-400 px-2 py-1 rounded-full text-xs font-semibold">
+                <Flame className="w-3 h-3" />
+                <span>Trending</span>
+              </div>
+            )}
+            {vibeMatch && vibeMatch >= 70 && (
+              <div className="flex items-center gap-1 bg-violet-500 bg-opacity-20 text-violet-400 px-2 py-1 rounded-full text-xs font-semibold">
+                <Sparkles className="w-3 h-3" />
+                <span>{vibeMatch}% match</span>
+              </div>
+            )}
+            {goingCount > 0 && (
+              <div className="flex items-center gap-1 bg-emerald-500 bg-opacity-20 text-emerald-400 px-2 py-1 rounded-full text-xs font-semibold">
+                <Users className="w-3 h-3" />
+                <span>{goingCount} going</span>
+              </div>
+            )}
+          </div>
+
+          {/* People Going - Show faces */}
+          {rsvpUsers && rsvpUsers.length > 0 && (
+            <div className="flex items-center gap-2 mb-2">
+              <div className="flex -space-x-2">
+                {rsvpUsers.slice(0, 4).map((user, idx) => (
+                  <div key={idx} className="w-6 h-6 rounded-full bg-zinc-700 border-2 border-zinc-900 overflow-hidden">
+                    {user.profile_picture ? (
+                      <img src={user.profile_picture} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-xs text-white">
+                        {user.name?.charAt(0) || '?'}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {rsvpUsers.length > 4 && (
+                  <div className="w-6 h-6 rounded-full bg-zinc-700 border-2 border-zinc-900 flex items-center justify-center text-xs text-zinc-400">
+                    +{rsvpUsers.length - 4}
+                  </div>
+                )}
+              </div>
+              <span className="text-zinc-400 text-xs">
+                {rsvpUsers[0]?.name?.split(' ')[0]}{rsvpUsers.length > 1 ? ` & ${rsvpUsers.length - 1} more` : ''} going
+              </span>
+            </div>
+          )}
 
           <div className="inline-block bg-emerald-500 bg-opacity-20 text-emerald-400 px-2 py-1 sm:px-3 rounded-full text-xs sm:text-sm font-semibold">
             Free Entry
@@ -1791,7 +1858,7 @@ function EditSquadModal({ squad, onClose, onSave }) {
   );
 }
 
-function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile, isMember, onEventClick, onEdit, onDelete, onMute }) {
+function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile, isMember, onEventClick, onEdit, onDelete, onMute, onOpenChat }) {
   const [hasVoted, setHasVoted] = useState(false);
   const [vote, setVote] = useState(null);
   const [squadMembers, setSquadMembers] = useState([]);
@@ -2227,6 +2294,15 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
             )
           ) : (
             <div className="space-y-2">
+              {/* Squad Chat Button */}
+              <button
+                onClick={() => onOpenChat && onOpenChat(squad)}
+                className="w-full bg-gradient-to-r from-violet-500 to-purple-600 text-white py-3 rounded-xl font-bold hover:shadow-lg transition flex items-center justify-center gap-2"
+              >
+                <MessageCircle className="w-5 h-5" />
+                Squad Chat
+              </button>
+
               <button
                 onClick={() => onLeave(squad)}
                 className="w-full bg-zinc-800 text-zinc-400 py-3 rounded-xl font-bold hover:bg-zinc-700 transition"
@@ -2309,7 +2385,7 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
 }
 
 // Settings Modal
-function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, onLinkGoogle, onUpdateProfile, onResetEvents, isAdmin, onOpenAdmin }) {
+function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, onLinkGoogle, onUpdateProfile, onResetEvents, isAdmin, onOpenAdmin, onOpenNotificationPrefs }) {
   const [activeSection, setActiveSection] = useState(null);
   const [isLinkingGoogle, setIsLinkingGoogle] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -2700,6 +2776,22 @@ function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, 
                   }`} />
                 </button>
               </div>
+              
+              {/* Customize Notifications */}
+              {notificationsEnabled && onOpenNotificationPrefs && (
+                <button
+                  onClick={onOpenNotificationPrefs}
+                  className={`w-full p-3 rounded-xl text-left flex items-center justify-between ${
+                    darkMode ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-zinc-100 hover:bg-zinc-200'
+                  } transition mt-2`}
+                >
+                  <div className="flex items-center gap-3">
+                    <Settings className="w-5 h-5 text-orange-500" />
+                    <span className={darkMode ? 'text-white' : 'text-zinc-900'}>Customize Notifications</span>
+                  </div>
+                  <ChevronRight className={`w-4 h-4 ${darkMode ? 'text-zinc-600' : 'text-zinc-400'}`} />
+                </button>
+              )}
             </div>
 
             {/* Save Button */}
@@ -3045,6 +3137,637 @@ function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, 
           <p className={`text-center text-sm ${darkMode ? 'text-zinc-600' : 'text-zinc-400'}`}>
             CrewQ v1.0.0 • Dallas Nightlife, Solved
           </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Notification Preferences Modal
+function NotificationPreferencesModal({ onClose, darkMode, userProfile, onSavePreferences }) {
+  const [preferences, setPreferences] = useState(() => {
+    const saved = localStorage.getItem(`crewq_${userProfile?.id}_notification_prefs`);
+    return saved ? JSON.parse(saved) : {
+      squadActivity: true,
+      friendActivity: true,
+      eventReminders: true,
+      venueUpdates: true,
+      weeklyDigest: true,
+      reminderTime: '1hour' // '1hour', '2hours', '30min'
+    };
+  });
+
+  const handleToggle = (key) => {
+    setPreferences(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleSave = () => {
+    localStorage.setItem(`crewq_${userProfile?.id}_notification_prefs`, JSON.stringify(preferences));
+    if (onSavePreferences) onSavePreferences(preferences);
+    onClose();
+  };
+
+  const notificationTypes = [
+    { 
+      key: 'squadActivity', 
+      icon: '👥', 
+      title: 'Squad Activity', 
+      description: 'When your squad is heading out or members update status'
+    },
+    { 
+      key: 'friendActivity', 
+      icon: '❤️', 
+      title: 'Friend Activity', 
+      description: 'When people you follow RSVP to events'
+    },
+    { 
+      key: 'eventReminders', 
+      icon: '⏰', 
+      title: 'Event Reminders', 
+      description: 'Reminder before events you\'ve RSVP\'d to'
+    },
+    { 
+      key: 'venueUpdates', 
+      icon: '🏢', 
+      title: 'Venue Updates', 
+      description: 'New events from venues you\'ve visited'
+    },
+    { 
+      key: 'weeklyDigest', 
+      icon: '📅', 
+      title: 'Weekly Digest', 
+      description: 'Friday summary of weekend events'
+    }
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+      <div className={`${darkMode ? 'bg-zinc-900' : 'bg-white'} rounded-3xl max-w-md w-full max-h-[90vh] overflow-y-auto`}>
+        <div className={`sticky top-0 ${darkMode ? 'bg-zinc-900' : 'bg-white'} p-6 border-b ${darkMode ? 'border-zinc-800' : 'border-zinc-200'}`}>
+          <div className="flex items-center justify-between">
+            <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>Notification Preferences</h2>
+            <button onClick={onClose} className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {notificationTypes.map(item => (
+            <div key={item.key} className={`flex items-center justify-between p-4 rounded-xl ${darkMode ? 'bg-zinc-800' : 'bg-zinc-100'}`}>
+              <div className="flex items-center gap-3 flex-1">
+                <span className="text-2xl">{item.icon}</span>
+                <div>
+                  <p className={`font-semibold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>{item.title}</p>
+                  <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>{item.description}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => handleToggle(item.key)}
+                className={`relative w-12 h-7 rounded-full transition-colors ${
+                  preferences[item.key] ? 'bg-orange-500' : darkMode ? 'bg-zinc-600' : 'bg-zinc-300'
+                }`}
+              >
+                <div className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow transition-all ${
+                  preferences[item.key] ? 'left-6' : 'left-1'
+                }`} />
+              </button>
+            </div>
+          ))}
+
+          {/* Reminder Time Selector */}
+          {preferences.eventReminders && (
+            <div className={`p-4 rounded-xl ${darkMode ? 'bg-zinc-800' : 'bg-zinc-100'}`}>
+              <p className={`font-semibold mb-3 ${darkMode ? 'text-white' : 'text-zinc-900'}`}>Remind me before events</p>
+              <div className="flex gap-2">
+                {[
+                  { value: '30min', label: '30 min' },
+                  { value: '1hour', label: '1 hour' },
+                  { value: '2hours', label: '2 hours' }
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setPreferences(prev => ({ ...prev, reminderTime: opt.value }))}
+                    className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${
+                      preferences.reminderTime === opt.value
+                        ? 'bg-orange-500 text-white'
+                        : darkMode ? 'bg-zinc-700 text-zinc-300' : 'bg-white text-zinc-600'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <button
+            onClick={handleSave}
+            className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold hover:shadow-lg transition"
+          >
+            Save Preferences
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Squad Chat Component
+function SquadChat({ squad, userProfile, darkMode, onClose, supabaseClient }) {
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const pollIntervalRef = useRef(null);
+
+  const isLeader = squad?.created_by === userProfile?.id;
+
+  // Quick status messages
+  const quickStatuses = [
+    { emoji: '🚗', text: 'On my way!' },
+    { emoji: '⏰', text: 'Running late' },
+    { emoji: '📍', text: 'I\'m here!' },
+    { emoji: '❌', text: 'Can\'t make it' }
+  ];
+
+  // Load messages
+  const loadMessages = async () => {
+    if (!supabaseClient || !squad?.id) return;
+    
+    try {
+      const { data, error } = await supabaseClient
+        .from('squad_messages')
+        .select('*, users(id, name, profile_picture, profile_visibility)')
+        .eq('squad_id', squad.id)
+        .order('created_at', { ascending: true })
+        .limit(100);
+      
+      if (!error && data) {
+        setMessages(data);
+      }
+    } catch (err) {
+      console.error('Error loading messages:', err);
+    }
+    setLoading(false);
+  };
+
+  // Poll for new messages every 5 seconds
+  useEffect(() => {
+    loadMessages();
+    pollIntervalRef.current = setInterval(loadMessages, 5000);
+    
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+  }, [squad?.id]);
+
+  // Scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const sendMessage = async (text, imageUrl = null) => {
+    if (!supabaseClient || !userProfile?.id || (!text.trim() && !imageUrl)) return;
+    
+    setSending(true);
+    try {
+      const { error } = await supabaseClient
+        .from('squad_messages')
+        .insert([{
+          squad_id: squad.id,
+          user_id: userProfile.id,
+          message: text.trim(),
+          image_url: imageUrl,
+          is_status: false,
+          created_at: new Date().toISOString()
+        }]);
+      
+      if (!error) {
+        setNewMessage('');
+        await loadMessages();
+      }
+    } catch (err) {
+      console.error('Error sending message:', err);
+    }
+    setSending(false);
+  };
+
+  const sendQuickStatus = async (status) => {
+    if (!supabaseClient || !userProfile?.id) return;
+    
+    try {
+      await supabaseClient
+        .from('squad_messages')
+        .insert([{
+          squad_id: squad.id,
+          user_id: userProfile.id,
+          message: `${status.emoji} ${status.text}`,
+          is_status: true,
+          created_at: new Date().toISOString()
+        }]);
+      
+      await loadMessages();
+    } catch (err) {
+      console.error('Error sending status:', err);
+    }
+  };
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingImage(true);
+    try {
+      // For MVP, convert to base64 and store inline
+      // In production, upload to Supabase Storage
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        await sendMessage('', reader.result);
+        setUploadingImage(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error('Error uploading image:', err);
+      setUploadingImage(false);
+    }
+  };
+
+  const deleteMessage = async (messageId) => {
+    if (!supabaseClient || !isLeader) return;
+    
+    try {
+      await supabaseClient
+        .from('squad_messages')
+        .delete()
+        .eq('id', messageId);
+      
+      await loadMessages();
+    } catch (err) {
+      console.error('Error deleting message:', err);
+    }
+  };
+
+  const pinMessage = async (messageId) => {
+    if (!supabaseClient || !isLeader) return;
+    
+    try {
+      // Unpin all other messages first
+      await supabaseClient
+        .from('squad_messages')
+        .update({ is_pinned: false })
+        .eq('squad_id', squad.id);
+      
+      // Pin this message
+      await supabaseClient
+        .from('squad_messages')
+        .update({ is_pinned: true })
+        .eq('id', messageId);
+      
+      await loadMessages();
+    } catch (err) {
+      console.error('Error pinning message:', err);
+    }
+  };
+
+  const pinnedMessage = messages.find(m => m.is_pinned);
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+      <div className={`${darkMode ? 'bg-zinc-900' : 'bg-white'} rounded-3xl max-w-md w-full h-[85vh] flex flex-col`}>
+        {/* Header */}
+        <div className={`p-4 border-b ${darkMode ? 'border-zinc-800' : 'border-zinc-200'} flex items-center justify-between`}>
+          <div>
+            <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>{squad.name}</h3>
+            <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>Squad Chat</p>
+          </div>
+          <button onClick={onClose} className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        {/* Pinned Message */}
+        {pinnedMessage && (
+          <div className={`px-4 py-2 ${darkMode ? 'bg-orange-500/10 border-orange-500/30' : 'bg-orange-50 border-orange-200'} border-b`}>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-orange-500">📌</span>
+              <span className={darkMode ? 'text-orange-300' : 'text-orange-700'}>{pinnedMessage.message}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Quick Status Buttons */}
+        <div className={`px-4 py-2 border-b ${darkMode ? 'border-zinc-800' : 'border-zinc-200'}`}>
+          <div className="flex gap-2 overflow-x-auto">
+            {quickStatuses.map((status, idx) => (
+              <button
+                key={idx}
+                onClick={() => sendQuickStatus(status)}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition ${
+                  darkMode ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                }`}
+              >
+                <span>{status.emoji}</span>
+                <span>{status.text}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {loading ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="animate-spin w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full" />
+            </div>
+          ) : messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-center">
+              <MessageCircle className={`w-12 h-12 ${darkMode ? 'text-zinc-700' : 'text-zinc-300'} mb-3`} />
+              <p className={darkMode ? 'text-zinc-500' : 'text-zinc-400'}>No messages yet</p>
+              <p className={`text-sm ${darkMode ? 'text-zinc-600' : 'text-zinc-400'}`}>Start the conversation!</p>
+            </div>
+          ) : (
+            messages.map(msg => {
+              const isOwn = msg.user_id === userProfile?.id;
+              const userName = msg.users?.profile_visibility === 'public' || isOwn 
+                ? msg.users?.name?.split(' ')[0] 
+                : 'Member';
+              
+              return (
+                <div key={msg.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[80%] ${msg.is_status ? 'w-full' : ''}`}>
+                    {msg.is_status ? (
+                      <div className={`text-center py-2 text-sm ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                        <span className="font-medium">{userName}</span> {msg.message}
+                      </div>
+                    ) : (
+                      <div className={`rounded-2xl px-4 py-2 ${
+                        isOwn 
+                          ? 'bg-orange-500 text-white rounded-br-md' 
+                          : darkMode ? 'bg-zinc-800 text-white rounded-bl-md' : 'bg-zinc-100 text-zinc-900 rounded-bl-md'
+                      }`}>
+                        {!isOwn && (
+                          <p className={`text-xs font-semibold mb-1 ${isOwn ? 'text-orange-200' : darkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                            {userName}
+                          </p>
+                        )}
+                        {msg.image_url && (
+                          <img src={msg.image_url} alt="Shared" className="rounded-lg max-w-full mb-2" />
+                        )}
+                        {msg.message && <p>{msg.message}</p>}
+                        <p className={`text-xs mt-1 ${isOwn ? 'text-orange-200' : darkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                          {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                    )}
+                    
+                    {/* Leader actions */}
+                    {isLeader && !isOwn && !msg.is_status && (
+                      <div className="flex gap-2 mt-1">
+                        <button onClick={() => pinMessage(msg.id)} className="text-xs text-zinc-500 hover:text-orange-500">📌 Pin</button>
+                        <button onClick={() => deleteMessage(msg.id)} className="text-xs text-zinc-500 hover:text-red-500">🗑️ Delete</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Input */}
+        <div className={`p-4 border-t ${darkMode ? 'border-zinc-800' : 'border-zinc-200'}`}>
+          <div className="flex items-center gap-2">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleImageUpload}
+              accept="image/*"
+              className="hidden"
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingImage}
+              className={`p-2 rounded-full transition ${darkMode ? 'hover:bg-zinc-800 text-zinc-400' : 'hover:bg-zinc-100 text-zinc-600'}`}
+            >
+              {uploadingImage ? (
+                <div className="w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Camera className="w-5 h-5" />
+              )}
+            </button>
+            <input
+              type="text"
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage(newMessage)}
+              placeholder="Message your squad..."
+              className={`flex-1 px-4 py-2 rounded-full outline-none ${
+                darkMode ? 'bg-zinc-800 text-white placeholder-zinc-500' : 'bg-zinc-100 text-zinc-900 placeholder-zinc-400'
+              }`}
+            />
+            <button
+              onClick={() => sendMessage(newMessage)}
+              disabled={!newMessage.trim() || sending}
+              className="p-2 bg-orange-500 text-white rounded-full disabled:opacity-50"
+            >
+              <Send className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Leaderboard Component
+function LeaderboardModal({ onClose, darkMode, userProfile, supabaseClient }) {
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [timeframe, setTimeframe] = useState('allTime'); // 'weekly', 'monthly', 'allTime'
+  const [userRank, setUserRank] = useState(null);
+
+  useEffect(() => {
+    loadLeaderboard();
+  }, [timeframe]);
+
+  const loadLeaderboard = async () => {
+    if (!supabaseClient) return;
+    setLoading(true);
+    
+    try {
+      // Get all users with their badges for points calculation
+      const { data: users } = await supabaseClient
+        .from('users')
+        .select('id, name, profile_picture, profile_visibility')
+        .limit(100);
+
+      const { data: allBadges } = await supabaseClient
+        .from('user_badges')
+        .select('user_id, badge_id, created_at');
+
+      // Calculate points for each user
+      const userPoints = (users || []).map(user => {
+        let badges = (allBadges || []).filter(b => b.user_id === user.id);
+        
+        // Filter by timeframe
+        if (timeframe === 'weekly') {
+          const weekAgo = new Date();
+          weekAgo.setDate(weekAgo.getDate() - 7);
+          badges = badges.filter(b => new Date(b.created_at) > weekAgo);
+        } else if (timeframe === 'monthly') {
+          const monthAgo = new Date();
+          monthAgo.setMonth(monthAgo.getMonth() - 1);
+          badges = badges.filter(b => new Date(b.created_at) > monthAgo);
+        }
+
+        const points = badges.reduce((sum, b) => {
+          const badge = BADGES.find(badge => badge.id === b.badge_id);
+          return sum + (badge?.points || 0);
+        }, 0);
+
+        return {
+          ...user,
+          points,
+          badgeCount: badges.length
+        };
+      });
+
+      // Sort by points
+      userPoints.sort((a, b) => b.points - a.points);
+
+      // Find user's rank
+      const myRank = userPoints.findIndex(u => u.id === userProfile?.id) + 1;
+      setUserRank(myRank || null);
+
+      setLeaderboard(userPoints.slice(0, 50));
+    } catch (err) {
+      console.error('Error loading leaderboard:', err);
+    }
+    setLoading(false);
+  };
+
+  const getRankIcon = (rank) => {
+    if (rank === 1) return '🥇';
+    if (rank === 2) return '🥈';
+    if (rank === 3) return '🥉';
+    return `#${rank}`;
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+      <div className={`${darkMode ? 'bg-zinc-900' : 'bg-white'} rounded-3xl max-w-md w-full max-h-[85vh] flex flex-col`}>
+        {/* Header */}
+        <div className={`p-6 border-b ${darkMode ? 'border-zinc-800' : 'border-zinc-200'}`}>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>🏆 Leaderboard</h2>
+            <button onClick={onClose} className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+          
+          {/* Timeframe Toggle */}
+          <div className="flex gap-2">
+            {[
+              { id: 'weekly', label: 'This Week' },
+              { id: 'monthly', label: 'This Month' },
+              { id: 'allTime', label: 'All Time' }
+            ].map(opt => (
+              <button
+                key={opt.id}
+                onClick={() => setTimeframe(opt.id)}
+                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${
+                  timeframe === opt.id
+                    ? 'bg-orange-500 text-white'
+                    : darkMode ? 'bg-zinc-800 text-zinc-400' : 'bg-zinc-100 text-zinc-600'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Your Rank */}
+        {userRank && (
+          <div className={`mx-6 mt-4 p-4 rounded-xl ${darkMode ? 'bg-orange-500/10 border border-orange-500/30' : 'bg-orange-50 border border-orange-200'}`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">{getRankIcon(userRank)}</span>
+                <div>
+                  <p className={`font-semibold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>Your Rank</p>
+                  <p className={`text-sm ${darkMode ? 'text-orange-300' : 'text-orange-600'}`}>
+                    {leaderboard.find(u => u.id === userProfile?.id)?.points || 0} points
+                  </p>
+                </div>
+              </div>
+              <span className={`text-2xl font-bold ${darkMode ? 'text-orange-400' : 'text-orange-500'}`}>
+                #{userRank}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Leaderboard List */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {loading ? (
+            <div className="flex items-center justify-center h-32">
+              <div className="animate-spin w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full" />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {leaderboard.map((user, idx) => {
+                const rank = idx + 1;
+                const isCurrentUser = user.id === userProfile?.id;
+                const displayName = user.profile_visibility === 'public' || isCurrentUser
+                  ? user.name
+                  : 'Anonymous';
+                
+                return (
+                  <div
+                    key={user.id}
+                    className={`flex items-center gap-3 p-3 rounded-xl transition ${
+                      isCurrentUser
+                        ? darkMode ? 'bg-orange-500/20 border border-orange-500/30' : 'bg-orange-100 border border-orange-300'
+                        : darkMode ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-zinc-100 hover:bg-zinc-200'
+                    }`}
+                  >
+                    <span className={`w-8 text-center font-bold ${rank <= 3 ? 'text-xl' : darkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                      {getRankIcon(rank)}
+                    </span>
+                    
+                    <div className="w-10 h-10 rounded-full bg-zinc-700 flex items-center justify-center overflow-hidden">
+                      {user.profile_picture ? (
+                        <img src={user.profile_picture} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-white">{displayName.charAt(0)}</span>
+                      )}
+                    </div>
+                    
+                    <div className="flex-1">
+                      <p className={`font-semibold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
+                        {displayName} {isCurrentUser && <span className="text-orange-500">(You)</span>}
+                      </p>
+                      <p className={`text-sm ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                        {user.badgeCount} badges
+                      </p>
+                    </div>
+                    
+                    <div className="text-right">
+                      <p className={`font-bold ${darkMode ? 'text-orange-400' : 'text-orange-500'}`}>
+                        {user.points}
+                      </p>
+                      <p className={`text-xs ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>points</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -5115,7 +5838,7 @@ function CrewTab({ squads, onCreateSquad, onSquadClick }) {
   );
 }
 
-function AwardsTab({ userProfile, userBadges, userStats }) {
+function AwardsTab({ userProfile, userBadges, userStats, onOpenLeaderboard }) {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedBadge, setSelectedBadge] = useState(null);
   const categoryScrollRef = useRef(null);
@@ -5197,10 +5920,19 @@ function AwardsTab({ userProfile, userBadges, userStats }) {
         <h2 className="text-2xl font-bold text-white mb-1">Your Awards</h2>
         <p className="text-orange-100 mb-4">{earnedCount} of {totalBadges} badges earned</p>
         
-        <div className="bg-white bg-opacity-20 rounded-xl p-4">
+        <div className="bg-white bg-opacity-20 rounded-xl p-4 mb-4">
           <div className="text-3xl font-bold text-white mb-1">{totalPoints}</div>
           <div className="text-orange-100 text-sm">Total Points</div>
         </div>
+
+        {/* Leaderboard Button */}
+        <button
+          onClick={onOpenLeaderboard}
+          className="w-full bg-white bg-opacity-20 hover:bg-opacity-30 text-white py-3 rounded-xl font-bold transition flex items-center justify-center gap-2"
+        >
+          <Trophy className="w-5 h-5" />
+          View Leaderboard
+        </button>
       </div>
 
       {/* Key to the City Progress */}
@@ -8328,6 +9060,25 @@ export default function App() {
   // Vibe filter for discover feed (default OFF)
   const [vibeFilterEnabled, setVibeFilterEnabled] = useState(false);
   
+  // Tonight mode - shows only events happening now/soon
+  const [tonightMode, setTonightMode] = useState(false);
+  
+  // New feature modals
+  const [showNotificationPrefs, setShowNotificationPrefs] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showSquadChat, setShowSquadChat] = useState(null); // squad object or null
+  
+  // Streak tracking
+  const [userStreaks, setUserStreaks] = useState({
+    daily: 0,
+    weeklyCheckIn: 0,
+    monthlyVenues: 0,
+    monthlyCheckIns: 0
+  });
+  
+  // Event RSVPs/social proof cache
+  const [eventRsvpUsers, setEventRsvpUsers] = useState({}); // eventId -> [{user}]
+  
   // Settings & Notifications
   const [showSettings, setShowSettings] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -10086,43 +10837,219 @@ const loadSquads = async (userId) => {
 
   // Apply vibe filter to events for discover feed
   const getVibeFilteredEvents = () => {
-    if (!vibeFilterEnabled || !userProfile?.vibes || userProfile.vibes.length === 0) {
-      return events;
+    let filtered = events;
+    
+    // Apply vibe filter if enabled
+    if (vibeFilterEnabled && userProfile?.vibes && userProfile.vibes.length > 0) {
+      filtered = filtered.filter(event => {
+        const eventVibes = event.vibes || event.tags || [];
+        const eventCategory = event.category || '';
+        
+        if (Array.isArray(eventVibes) && eventVibes.some(v => userProfile.vibes.includes(v))) {
+          return true;
+        }
+        
+        const categoryVibeMap = {
+          'live-music': ['live-music', 'concerts'],
+          'trivia': ['trivia', 'games'],
+          'happy-hour': ['happy-hour', 'chill-drinks'],
+          'sports': ['sports-bars'],
+          'karaoke': ['karaoke'],
+          'dancing': ['dancing'],
+          'comedy': ['comedy'],
+          'networking': ['networking'],
+          'brunch': ['foodie'],
+          'food': ['foodie', 'tacos'],
+          'rooftop': ['rooftop', 'sunsets'],
+          'outdoor': ['outdoor']
+        };
+        
+        const matchedVibes = categoryVibeMap[eventCategory] || [eventCategory];
+        return matchedVibes.some(v => userProfile.vibes.includes(v));
+      });
     }
     
-    return events.filter(event => {
-      // Check if event has vibes/tags that match user's vibes
-      const eventVibes = event.vibes || event.tags || [];
-      const eventCategory = event.category || '';
-      const eventAmbience = event.ambience || '';
+    // Apply tonight mode filter
+    if (tonightMode) {
+      filtered = getTonightEvents(filtered);
+    }
+    
+    return filtered;
+  };
+
+  // Get events happening tonight (within 6 hours or starting soon)
+  const getTonightEvents = (eventList = allEvents) => {
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    const sixHoursFromNow = new Date(now.getTime() + 6 * 60 * 60 * 1000);
+    
+    return eventList.filter(event => {
+      if (!event.date) return false;
       
-      // Match on event vibes array
-      if (Array.isArray(eventVibes) && eventVibes.some(v => userProfile.vibes.includes(v))) {
-        return true;
+      // Check if event is today
+      if (event.date !== today) return false;
+      
+      // Parse event time
+      if (event.time) {
+        const [hours, minutes] = event.time.split(':').map(Number);
+        const eventTime = new Date(now);
+        eventTime.setHours(hours || 18, minutes || 0, 0, 0);
+        
+        // Show events that have started (up to 2 hours ago) or starting within 6 hours
+        const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+        return eventTime >= twoHoursAgo && eventTime <= sixHoursFromNow;
       }
       
-      // Match on category (map common categories to vibes)
-      const categoryVibeMap = {
-        'live-music': ['live-music', 'concerts'],
-        'trivia': ['trivia', 'games'],
-        'happy-hour': ['happy-hour', 'chill-drinks'],
-        'sports': ['sports-bars'],
-        'karaoke': ['karaoke'],
-        'dancing': ['dancing'],
-        'comedy': ['comedy'],
-        'networking': ['networking'],
-        'brunch': ['foodie'],
-        'food': ['foodie', 'tacos'],
-        'rooftop': ['rooftop', 'sunsets'],
-        'outdoor': ['outdoor']
-      };
+      return true; // Include events without time if they're today
+    });
+  };
+
+  // Calculate vibe match percentage
+  const getVibeMatch = (event) => {
+    if (!userProfile?.vibes || userProfile.vibes.length === 0) return null;
+    
+    const eventVibes = event.vibes || event.tags || [];
+    const eventCategory = event.category || '';
+    
+    // Get all vibes associated with this event
+    const allEventVibes = [...eventVibes];
+    
+    const categoryVibeMap = {
+      'live-music': ['live-music', 'concerts'],
+      'trivia': ['trivia', 'games'],
+      'happy-hour': ['happy-hour', 'chill-drinks'],
+      'sports': ['sports-bars'],
+      'karaoke': ['karaoke'],
+      'dancing': ['dancing'],
+      'comedy': ['comedy'],
+      'networking': ['networking'],
+      'brunch': ['foodie'],
+      'food': ['foodie', 'tacos'],
+      'rooftop': ['rooftop', 'sunsets'],
+      'outdoor': ['outdoor']
+    };
+    
+    if (categoryVibeMap[eventCategory]) {
+      allEventVibes.push(...categoryVibeMap[eventCategory]);
+    }
+    
+    if (allEventVibes.length === 0) return null;
+    
+    const matches = userProfile.vibes.filter(v => allEventVibes.includes(v)).length;
+    return Math.round((matches / Math.min(userProfile.vibes.length, 3)) * 100);
+  };
+
+  // Check if event is trending (top 10% by engagement with capacity left)
+  const isTrending = (event) => {
+    if (!allEvents.length) return false;
+    
+    const engagement = (event.rsvps || 0) + (event.views || 0) * 0.1;
+    const sortedByEngagement = [...allEvents].sort((a, b) => {
+      const engA = (a.rsvps || 0) + (a.views || 0) * 0.1;
+      const engB = (b.rsvps || 0) + (b.views || 0) * 0.1;
+      return engB - engA;
+    });
+    
+    const top10Percent = Math.ceil(sortedByEngagement.length * 0.1);
+    const trendingIds = sortedByEngagement.slice(0, top10Percent).map(e => e.id);
+    
+    return trendingIds.includes(event.id) && (!event.capacity || (event.rsvps || 0) < event.capacity);
+  };
+
+  // Get countdown for event starting soon
+  const getCountdown = (event) => {
+    if (!event.date || !event.time) return null;
+    
+    const now = new Date();
+    const [hours, minutes] = event.time.split(':').map(Number);
+    const eventDateTime = new Date(event.date);
+    eventDateTime.setHours(hours || 18, minutes || 0, 0, 0);
+    
+    const diff = eventDateTime.getTime() - now.getTime();
+    
+    if (diff < 0 || diff > 3 * 60 * 60 * 1000) return null; // Only show if within 3 hours
+    
+    const hoursLeft = Math.floor(diff / (60 * 60 * 1000));
+    const minsLeft = Math.floor((diff % (60 * 60 * 1000)) / (60 * 1000));
+    
+    if (hoursLeft > 0) {
+      return `Starts in ${hoursLeft}h ${minsLeft}m`;
+    }
+    return `Starts in ${minsLeft} min`;
+  };
+
+  // Load RSVP users for social proof
+  const loadEventRsvpUsers = async (eventId) => {
+    if (!supabaseClient || eventRsvpUsers[eventId]) return;
+    
+    try {
+      const { data } = await supabaseClient
+        .from('event_rsvps')
+        .select('user_id, users(id, name, profile_picture, profile_visibility)')
+        .eq('event_id', eventId)
+        .limit(10);
       
-      const matchedVibes = categoryVibeMap[eventCategory] || [eventCategory];
-      if (matchedVibes.some(v => userProfile.vibes.includes(v))) {
-        return true;
+      if (data) {
+        const users = data
+          .map(r => r.users)
+          .filter(u => u && u.profile_visibility === 'public');
+        setEventRsvpUsers(prev => ({ ...prev, [eventId]: users }));
       }
-      
-      return false;
+    } catch (err) {
+      console.error('Error loading RSVP users:', err);
+    }
+  };
+
+  // Track streak on app open
+  useEffect(() => {
+    if (userProfile?.id) {
+      trackDailyStreak();
+      loadUserStreaks();
+    }
+  }, [userProfile?.id]);
+
+  const trackDailyStreak = () => {
+    if (!userProfile?.id) return;
+    
+    const userKey = `crewq_${userProfile.id}`;
+    const today = new Date().toISOString().split('T')[0];
+    const lastOpen = localStorage.getItem(`${userKey}_last_open`);
+    const currentStreak = parseInt(localStorage.getItem(`${userKey}_daily_streak`) || '0');
+    
+    if (lastOpen === today) return; // Already tracked today
+    
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    
+    let newStreak = 1;
+    if (lastOpen === yesterdayStr) {
+      newStreak = currentStreak + 1;
+    }
+    
+    localStorage.setItem(`${userKey}_last_open`, today);
+    localStorage.setItem(`${userKey}_daily_streak`, newStreak.toString());
+    
+    setUserStreaks(prev => ({ ...prev, daily: newStreak }));
+  };
+
+  const loadUserStreaks = () => {
+    if (!userProfile?.id) return;
+    
+    const userKey = `crewq_${userProfile.id}`;
+    const daily = parseInt(localStorage.getItem(`${userKey}_daily_streak`) || '0');
+    const weekendStreak = parseInt(localStorage.getItem(`${userKey}_weekend_streak`) || '0');
+    
+    // Count monthly stats
+    const thisMonth = new Date().toISOString().slice(0, 7);
+    const monthlyVenues = JSON.parse(localStorage.getItem(`${userKey}_venues_${thisMonth}`) || '[]').length;
+    const monthlyCheckIns = parseInt(localStorage.getItem(`${userKey}_checkins_${thisMonth}`) || '0');
+    
+    setUserStreaks({
+      daily,
+      weeklyCheckIn: weekendStreak,
+      monthlyVenues,
+      monthlyCheckIns
     });
   };
   
@@ -10236,6 +11163,28 @@ const loadSquads = async (userId) => {
         <div className="flex-1 overflow-y-auto overflow-x-hidden pb-20 sm:pb-24 -webkit-overflow-scrolling-touch">
           {currentTab === 'discover' && (
             <div className="px-3 py-3 sm:px-4 sm:py-6">
+              {/* Tonight Mode Button */}
+              <button
+                onClick={() => {
+                  setTonightMode(!tonightMode);
+                }}
+                className={`w-full mb-4 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition ${
+                  tonightMode
+                    ? 'bg-gradient-to-r from-red-500 to-orange-500 text-white shadow-lg shadow-red-500/25'
+                    : darkMode 
+                      ? 'bg-gradient-to-r from-violet-500/20 to-purple-500/20 text-violet-300 border border-violet-500/30' 
+                      : 'bg-gradient-to-r from-orange-100 to-yellow-100 text-orange-600 border border-orange-300'
+                }`}
+              >
+                <div className={`w-3 h-3 rounded-full ${tonightMode ? 'bg-white animate-pulse' : 'bg-red-500 animate-pulse'}`} />
+                {tonightMode ? '🔥 Tonight Mode ON - Showing What\'s Happening Now!' : '🌙 See What\'s Happening Tonight'}
+                {tonightMode && (
+                  <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full ml-2">
+                    {getTonightEvents().length} events
+                  </span>
+                )}
+              </button>
+
               {/* Vibe Filter Toggle */}
               <div className="mb-4 flex items-center justify-between">
                 <button
@@ -10338,6 +11287,11 @@ const loadSquads = async (userId) => {
                         scale: idx === 1 ? 1 : 0.95,
                         top: idx === 1 ? 0 : '10px'
                       }}
+                      isTrending={isTrending(event)}
+                      vibeMatch={getVibeMatch(event)}
+                      countdown={getCountdown(event)}
+                      goingCount={(event.rsvps || 0) + (event.checkins || 0)}
+                      rsvpUsers={eventRsvpUsers[event.id] || []}
                     />
                   ))}
 
@@ -10407,6 +11361,7 @@ const loadSquads = async (userId) => {
               userProfile={userProfile}
               userBadges={userBadges}
               userStats={userStats}
+              onOpenLeaderboard={() => setShowLeaderboard(true)}
             />
           )}
           {currentTab === 'profile' && (
@@ -10505,6 +11460,10 @@ const loadSquads = async (userId) => {
             onEdit={handleEditSquad}
             onDelete={handleDeleteSquad}
             onMute={handleMuteSquad}
+            onOpenChat={(squad) => {
+              setShowSquadDetail(false);
+              setShowSquadChat(squad);
+            }}
           />
         )}
 
@@ -10600,6 +11559,10 @@ const loadSquads = async (userId) => {
               setShowSettings(false);
             }}
             onLinkGoogle={handleGoogleAuth}
+            onOpenNotificationPrefs={() => {
+              setShowSettings(false);
+              setShowNotificationPrefs(true);
+            }}
             onUpdateProfile={async (updates) => {
               if (!supabaseClient || !userProfile?.id) return;
               try {
@@ -10679,6 +11642,39 @@ const loadSquads = async (userId) => {
             darkMode={darkMode}
             supabaseClient={supabaseClient}
             DALLAS_NEIGHBORHOODS={DALLAS_NEIGHBORHOODS}
+          />
+        )}
+
+        {/* Notification Preferences Modal */}
+        {showNotificationPrefs && (
+          <NotificationPreferencesModal
+            onClose={() => setShowNotificationPrefs(false)}
+            darkMode={darkMode}
+            userProfile={userProfile}
+            onSavePreferences={(prefs) => {
+              showToast('Notification preferences saved!', 'success');
+            }}
+          />
+        )}
+
+        {/* Leaderboard Modal */}
+        {showLeaderboard && (
+          <LeaderboardModal
+            onClose={() => setShowLeaderboard(false)}
+            darkMode={darkMode}
+            userProfile={userProfile}
+            supabaseClient={supabaseClient}
+          />
+        )}
+
+        {/* Squad Chat Modal */}
+        {showSquadChat && (
+          <SquadChat
+            squad={showSquadChat}
+            userProfile={userProfile}
+            darkMode={darkMode}
+            onClose={() => setShowSquadChat(null)}
+            supabaseClient={supabaseClient}
           />
         )}
 
