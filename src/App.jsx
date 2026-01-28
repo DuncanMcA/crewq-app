@@ -3474,6 +3474,27 @@ function SoloFriendlySquadsView({ squads, onSquadClick, userProfile }) {
 function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount, userProfile, historicalCount = 0, onRSVP, onUndoRSVP, hasRSVPed }) {
   const [checking, setChecking] = useState(false);
   const [rsvping, setRsvping] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  // Get all images - support both single image_url and image_urls array
+  const getAllImages = () => {
+    const images = [];
+    if (event.image_url) images.push(event.image_url);
+    if (event.image_urls && Array.isArray(event.image_urls)) {
+      event.image_urls.forEach(url => {
+        if (url && !images.includes(url)) images.push(url);
+      });
+    }
+    if (event.additional_images && Array.isArray(event.additional_images)) {
+      event.additional_images.forEach(url => {
+        if (url && !images.includes(url)) images.push(url);
+      });
+    }
+    return images.length > 0 ? images : ['https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800'];
+  };
+  
+  const images = getAllImages();
+  const hasMultipleImages = images.length > 1;
 
   const handleCheckIn = async () => {
     setChecking(true);
@@ -3503,9 +3524,41 @@ function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount
   return (
     <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
       <div className="bg-zinc-900 rounded-3xl max-w-md w-full overflow-hidden max-h-[90vh] overflow-y-auto">
+        {/* Image Carousel */}
         <div className="relative h-64">
-          <img src={event.image_url} alt={event.name} className="w-full h-full object-cover" />
+          <img src={images[currentImageIndex]} alt={event.name} className="w-full h-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-transparent" />
+          
+          {/* Carousel Navigation */}
+          {hasMultipleImages && (
+            <>
+              <button
+                onClick={() => setCurrentImageIndex(prev => prev === 0 ? images.length - 1 : prev - 1)}
+                className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 transition"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setCurrentImageIndex(prev => prev === images.length - 1 ? 0 : prev + 1)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 transition"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+              {/* Dots Indicator */}
+              <div className="absolute bottom-20 left-1/2 -translate-x-1/2 flex gap-1.5">
+                {images.map((_, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setCurrentImageIndex(idx)}
+                    className={`w-2 h-2 rounded-full transition ${
+                      idx === currentImageIndex ? 'bg-white' : 'bg-white/40'
+                    }`}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+          
           <button
             onClick={onClose}
             className="absolute top-4 right-4 bg-zinc-900 bg-opacity-80 rounded-full p-2 hover:bg-opacity-100 transition"
@@ -4125,9 +4178,77 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef([]);
+  
+  // Search and filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [dayFilter, setDayFilter] = useState('all'); // 'all', 'today', 'tomorrow', 'weekend', 'week'
+  const [showSearchFilters, setShowSearchFilters] = useState(false);
+  const [showLikedOnMap, setShowLikedOnMap] = useState(true);
+  const [showRsvpOnMap, setShowRsvpOnMap] = useState(true);
 
   // Get live events (happening right now)
   const liveEvents = events.filter(isEventLive);
+  
+  // Filter events by search query and day filter
+  const getSearchFilteredEvents = (eventList) => {
+    let filtered = eventList;
+    
+    // Text search
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(e => 
+        e.name?.toLowerCase().includes(query) ||
+        e.venue?.toLowerCase().includes(query) ||
+        e.neighborhood?.toLowerCase().includes(query) ||
+        e.category?.toLowerCase().includes(query) ||
+        e.description?.toLowerCase().includes(query)
+      );
+    }
+    
+    // Day filter
+    if (dayFilter !== 'all') {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const dayAfterTomorrow = new Date(tomorrow);
+      dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 1);
+      
+      // Get weekend dates
+      const dayOfWeek = today.getDay();
+      const saturday = new Date(today);
+      saturday.setDate(today.getDate() + (6 - dayOfWeek));
+      const sunday = new Date(saturday);
+      sunday.setDate(sunday.getDate() + 1);
+      const mondayAfter = new Date(sunday);
+      mondayAfter.setDate(mondayAfter.getDate() + 1);
+      
+      // Week end
+      const weekEnd = new Date(today);
+      weekEnd.setDate(today.getDate() + 7);
+      
+      filtered = filtered.filter(e => {
+        if (!e.date) return true;
+        const eventDate = new Date(e.date);
+        eventDate.setHours(0, 0, 0, 0);
+        
+        switch (dayFilter) {
+          case 'today':
+            return eventDate.getTime() === today.getTime();
+          case 'tomorrow':
+            return eventDate.getTime() === tomorrow.getTime();
+          case 'weekend':
+            return eventDate >= saturday && eventDate < mondayAfter;
+          case 'week':
+            return eventDate >= today && eventDate < weekEnd;
+          default:
+            return true;
+        }
+      });
+    }
+    
+    return filtered;
+  };
   
   // Get events to display on map based on toggle
   const mapEvents = showAllEvents ? events : liveEvents;
@@ -4148,7 +4269,8 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
     });
   };
 
-  const filteredMapEvents = getFilteredEvents(mapEvents);
+  // Apply all filters: distance, search, day
+  const filteredMapEvents = getSearchFilteredEvents(getFilteredEvents(mapEvents));
 
   // Add distance to events
   const eventsWithDistance = (eventList) => {
@@ -4271,14 +4393,46 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
     }
   };
 
+  // Get RSVP'd event IDs for map display
+  const getRsvpedEventIds = () => {
+    const userKey = localStorage.getItem('crewq_user_id') || 'guest';
+    const rsvped = JSON.parse(localStorage.getItem(`crewq_${userKey}_rsvped`) || '[]');
+    return rsvped;
+  };
+
   const updateMarkers = (map, eventList) => {
     // Clear existing markers
     markersRef.current.forEach(marker => marker.remove());
     markersRef.current = [];
 
-    // Add new markers
+    const likedIds = likedEvents.map(e => e.id);
+    const rsvpedIds = getRsvpedEventIds();
+
+    // Add new markers for regular events
     eventList.forEach(event => {
       if (!event.latitude || !event.longitude) return;
+
+      const isLiked = likedIds.includes(event.id);
+      const isRsvped = rsvpedIds.includes(event.id);
+      
+      // Skip if filters are off
+      if (isLiked && !showLikedOnMap && !isRsvped) return;
+      if (isRsvped && !showRsvpOnMap && !isLiked) return;
+
+      // Determine marker color
+      let bgColor = 'linear-gradient(135deg, #f97316, #ea580c)'; // Orange - regular
+      let shadowColor = 'rgba(249, 115, 22, 0.4)';
+      let emoji = '🎵';
+      
+      if (isRsvped) {
+        bgColor = 'linear-gradient(135deg, #8b5cf6, #7c3aed)'; // Purple - RSVP'd
+        shadowColor = 'rgba(139, 92, 246, 0.4)';
+        emoji = '✓';
+      } else if (isLiked) {
+        bgColor = 'linear-gradient(135deg, #ec4899, #db2777)'; // Pink - Liked
+        shadowColor = 'rgba(236, 72, 153, 0.4)';
+        emoji = '❤️';
+      }
 
       const el = document.createElement('div');
       el.className = 'event-marker';
@@ -4286,16 +4440,16 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
         <div style="
           width: 36px; 
           height: 36px; 
-          background: linear-gradient(135deg, #f97316, #ea580c); 
+          background: ${bgColor}; 
           border-radius: 50% 50% 50% 0; 
           transform: rotate(-45deg);
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 3px 10px rgba(249, 115, 22, 0.4);
+          box-shadow: 0 3px 10px ${shadowColor};
           cursor: pointer;
         ">
-          <span style="transform: rotate(45deg); font-size: 14px;">🎵</span>
+          <span style="transform: rotate(45deg); font-size: 14px;">${emoji}</span>
         </div>
       `;
       
@@ -4309,6 +4463,54 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
 
       markersRef.current.push(marker);
     });
+
+    // Add markers for liked events not in main list
+    if (showLikedOnMap) {
+      likedEvents.forEach(event => {
+        if (!event.latitude || !event.longitude) return;
+        if (eventList.find(e => e.id === event.id)) return; // Already added
+
+        const isRsvped = rsvpedIds.includes(event.id);
+        let bgColor = 'linear-gradient(135deg, #ec4899, #db2777)';
+        let shadowColor = 'rgba(236, 72, 153, 0.4)';
+        let emoji = '❤️';
+        
+        if (isRsvped && showRsvpOnMap) {
+          bgColor = 'linear-gradient(135deg, #8b5cf6, #7c3aed)';
+          shadowColor = 'rgba(139, 92, 246, 0.4)';
+          emoji = '✓';
+        }
+
+        const el = document.createElement('div');
+        el.className = 'event-marker liked-marker';
+        el.innerHTML = `
+          <div style="
+            width: 36px; 
+            height: 36px; 
+            background: ${bgColor}; 
+            border-radius: 50% 50% 50% 0; 
+            transform: rotate(-45deg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 3px 10px ${shadowColor};
+            cursor: pointer;
+          ">
+            <span style="transform: rotate(45deg); font-size: 14px;">${emoji}</span>
+          </div>
+        `;
+        
+        el.addEventListener('click', () => {
+          onEventClick(event);
+        });
+
+        const marker = new window.mapboxgl.Marker({ element: el })
+          .setLngLat([event.longitude, event.latitude])
+          .addTo(map);
+
+        markersRef.current.push(marker);
+      });
+    }
   };
 
   // Update markers when events change
@@ -4316,7 +4518,7 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
     if (mapRef.current && mapLoaded) {
       updateMarkers(mapRef.current, filteredMapEvents);
     }
-  }, [filteredMapEvents, mapLoaded, showAllEvents]);
+  }, [filteredMapEvents, mapLoaded, showAllEvents, likedEvents, showLikedOnMap, showRsvpOnMap]);
 
   // Calendar functions
   const getDaysInMonth = (date) => {
@@ -4426,6 +4628,74 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
               <Filter className="w-4 h-4" />
               {distanceFilter === 'all' ? 'All Dallas' : `${distanceFilter} mi`}
             </button>
+          </div>
+
+          {/* Search Bar */}
+          <div className="px-4 pb-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search events, venues, neighborhoods..."
+                className="w-full bg-zinc-800 text-white rounded-xl pl-10 pr-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-orange-500 placeholder-zinc-500"
+              />
+              {searchQuery && (
+                <button 
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Day Filter Pills */}
+          <div className="px-4 pb-2 flex gap-2 overflow-x-auto">
+            {[
+              { id: 'all', label: 'Any Day' },
+              { id: 'today', label: 'Today' },
+              { id: 'tomorrow', label: 'Tomorrow' },
+              { id: 'weekend', label: 'This Weekend' },
+              { id: 'week', label: 'This Week' },
+            ].map(opt => (
+              <button
+                key={opt.id}
+                onClick={() => setDayFilter(opt.id)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition ${
+                  dayFilter === opt.id
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Map Legend & Toggles */}
+          <div className="px-4 pb-2">
+            <div className="flex items-center gap-4 text-xs">
+              <span className="text-zinc-500">Show on map:</span>
+              <button
+                onClick={() => setShowLikedOnMap(!showLikedOnMap)}
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg transition ${
+                  showLikedOnMap ? 'bg-pink-500/20 text-pink-400' : 'bg-zinc-800 text-zinc-500'
+                }`}
+              >
+                <span>❤️</span> Liked
+              </button>
+              <button
+                onClick={() => setShowRsvpOnMap(!showRsvpOnMap)}
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg transition ${
+                  showRsvpOnMap ? 'bg-violet-500/20 text-violet-400' : 'bg-zinc-800 text-zinc-500'
+                }`}
+              >
+                <span>✓</span> RSVP'd
+              </button>
+            </div>
           </div>
 
           {/* Distance Filter Dropdown */}
@@ -6748,6 +7018,7 @@ function AdminPortal({ onClose, userEmail }) {
     const [specials, setSpecials] = useState('');
     const [desc, setDesc] = useState('');
     const [imageUrl, setImageUrl] = useState('');
+    const [eventVibes, setEventVibes] = useState([]);
     const approvedVenues = establishments.filter(e => e.status === 'approved');
     
     const handleSubmit = () => {
@@ -6771,6 +7042,7 @@ function AdminPortal({ onClose, userEmail }) {
         drink_specials: specials, 
         description: desc, 
         image_url: imageUrl,
+        vibes: eventVibes,
         status: 'live',
         views: 0,
         rsvps: 0,
@@ -6839,6 +7111,29 @@ function AdminPortal({ onClose, userEmail }) {
           <div>
             <label className="block text-sm text-gray-400 mb-2">Event Image URL</label>
             <input value={imageUrl} onChange={e => setImageUrl(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="https://example.com/image.jpg" />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">Event Vibes (for user matching)</label>
+            <div className="flex flex-wrap gap-2">
+              {VIBE_OPTIONS.map(vibe => (
+                <button
+                  key={vibe.id}
+                  onClick={() => setEventVibes(prev => 
+                    prev.includes(vibe.id) 
+                      ? prev.filter(v => v !== vibe.id) 
+                      : [...prev, vibe.id]
+                  )}
+                  className={`px-3 py-1.5 rounded-full text-sm transition ${
+                    eventVibes.includes(vibe.id)
+                      ? 'bg-violet-500 text-white'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                >
+                  {vibe.icon} {vibe.label.split(' ')[1] || vibe.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-gray-500 text-xs mt-1">Select vibes that match your event to help users find it</p>
           </div>
           <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
             <p className="text-emerald-400 text-sm">✓ Event goes live immediately</p>
@@ -7033,6 +7328,20 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  
+  // Detect mobile screen and auto-collapse sidebar
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (mobile) setSidebarCollapsed(true);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
   
   // Onboarding state - use individual state variables to prevent re-render issues
   const [onboardingStep, setOnboardingStep] = useState(0);
@@ -7542,17 +7851,33 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
   
   return (
     <div className="fixed inset-0 z-50 bg-slate-900 flex">
-      {/* Sidebar */}
-      <div className={`bg-slate-900 border-r border-slate-800 flex flex-col transition-all ${sidebarCollapsed ? 'w-16' : 'w-64'}`}>
+      {/* Mobile Menu Overlay */}
+      {isMobile && showMobileMenu && (
+        <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowMobileMenu(false)} />
+      )}
+      
+      {/* Sidebar - Hidden on mobile unless menu open */}
+      <div className={`bg-slate-900 border-r border-slate-800 flex flex-col transition-all z-50 ${
+        isMobile 
+          ? `fixed inset-y-0 left-0 ${showMobileMenu ? 'translate-x-0' : '-translate-x-full'} w-64`
+          : sidebarCollapsed ? 'w-16' : 'w-64'
+      }`}>
         <div className="p-4 border-b border-slate-800">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-amber-500 rounded-lg flex items-center justify-center flex-shrink-0">
-              <Building2 className="w-5 h-5 text-white" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-amber-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                <Building2 className="w-5 h-5 text-white" />
+              </div>
+              {(!sidebarCollapsed || isMobile) && <div><h1 className="font-bold text-white">Crew<span className="text-orange-500">Q</span></h1><p className="text-xs text-slate-500">Business</p></div>}
             </div>
-            {!sidebarCollapsed && <div><h1 className="font-bold text-white">Crew<span className="text-orange-500">Q</span></h1><p className="text-xs text-slate-500">Business</p></div>}
+            {isMobile && (
+              <button onClick={() => setShowMobileMenu(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            )}
           </div>
         </div>
-        <nav className="flex-1 p-2 space-y-1">
+        <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
           {[
             { id: 'dashboard', icon: Home, label: 'Dashboard' },
             { id: 'events', icon: Calendar, label: 'Events' },
@@ -7561,39 +7886,46 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
             { id: 'venue', icon: Building2, label: 'Venue' },
             { id: 'host-crewq', icon: Star, label: 'Host a CrewQ' },
           ].map(item => (
-            <button key={item.id} onClick={() => setCurrentView(item.id)} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition ${currentView === item.id ? 'bg-orange-500/20 text-orange-400' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
+            <button key={item.id} onClick={() => { setCurrentView(item.id); if (isMobile) setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition ${currentView === item.id ? 'bg-orange-500/20 text-orange-400' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
               <item.icon className="w-5 h-5 flex-shrink-0" />
-              {!sidebarCollapsed && <span className="text-sm font-medium">{item.label}</span>}
+              {(!sidebarCollapsed || isMobile) && <span className="text-sm font-medium">{item.label}</span>}
             </button>
           ))}
         </nav>
         <div className="p-2 border-t border-slate-800">
           <button onClick={() => { setBusinessUser(null); setCurrentView('auth'); }} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white transition">
             <LogOut className="w-5 h-5 flex-shrink-0" />
-            {!sidebarCollapsed && <span className="text-sm font-medium">Sign Out</span>}
+            {(!sidebarCollapsed || isMobile) && <span className="text-sm font-medium">Sign Out</span>}
           </button>
         </div>
       </div>
 
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto">
-        <div className="bg-slate-800 border-b border-slate-700 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
-          <div className="flex items-center gap-4">
+        <div className="bg-slate-800 border-b border-slate-700 px-4 md:px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+          <div className="flex items-center gap-3 md:gap-4">
+            {isMobile && (
+              <button onClick={() => setShowMobileMenu(true)} className="text-slate-400 hover:text-white transition p-1">
+                <div className="w-5 h-0.5 bg-current mb-1" />
+                <div className="w-5 h-0.5 bg-current mb-1" />
+                <div className="w-5 h-0.5 bg-current" />
+              </button>
+            )}
             <button onClick={onClose} className="text-slate-400 hover:text-white transition"><X className="w-5 h-5" /></button>
-            <span className="text-slate-500">|</span>
-            <span className="text-slate-400">{venue?.name || 'Your Venue'}</span>
+            {!isMobile && <span className="text-slate-500">|</span>}
+            <span className="text-slate-400 text-sm md:text-base truncate">{venue?.name || 'Your Venue'}</span>
           </div>
-          <span className="text-slate-400 text-sm">{businessUser?.email}</span>
+          <span className="text-slate-400 text-xs md:text-sm truncate max-w-[120px] md:max-w-none">{businessUser?.email}</span>
         </div>
 
         {loading ? (
           <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" /></div>
         ) : (
-          <div className="p-6">
+          <div className="p-4 md:p-6">
             {/* DASHBOARD VIEW */}
             {currentView === 'dashboard' && (
               <div className="space-y-6">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
                   <div><h1 className="text-2xl font-bold text-white">Dashboard</h1><p className="text-slate-400">{venue?.name}</p></div>
                   <button onClick={() => setCurrentView('create-event')} className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"><Plus className="w-4 h-4" />Create Event</button>
                 </div>
@@ -7992,6 +8324,9 @@ export default function App() {
   const [userLocation, setUserLocation] = useState(null);
   const [locationError, setLocationError] = useState(null);
   const [pendingGoogleUser, setPendingGoogleUser] = useState(null); // For Google OAuth onboarding
+  
+  // Vibe filter for discover feed (default OFF)
+  const [vibeFilterEnabled, setVibeFilterEnabled] = useState(false);
   
   // Settings & Notifications
   const [showSettings, setShowSettings] = useState(false);
@@ -9577,7 +9912,9 @@ const loadSquads = async (userId) => {
     if (!userProfile?.id) return;
     
     const userKey = `crewq_${userProfile.id}`;
-    const currentEvent = events[currentIndex];
+    // Use the filtered displayEvents for proper indexing
+    const vibeFilteredEvents = getVibeFilteredEvents();
+    const currentEvent = vibeFilteredEvents[currentIndex];
     
     // Track this event as seen - user specific
     const seenEvents = JSON.parse(localStorage.getItem(`${userKey}_seen`) || '[]');
@@ -9747,6 +10084,50 @@ const loadSquads = async (userId) => {
     return rsvpedEvents.includes(eventId);
   };
 
+  // Apply vibe filter to events for discover feed
+  const getVibeFilteredEvents = () => {
+    if (!vibeFilterEnabled || !userProfile?.vibes || userProfile.vibes.length === 0) {
+      return events;
+    }
+    
+    return events.filter(event => {
+      // Check if event has vibes/tags that match user's vibes
+      const eventVibes = event.vibes || event.tags || [];
+      const eventCategory = event.category || '';
+      const eventAmbience = event.ambience || '';
+      
+      // Match on event vibes array
+      if (Array.isArray(eventVibes) && eventVibes.some(v => userProfile.vibes.includes(v))) {
+        return true;
+      }
+      
+      // Match on category (map common categories to vibes)
+      const categoryVibeMap = {
+        'live-music': ['live-music', 'concerts'],
+        'trivia': ['trivia', 'games'],
+        'happy-hour': ['happy-hour', 'chill-drinks'],
+        'sports': ['sports-bars'],
+        'karaoke': ['karaoke'],
+        'dancing': ['dancing'],
+        'comedy': ['comedy'],
+        'networking': ['networking'],
+        'brunch': ['foodie'],
+        'food': ['foodie', 'tacos'],
+        'rooftop': ['rooftop', 'sunsets'],
+        'outdoor': ['outdoor']
+      };
+      
+      const matchedVibes = categoryVibeMap[eventCategory] || [eventCategory];
+      if (matchedVibes.some(v => userProfile.vibes.includes(v))) {
+        return true;
+      }
+      
+      return false;
+    });
+  };
+  
+  const displayEvents = getVibeFilteredEvents();
+
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
@@ -9781,7 +10162,7 @@ const loadSquads = async (userId) => {
     );
   }
 
-  const currentEvent = events[currentIndex];
+  const currentEvent = displayEvents[currentIndex];
 
   // Theme-aware accent color
   const accentColor = darkMode ? 'violet' : 'orange';
@@ -9855,14 +10236,57 @@ const loadSquads = async (userId) => {
         <div className="flex-1 overflow-y-auto overflow-x-hidden pb-20 sm:pb-24 -webkit-overflow-scrolling-touch">
           {currentTab === 'discover' && (
             <div className="px-3 py-3 sm:px-4 sm:py-6">
-              {currentIndex >= events.length || events.length === 0 ? (
+              {/* Vibe Filter Toggle */}
+              <div className="mb-4 flex items-center justify-between">
+                <button
+                  onClick={() => setVibeFilterEnabled(!vibeFilterEnabled)}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition ${
+                    vibeFilterEnabled
+                      ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30'
+                      : darkMode ? 'bg-zinc-800 text-zinc-400' : 'bg-amber-100 text-zinc-600'
+                  }`}
+                >
+                  <Sparkles className="w-4 h-4" />
+                  {vibeFilterEnabled ? 'My Vibes Filter ON' : 'Filter by My Vibes'}
+                  <div className={`w-8 h-4 rounded-full relative transition ${vibeFilterEnabled ? 'bg-violet-500' : 'bg-zinc-600'}`}>
+                    <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${vibeFilterEnabled ? 'left-4' : 'left-0.5'}`} />
+                  </div>
+                </button>
+                
+                {vibeFilterEnabled && userProfile?.vibes?.length > 0 && (
+                  <div className="flex gap-1 flex-wrap justify-end max-w-[50%]">
+                    {userProfile.vibes.slice(0, 3).map(vibeId => {
+                      const vibe = VIBE_OPTIONS.find(v => v.id === vibeId);
+                      return vibe ? (
+                        <span key={vibeId} className="text-xs bg-violet-500/20 text-violet-300 px-2 py-1 rounded-full">
+                          {vibe.icon}
+                        </span>
+                      ) : null;
+                    })}
+                    {userProfile.vibes.length > 3 && (
+                      <span className="text-xs text-violet-400">+{userProfile.vibes.length - 3}</span>
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              {vibeFilterEnabled && (!userProfile?.vibes || userProfile.vibes.length === 0) && (
+                <div className={`mb-4 p-3 rounded-xl text-sm ${darkMode ? 'bg-amber-500/10 border border-amber-500/30 text-amber-400' : 'bg-amber-100 text-amber-700'}`}>
+                  <p>You haven't set your vibes yet! <button onClick={() => setCurrentTab('profile')} className="underline font-semibold">Set vibes in your profile</button> to filter events.</p>
+                </div>
+              )}
+              
+              {currentIndex >= displayEvents.length || displayEvents.length === 0 ? (
                 <div className="text-center py-16">
                   <div className={`w-20 h-20 ${darkMode ? 'bg-zinc-800' : 'bg-amber-100'} rounded-full flex items-center justify-center mx-auto mb-6`}>
                     <Calendar className={`w-10 h-10 ${darkMode ? 'text-violet-400' : 'text-orange-500'}`} />
                   </div>
-                  <h2 className="text-2xl font-bold mb-3">You've Seen All Events!</h2>
+                  <h2 className="text-2xl font-bold mb-3">{vibeFilterEnabled ? 'No Events Match Your Vibes' : 'You\'ve Seen All Events!'}</h2>
                   <p className={`${darkMode ? 'text-zinc-400' : 'text-zinc-600'} mb-8 px-4`}>
-                    You've swiped through all available events. Check back later for new ones or reset to see them again.
+                    {vibeFilterEnabled 
+                      ? 'Try turning off the vibe filter to see more events, or adjust your vibes in your profile.'
+                      : 'You\'ve swiped through all available events. Check back later for new ones or reset to see them again.'
+                    }
                   </p>
                   
                   <div className="flex flex-col gap-3 px-8">
@@ -9904,7 +10328,7 @@ const loadSquads = async (userId) => {
                 </div>
               ) : (
                 <div className="relative h-[420px] sm:h-[480px] md:h-[560px]" style={{ touchAction: 'pan-y' }}>
-                  {events.slice(currentIndex, currentIndex + 2).reverse().map((event, idx) => (
+                  {displayEvents.slice(currentIndex, currentIndex + 2).reverse().map((event, idx) => (
                     <EventCard
                       key={event.id}
                       event={event}
