@@ -7920,7 +7920,7 @@ function AdminPortal({ onClose, userEmail }) {
                   className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white"
                 >
                   <option value="">Select neighborhood *</option>
-                  {DALLAS_NEIGHBORHOODS.map(n => <option key={n} value={n}>{n}</option>)}
+                  {DALLAS_NEIGHBORHOODS.map(n => <option key={n.id} value={n.name}>{n.name}</option>)}
                 </select>
                 {mode === 'full' && (
                   <input 
