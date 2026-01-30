@@ -7741,139 +7741,388 @@ function AdminPortal({ onClose, userEmail }) {
 
   // ========== CREATE EVENT ==========
   const CreateEventForm = () => {
+    const [mode, setMode] = useState('quick'); // 'quick' or 'full'
     const [cat, setCat] = useState('');
     const [evtType, setEvtType] = useState('');
     const [venueId, setVenueId] = useState('');
     const [name, setName] = useState('');
     const [date, setDate] = useState('');
     const [time, setTime] = useState('');
+    const [endTime, setEndTime] = useState('');
     const [specials, setSpecials] = useState('');
     const [desc, setDesc] = useState('');
     const [imageUrl, setImageUrl] = useState('');
     const [eventVibes, setEventVibes] = useState([]);
-    const approvedVenues = establishments.filter(e => e.status === 'approved');
     
-    const handleSubmit = () => {
-      // Use String() for comparison to handle UUID types
-      const venue = establishments.find(e => String(e.id) === String(venueId));
-      
+    // Quick add fields (no pre-existing venue needed)
+    const [venueName, setVenueName] = useState('');
+    const [neighborhood, setNeighborhood] = useState('');
+    const [venueAddress, setVenueAddress] = useState('');
+    
+    // Recurring event
+    const [isRecurring, setIsRecurring] = useState(false);
+    const [recurringDay, setRecurringDay] = useState(''); // 'monday', 'tuesday', etc.
+    const [recurringWeeks, setRecurringWeeks] = useState(4); // How many weeks to create
+    
+    // For selecting existing venues
+    const approvedVenues = establishments.filter(e => e.status === 'approved');
+    const allVenues = establishments;
+    
+    // Common image URLs for quick selection
+    const quickImages = [
+      { label: '🎵 Live Music', url: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800' },
+      { label: '🍻 Happy Hour', url: 'https://images.unsplash.com/photo-1575037614876-c38a4d44f5b8?w=800' },
+      { label: '🧠 Trivia', url: 'https://images.unsplash.com/photo-1606761568499-6d2451b23c66?w=800' },
+      { label: '🎤 Karaoke', url: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=800' },
+      { label: '💃 DJ/Dancing', url: 'https://images.unsplash.com/photo-1571266028243-e4733b0f0bb0?w=800' },
+      { label: '🏈 Sports', url: 'https://images.unsplash.com/photo-1461896836934- voices?w=800' },
+      { label: '🌆 Rooftop', url: 'https://images.unsplash.com/photo-1519671482749-fd09be7ccebf?w=800' },
+      { label: '🍽️ Food Event', url: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800' },
+      { label: '😂 Comedy', url: 'https://images.unsplash.com/photo-1527224857830-43a7acc85260?w=800' },
+      { label: '🎉 Party', url: 'https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=800' },
+    ];
+    
+    const handleQuickSubmit = async () => {
       if (!name) { showToastMsg('Please enter an event name', 'error'); return; }
       if (!date) { showToastMsg('Please select a date', 'error'); return; }
       if (!time) { showToastMsg('Please select a time', 'error'); return; }
-      if (!venue) { showToastMsg('Please select a venue', 'error'); return; }
+      if (!venueName && !venueId) { showToastMsg('Please enter a venue name or select one', 'error'); return; }
+      if (!neighborhood && !venueId) { showToastMsg('Please select a neighborhood', 'error'); return; }
       
-      handleCreateEvent({ 
-        name, 
-        date, 
-        time, 
-        venue: venue.name, 
-        neighborhood: venue.neighborhood, 
-        establishment_id: venue.id, 
-        category: cat, 
-        type: evtType || 'Event', 
-        drink_specials: specials, 
-        description: desc, 
-        image_url: imageUrl,
-        vibes: eventVibes,
-        status: 'live',
-        views: 0,
-        rsvps: 0,
-        checkins: 0
-      });
+      let finalVenue = venueName;
+      let finalNeighborhood = neighborhood;
+      let finalEstablishmentId = null;
+      
+      // If using existing venue
+      if (venueId) {
+        const venue = allVenues.find(e => String(e.id) === String(venueId));
+        if (venue) {
+          finalVenue = venue.name;
+          finalNeighborhood = venue.neighborhood;
+          finalEstablishmentId = venue.id;
+        }
+      }
+      
+      // Create events (multiple if recurring)
+      const datesToCreate = [date];
+      
+      if (isRecurring && recurringWeeks > 1) {
+        const startDate = new Date(date);
+        for (let i = 1; i < recurringWeeks; i++) {
+          const nextDate = new Date(startDate);
+          nextDate.setDate(nextDate.getDate() + (7 * i));
+          datesToCreate.push(nextDate.toISOString().split('T')[0]);
+        }
+      }
+      
+      for (const eventDate of datesToCreate) {
+        await handleCreateEvent({ 
+          name, 
+          date: eventDate, 
+          time,
+          end_time: endTime || null,
+          venue: finalVenue, 
+          neighborhood: finalNeighborhood,
+          address: venueAddress || null,
+          establishment_id: finalEstablishmentId, 
+          category: cat || 'nightlife', 
+          type: evtType || 'Event', 
+          drink_specials: specials, 
+          description: desc, 
+          image_url: imageUrl || quickImages[0].url,
+          vibes: eventVibes,
+          status: 'live',
+          is_recurring: isRecurring,
+          views: 0,
+          rsvps: 0,
+          checkins: 0
+        });
+      }
+      
+      if (datesToCreate.length > 1) {
+        showToastMsg(`Created ${datesToCreate.length} recurring events!`, 'success');
+      }
     };
     
     return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <button onClick={() => setCurrentView('dashboard')} className="p-2 hover:bg-gray-800 rounded-lg">
-            <ChevronLeft className="w-5 h-5 text-gray-400" />
-          </button>
-          <div><h1 className="text-xl font-bold text-white">Create Event</h1></div>
-        </div>
-        <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 space-y-4">
-          <div>
-            <label className="block text-sm text-gray-400 mb-2">Venue *</label>
-            {approvedVenues.length === 0 ? (
-              <p className="text-amber-400 text-sm">No approved venues. <button onClick={() => setCurrentView('create-venue')} className="underline">Create one first</button></p>
-            ) : (
-              <select value={venueId} onChange={e => setVenueId(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white">
-                <option value="">Choose a venue...</option>
-                {approvedVenues.map(v => <option key={v.id} value={v.id}>{v.name} - {v.neighborhood}</option>)}
-              </select>
-            )}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setCurrentView('dashboard')} className="p-2 hover:bg-gray-800 rounded-lg">
+              <ChevronLeft className="w-5 h-5 text-gray-400" />
+            </button>
+            <div><h1 className="text-xl font-bold text-white">Create Event</h1></div>
           </div>
+        </div>
+        
+        {/* Mode Toggle */}
+        <div className="flex gap-2 bg-gray-800 p-1 rounded-xl">
+          <button
+            onClick={() => setMode('quick')}
+            className={`flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition ${mode === 'quick' ? 'bg-orange-500 text-white' : 'text-gray-400'}`}
+          >
+            ⚡ Quick Add
+          </button>
+          <button
+            onClick={() => setMode('full')}
+            className={`flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition ${mode === 'full' ? 'bg-orange-500 text-white' : 'text-gray-400'}`}
+          >
+            📝 Full Details
+          </button>
+        </div>
+
+        <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 space-y-4 max-h-[70vh] overflow-y-auto">
+          {/* Event Name - Always Required */}
           <div>
             <label className="block text-sm text-gray-400 mb-2">Event Name *</label>
-            <input value={name} onChange={e => setName(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="e.g., Friday Happy Hour" />
+            <input 
+              value={name} 
+              onChange={e => setName(e.target.value)} 
+              className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white text-lg" 
+              placeholder="e.g., Friday Live Music Night" 
+            />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm text-gray-400 mb-2">Category</label>
-              <select value={cat} onChange={e => { setCat(e.target.value); setEvtType(''); }} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white">
-                <option value="">Select...</option>
-                {BUSINESS_EVENT_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+
+          {/* Venue Section */}
+          <div className="space-y-3">
+            <label className="block text-sm text-gray-400">Venue</label>
+            
+            {/* Existing Venue Dropdown */}
+            {allVenues.length > 0 && (
+              <select 
+                value={venueId} 
+                onChange={e => {
+                  setVenueId(e.target.value);
+                  if (e.target.value) {
+                    setVenueName('');
+                    setNeighborhood('');
+                  }
+                }} 
+                className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white"
+              >
+                <option value="">-- Select existing venue or enter new below --</option>
+                {allVenues.map(v => <option key={v.id} value={v.id}>{v.name} - {v.neighborhood}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="block text-sm text-gray-400 mb-2">Type</label>
-              <select value={evtType} onChange={e => setEvtType(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" disabled={!cat}>
-                <option value="">Select...</option>
-                {cat && BUSINESS_EVENT_TYPES[cat]?.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
+            )}
+            
+            {/* OR New Venue */}
+            {!venueId && (
+              <div className="space-y-3 pl-3 border-l-2 border-orange-500">
+                <input 
+                  value={venueName} 
+                  onChange={e => setVenueName(e.target.value)} 
+                  className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" 
+                  placeholder="Venue name (e.g., The Rustic)" 
+                />
+                <select 
+                  value={neighborhood} 
+                  onChange={e => setNeighborhood(e.target.value)} 
+                  className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white"
+                >
+                  <option value="">Select neighborhood *</option>
+                  {DALLAS_NEIGHBORHOODS.map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+                {mode === 'full' && (
+                  <input 
+                    value={venueAddress} 
+                    onChange={e => setVenueAddress(e.target.value)} 
+                    className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" 
+                    placeholder="Address (optional)" 
+                  />
+                )}
+              </div>
+            )}
           </div>
+
+          {/* Date & Time */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm text-gray-400 mb-2">Date *</label>
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" />
+              <input 
+                type="date" 
+                value={date} 
+                onChange={e => setDate(e.target.value)} 
+                className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" 
+              />
             </div>
             <div>
-              <label className="block text-sm text-gray-400 mb-2">Time *</label>
-              <input type="time" value={time} onChange={e => setTime(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" />
+              <label className="block text-sm text-gray-400 mb-2">Start Time *</label>
+              <input 
+                type="time" 
+                value={time} 
+                onChange={e => setTime(e.target.value)} 
+                className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" 
+              />
             </div>
           </div>
+
+          {/* Quick Image Selection */}
           <div>
-            <label className="block text-sm text-gray-400 mb-2">Drink Specials</label>
-            <input value={specials} onChange={e => setSpecials(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="e.g., $5 margaritas" />
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-2">Description</label>
-            <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={2} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="Describe your event..." />
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-2">Event Image URL</label>
-            <input value={imageUrl} onChange={e => setImageUrl(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="https://example.com/image.jpg" />
-          </div>
-          <div>
-            <label className="block text-sm text-gray-400 mb-2">Event Vibes (for user matching)</label>
-            <div className="flex flex-wrap gap-2">
-              {VIBE_OPTIONS.map(vibe => (
+            <label className="block text-sm text-gray-400 mb-2">Event Image (tap to select)</label>
+            <div className="grid grid-cols-5 gap-2 mb-2">
+              {quickImages.map((img, idx) => (
                 <button
-                  key={vibe.id}
-                  onClick={() => setEventVibes(prev => 
-                    prev.includes(vibe.id) 
-                      ? prev.filter(v => v !== vibe.id) 
-                      : [...prev, vibe.id]
-                  )}
-                  className={`px-3 py-1.5 rounded-full text-sm transition ${
-                    eventVibes.includes(vibe.id)
-                      ? 'bg-violet-500 text-white'
-                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  key={idx}
+                  onClick={() => setImageUrl(img.url)}
+                  className={`aspect-square rounded-lg overflow-hidden border-2 transition ${
+                    imageUrl === img.url ? 'border-orange-500' : 'border-transparent'
                   }`}
+                  title={img.label}
                 >
-                  {vibe.icon} {vibe.label.split(' ')[1] || vibe.label}
+                  <img src={img.url} alt={img.label} className="w-full h-full object-cover" />
                 </button>
               ))}
             </div>
-            <p className="text-gray-500 text-xs mt-1">Select vibes that match your event to help users find it</p>
+            <input 
+              value={imageUrl} 
+              onChange={e => setImageUrl(e.target.value)} 
+              className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm" 
+              placeholder="Or paste custom image URL" 
+            />
           </div>
+
+          {/* Recurring Event Toggle */}
+          <div className="flex items-center justify-between p-3 bg-gray-700/50 rounded-xl">
+            <div>
+              <p className="text-white font-medium">Recurring Event?</p>
+              <p className="text-gray-400 text-sm">Auto-create for multiple weeks</p>
+            </div>
+            <button
+              onClick={() => setIsRecurring(!isRecurring)}
+              className={`relative w-12 h-7 rounded-full transition-colors ${isRecurring ? 'bg-orange-500' : 'bg-gray-600'}`}
+            >
+              <div className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow transition-all ${isRecurring ? 'left-6' : 'left-1'}`} />
+            </button>
+          </div>
+          
+          {isRecurring && (
+            <div className="pl-3 border-l-2 border-orange-500">
+              <label className="block text-sm text-gray-400 mb-2">Create for how many weeks?</label>
+              <div className="flex gap-2">
+                {[2, 4, 8, 12].map(w => (
+                  <button
+                    key={w}
+                    onClick={() => setRecurringWeeks(w)}
+                    className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${
+                      recurringWeeks === w ? 'bg-orange-500 text-white' : 'bg-gray-700 text-gray-300'
+                    }`}
+                  >
+                    {w} weeks
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Full Details Mode - Additional Fields */}
+          {mode === 'full' && (
+            <>
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">End Time</label>
+                <input 
+                  type="time" 
+                  value={endTime} 
+                  onChange={e => setEndTime(e.target.value)} 
+                  className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" 
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-2">Category</label>
+                  <select value={cat} onChange={e => { setCat(e.target.value); setEvtType(''); }} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white">
+                    <option value="">Select...</option>
+                    {BUSINESS_EVENT_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-2">Type</label>
+                  <select value={evtType} onChange={e => setEvtType(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" disabled={!cat}>
+                    <option value="">Select...</option>
+                    {cat && BUSINESS_EVENT_TYPES[cat]?.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Drink Specials</label>
+                <input value={specials} onChange={e => setSpecials(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="e.g., $5 margaritas, half-off apps" />
+              </div>
+              
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Description</label>
+                <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={2} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="Describe your event..." />
+              </div>
+              
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Event Vibes</label>
+                <div className="flex flex-wrap gap-2">
+                  {VIBE_OPTIONS.slice(0, 10).map(vibe => (
+                    <button
+                      key={vibe.id}
+                      onClick={() => setEventVibes(prev => 
+                        prev.includes(vibe.id) ? prev.filter(v => v !== vibe.id) : [...prev, vibe.id]
+                      )}
+                      className={`px-3 py-1.5 rounded-full text-sm transition ${
+                        eventVibes.includes(vibe.id) ? 'bg-violet-500 text-white' : 'bg-gray-700 text-gray-300'
+                      }`}
+                    >
+                      {vibe.icon}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Quick Category Buttons (Quick Mode) */}
+          {mode === 'quick' && (
+            <div>
+              <label className="block text-sm text-gray-400 mb-2">Event Type (tap one)</label>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { id: 'live-music', label: '🎵 Live Music' },
+                  { id: 'happy-hour', label: '🍻 Happy Hour' },
+                  { id: 'trivia', label: '🧠 Trivia' },
+                  { id: 'karaoke', label: '🎤 Karaoke' },
+                  { id: 'dj', label: '💃 DJ/Dancing' },
+                  { id: 'sports', label: '🏈 Sports' },
+                  { id: 'comedy', label: '😂 Comedy' },
+                  { id: 'brunch', label: '🥂 Brunch' },
+                  { id: 'networking', label: '🤝 Networking' },
+                  { id: 'other', label: '✨ Other' },
+                ].map(type => (
+                  <button
+                    key={type.id}
+                    onClick={() => setCat(type.id)}
+                    className={`px-3 py-2 rounded-xl text-sm font-medium transition ${
+                      cat === type.id ? 'bg-orange-500 text-white' : 'bg-gray-700 text-gray-300'
+                    }`}
+                  >
+                    {type.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
-            <p className="text-emerald-400 text-sm">✓ Event goes live immediately</p>
+            <p className="text-emerald-400 text-sm">
+              ✓ Event goes live immediately
+              {isRecurring && ` • Creating ${recurringWeeks} events`}
+            </p>
           </div>
         </div>
+        
         <div className="flex gap-3">
           <button onClick={() => setCurrentView('dashboard')} className="flex-1 px-4 py-3 border border-gray-600 text-gray-400 rounded-xl">Cancel</button>
-          <button onClick={handleSubmit} disabled={!approvedVenues.length} className="flex-1 px-4 py-3 bg-emerald-500 text-white rounded-xl font-semibold disabled:opacity-50">Create Event</button>
+          <button 
+            onClick={handleQuickSubmit} 
+            disabled={!name || !date || !time || (!venueName && !venueId) || (!neighborhood && !venueId)}
+            className="flex-1 px-4 py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-xl font-semibold disabled:opacity-50"
+          >
+            {isRecurring ? `Create ${recurringWeeks} Events` : 'Create Event'}
+          </button>
         </div>
       </div>
     );
