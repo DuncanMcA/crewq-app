@@ -7148,13 +7148,15 @@ function AdminPortal({ onClose, userEmail }) {
 
   useEffect(() => { loadData(); }, []);
 
-  // Auto-refresh every 15 seconds
+  // Auto-refresh every 60 seconds, but only on dashboard view (not during editing)
   useEffect(() => {
+    if (currentView !== 'dashboard') return; // Don't refresh while editing
+    
     const refreshInterval = setInterval(() => {
       loadData();
-    }, 15000);
+    }, 60000); // Changed to 60 seconds
     return () => clearInterval(refreshInterval);
-  }, []);
+  }, [currentView]);
 
   const loadData = async () => {
     setLoading(true);
@@ -7768,18 +7770,64 @@ function AdminPortal({ onClose, userEmail }) {
     const approvedVenues = establishments.filter(e => e.status === 'approved');
     const allVenues = establishments;
     
-    // Common image URLs for quick selection
+    // Common image URLs for quick selection - 40 options
     const quickImages = [
+      // Live Music & Concerts
       { label: '🎵 Live Music', url: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800' },
+      { label: '🎸 Concert', url: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=800' },
+      { label: '🎷 Jazz', url: 'https://images.unsplash.com/photo-1415201364774-f6f0bb35f28f?w=800' },
+      { label: '🎹 Piano Bar', url: 'https://images.unsplash.com/photo-1520523839897-bd0b52f945a0?w=800' },
+      
+      // Bars & Drinks
       { label: '🍻 Happy Hour', url: 'https://images.unsplash.com/photo-1575037614876-c38a4d44f5b8?w=800' },
+      { label: '🍸 Cocktails', url: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=800' },
+      { label: '🍷 Wine Bar', url: 'https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?w=800' },
+      { label: '🥃 Whiskey', url: 'https://images.unsplash.com/photo-1527281400683-1aae777175f8?w=800' },
+      { label: '🍺 Craft Beer', url: 'https://images.unsplash.com/photo-1535958636474-b021ee887b13?w=800' },
+      { label: '🧊 Bar Scene', url: 'https://images.unsplash.com/photo-1572116469696-31de0f17cc34?w=800' },
+      
+      // Nightlife & Dancing
+      { label: '💃 DJ/Dancing', url: 'https://images.unsplash.com/photo-1571266028243-e4733b0f0bb0?w=800' },
+      { label: '🪩 Nightclub', url: 'https://images.unsplash.com/photo-1566737236500-c8ac43014a67?w=800' },
+      { label: '🎧 DJ Booth', url: 'https://images.unsplash.com/photo-1598387993281-cecf8b71a8f8?w=800' },
+      { label: '✨ Club Lights', url: 'https://images.unsplash.com/photo-1504680177321-2e6a879aac86?w=800' },
+      
+      // Food & Dining
+      { label: '🍽️ Food Event', url: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800' },
+      { label: '🌮 Tacos', url: 'https://images.unsplash.com/photo-1565299585323-38d6b0865b47?w=800' },
+      { label: '🍕 Pizza', url: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=800' },
+      { label: '🥂 Brunch', url: 'https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?w=800' },
+      { label: '🍔 Burgers', url: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=800' },
+      
+      // Entertainment
       { label: '🧠 Trivia', url: 'https://images.unsplash.com/photo-1606761568499-6d2451b23c66?w=800' },
       { label: '🎤 Karaoke', url: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=800' },
-      { label: '💃 DJ/Dancing', url: 'https://images.unsplash.com/photo-1571266028243-e4733b0f0bb0?w=800' },
-      { label: '🏈 Sports', url: 'https://images.unsplash.com/photo-1461896836934- voices?w=800' },
-      { label: '🌆 Rooftop', url: 'https://images.unsplash.com/photo-1519671482749-fd09be7ccebf?w=800' },
-      { label: '🍽️ Food Event', url: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800' },
       { label: '😂 Comedy', url: 'https://images.unsplash.com/photo-1527224857830-43a7acc85260?w=800' },
+      { label: '🎲 Game Night', url: 'https://images.unsplash.com/photo-1611371805429-8b5c1b2c34ba?w=800' },
+      { label: '🎱 Pool/Billiards', url: 'https://images.unsplash.com/photo-1585314540237-13cb52440d96?w=800' },
+      
+      // Sports
+      { label: '🏈 Sports Bar', url: 'https://images.unsplash.com/photo-1489944440615-453fc2b6a9a9?w=800' },
+      { label: '⚽ Soccer', url: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800' },
+      { label: '🏀 Basketball', url: 'https://images.unsplash.com/photo-1504450758481-7338eba7524a?w=800' },
+      
+      // Venue Types
+      { label: '🌆 Rooftop', url: 'https://images.unsplash.com/photo-1519671482749-fd09be7ccebf?w=800' },
+      { label: '🌇 Skyline View', url: 'https://images.unsplash.com/photo-1470219556762-1771e7f9427d?w=800' },
+      { label: '🌳 Patio', url: 'https://images.unsplash.com/photo-1517457373958-b7bdd4587205?w=800' },
+      { label: '🏠 Lounge', url: 'https://images.unsplash.com/photo-1543007630-9710e4a00a20?w=800' },
+      
+      // Events & Social
       { label: '🎉 Party', url: 'https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=800' },
+      { label: '🤝 Networking', url: 'https://images.unsplash.com/photo-1515187029135-18ee286d815b?w=800' },
+      { label: '🎊 Celebration', url: 'https://images.unsplash.com/photo-1496843916299-590492c751f4?w=800' },
+      { label: '👥 Social', url: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=800' },
+      
+      // Misc Nightlife
+      { label: '🌙 Night Out', url: 'https://images.unsplash.com/photo-1516802273409-68526ee1bdd6?w=800' },
+      { label: '🔥 Lit Venue', url: 'https://images.unsplash.com/photo-1578736641330-3155e606cd40?w=800' },
+      { label: '💜 Neon Vibes', url: 'https://images.unsplash.com/photo-1557787163-1635e2efb160?w=800' },
+      { label: '🎭 Entertainment', url: 'https://images.unsplash.com/photo-1603190287605-e6ade32fa852?w=800' },
     ];
     
     const handleQuickSubmit = async () => {
@@ -7858,13 +7906,15 @@ function AdminPortal({ onClose, userEmail }) {
         {/* Mode Toggle */}
         <div className="flex gap-2 bg-gray-800 p-1 rounded-xl">
           <button
-            onClick={() => setMode('quick')}
+            type="button"
+            onClick={(e) => { e.preventDefault(); setMode('quick'); }}
             className={`flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition ${mode === 'quick' ? 'bg-orange-500 text-white' : 'text-gray-400'}`}
           >
             ⚡ Quick Add
           </button>
           <button
-            onClick={() => setMode('full')}
+            type="button"
+            onClick={(e) => { e.preventDefault(); setMode('full'); }}
             className={`flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition ${mode === 'full' ? 'bg-orange-500 text-white' : 'text-gray-400'}`}
           >
             📝 Full Details
@@ -7922,14 +7972,12 @@ function AdminPortal({ onClose, userEmail }) {
                   <option value="">Select neighborhood *</option>
                   {DALLAS_NEIGHBORHOODS.map(n => <option key={n.id} value={n.name}>{n.name}</option>)}
                 </select>
-                {mode === 'full' && (
-                  <input 
-                    value={venueAddress} 
-                    onChange={e => setVenueAddress(e.target.value)} 
-                    className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" 
-                    placeholder="Address (optional)" 
-                  />
-                )}
+                <input 
+                  value={venueAddress} 
+                  onChange={e => setVenueAddress(e.target.value)} 
+                  className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" 
+                  placeholder="Address (e.g., 2714 Elm St, Dallas TX)" 
+                />
               </div>
             )}
           </div>
@@ -7959,20 +8007,36 @@ function AdminPortal({ onClose, userEmail }) {
           {/* Quick Image Selection */}
           <div>
             <label className="block text-sm text-gray-400 mb-2">Event Image (tap to select)</label>
-            <div className="grid grid-cols-5 gap-2 mb-2">
-              {quickImages.map((img, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => setImageUrl(img.url)}
-                  className={`aspect-square rounded-lg overflow-hidden border-2 transition ${
-                    imageUrl === img.url ? 'border-orange-500' : 'border-transparent'
-                  }`}
-                  title={img.label}
-                >
-                  <img src={img.url} alt={img.label} className="w-full h-full object-cover" />
-                </button>
-              ))}
+            <div className="max-h-40 overflow-y-auto rounded-xl bg-gray-700/50 p-2 mb-2">
+              <div className="grid grid-cols-5 sm:grid-cols-8 gap-2">
+                {quickImages.map((img, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); setImageUrl(img.url); }}
+                    className={`aspect-square rounded-lg overflow-hidden border-2 transition ${
+                      imageUrl === img.url ? 'border-orange-500 ring-2 ring-orange-500/50' : 'border-transparent hover:border-gray-500'
+                    }`}
+                    title={img.label}
+                  >
+                    <img src={img.url} alt={img.label} className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
             </div>
+            {imageUrl && (
+              <div className="flex items-center gap-2 mb-2 p-2 bg-gray-700/50 rounded-lg">
+                <img src={imageUrl} alt="Selected" className="w-12 h-12 rounded-lg object-cover" />
+                <span className="text-green-400 text-sm flex-1 truncate">✓ {quickImages.find(i => i.url === imageUrl)?.label || 'Custom image'}</span>
+                <button 
+                  type="button"
+                  onClick={(e) => { e.preventDefault(); setImageUrl(''); }} 
+                  className="text-gray-400 hover:text-red-400"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
             <input 
               value={imageUrl} 
               onChange={e => setImageUrl(e.target.value)} 
@@ -7988,7 +8052,8 @@ function AdminPortal({ onClose, userEmail }) {
               <p className="text-gray-400 text-sm">Auto-create for multiple weeks</p>
             </div>
             <button
-              onClick={() => setIsRecurring(!isRecurring)}
+              type="button"
+              onClick={(e) => { e.preventDefault(); setIsRecurring(!isRecurring); }}
               className={`relative w-12 h-7 rounded-full transition-colors ${isRecurring ? 'bg-orange-500' : 'bg-gray-600'}`}
             >
               <div className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow transition-all ${isRecurring ? 'left-6' : 'left-1'}`} />
@@ -8002,7 +8067,8 @@ function AdminPortal({ onClose, userEmail }) {
                 {[2, 4, 8, 12].map(w => (
                   <button
                     key={w}
-                    onClick={() => setRecurringWeeks(w)}
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); setRecurringWeeks(w); }}
                     className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${
                       recurringWeeks === w ? 'bg-orange-500 text-white' : 'bg-gray-700 text-gray-300'
                     }`}
@@ -8060,9 +8126,11 @@ function AdminPortal({ onClose, userEmail }) {
                   {VIBE_OPTIONS.slice(0, 10).map(vibe => (
                     <button
                       key={vibe.id}
-                      onClick={() => setEventVibes(prev => 
-                        prev.includes(vibe.id) ? prev.filter(v => v !== vibe.id) : [...prev, vibe.id]
-                      )}
+                      type="button"
+                      onClick={(e) => { 
+                        e.preventDefault(); 
+                        setEventVibes(prev => prev.includes(vibe.id) ? prev.filter(v => v !== vibe.id) : [...prev, vibe.id]);
+                      }}
                       className={`px-3 py-1.5 rounded-full text-sm transition ${
                         eventVibes.includes(vibe.id) ? 'bg-violet-500 text-white' : 'bg-gray-700 text-gray-300'
                       }`}
@@ -8094,7 +8162,8 @@ function AdminPortal({ onClose, userEmail }) {
                 ].map(type => (
                   <button
                     key={type.id}
-                    onClick={() => setCat(type.id)}
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); setCat(type.id); }}
                     className={`px-3 py-2 rounded-xl text-sm font-medium transition ${
                       cat === type.id ? 'bg-orange-500 text-white' : 'bg-gray-700 text-gray-300'
                     }`}
@@ -8115,9 +8184,10 @@ function AdminPortal({ onClose, userEmail }) {
         </div>
         
         <div className="flex gap-3">
-          <button onClick={() => setCurrentView('dashboard')} className="flex-1 px-4 py-3 border border-gray-600 text-gray-400 rounded-xl">Cancel</button>
+          <button type="button" onClick={(e) => { e.preventDefault(); setCurrentView('dashboard'); }} className="flex-1 px-4 py-3 border border-gray-600 text-gray-400 rounded-xl">Cancel</button>
           <button 
-            onClick={handleQuickSubmit} 
+            type="button"
+            onClick={(e) => { e.preventDefault(); handleQuickSubmit(); }} 
             disabled={!name || !date || !time || (!venueName && !venueId) || (!neighborhood && !venueId)}
             className="flex-1 px-4 py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-xl font-semibold disabled:opacity-50"
           >
