@@ -317,6 +317,29 @@ const GENDER_OPTIONS = [
   { id: 'prefer-not-to-say', label: 'Prefer not to say' }
 ];
 
+// Patch 4 — Relationship status (5 options per spec, default prefer-not-to-say)
+const RELATIONSHIP_OPTIONS = [
+  { id: 'prefer-not-to-say', label: 'Prefer not to say', icon: '🤐' },
+  { id: 'single',            label: 'Single',            icon: '💫' },
+  { id: 'in-relationship',   label: 'In a relationship', icon: '💑' },
+  { id: 'engaged',           label: 'Engaged',           icon: '💍' },
+  { id: 'married',           label: 'Married',           icon: '💞' },
+];
+
+// Patch 6 — ToS / Privacy versioning (bump these when content changes to re-prompt)
+const TOS_VERSION = '1.0';
+const TOS_LAST_UPDATED = 'April 28, 2026';
+
+// Patch 3 — Feed visibility constants
+const FEED_DAYS_AHEAD = 7;          // hard filter: events within this many days
+const COMING_UP_DAYS_MIN = 7;       // "Coming Up" lane lower bound (days out)
+const COMING_UP_DAYS_MAX = 30;      // "Coming Up" lane upper bound
+const DAILY_FEED_CAP = 12;          // cards per day (within 10–15 spec range)
+const DEFAULT_FEED_DISTANCE_MILES = 25; // default discover radius
+
+// Patch 5 — User submission gate
+const MIN_BADGES_TO_SUBMIT = 3;
+
 // Life stage options
 const LIFE_STAGE_OPTIONS = [
   { id: 'single', label: 'Single', icon: '💫' },
@@ -944,9 +967,20 @@ function EventCard({ event, onSwipe, style, isTrending, vibeMatch, countdown, go
             })()}
           </div>
 
-          {event.age_restricted && (
+          {(event.age_tag === '21+' || event.age_restriction === '21+') && (
             <div className="absolute top-3 right-3 sm:top-4 sm:right-4 bg-red-500 text-white px-2 py-1 sm:px-3 rounded-full text-xs font-bold">
               21+
+            </div>
+          )}
+          {(event.age_tag === '18+' || event.age_restriction === '18+') && (
+            <div className="absolute top-3 right-3 sm:top-4 sm:right-4 bg-amber-500 text-white px-2 py-1 sm:px-3 rounded-full text-xs font-bold">
+              18+
+            </div>
+          )}
+          {/* Patch 5 — Tag for user-submitted events */}
+          {event.submitted_by_user_id && (
+            <div className="absolute top-3 left-3 sm:top-4 sm:left-4 bg-violet-500/90 backdrop-blur text-white px-2 py-1 rounded-full text-[10px] font-semibold flex items-center gap-1">
+              <span>👥</span> Submitted by a CrewQ user
             </div>
           )}
 
@@ -2994,6 +3028,12 @@ function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, 
               </button>
             </div>
 
+            {/* Patch 6 — No-affiliation disclaimer + beta acknowledgement */}
+            <div className={`mx-1 mb-3 p-3 rounded-xl text-xs leading-relaxed ${darkMode ? 'bg-zinc-800/60 text-zinc-400 border border-zinc-700' : 'bg-amber-100/60 text-zinc-600 border border-amber-200'}`}>
+              <p className="font-semibold mb-1">⚠️ Beta &amp; Disclaimer</p>
+              <p>CrewQ is in beta. Event listings are aggregated from public sources — confirm details with the venue before you go. CrewQ is not affiliated with, endorsed by, or sponsored by any venue or event listed.</p>
+            </div>
+
             {/* Credits */}
             <div className={`text-center py-4 ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>
               <p className="text-sm">Made with ❤️ in Dallas</p>
@@ -3274,7 +3314,7 @@ function NotificationPreferencesModal({ onClose, darkMode, userProfile, onSavePr
 }
 
 // Squad Chat Component
-function SquadChat({ squad, userProfile, darkMode, onClose, supabaseClient }) {
+function SquadChat({ squad, userProfile, darkMode, onClose, supabaseClient, showToast }) {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -3346,12 +3386,16 @@ function SquadChat({ squad, userProfile, darkMode, onClose, supabaseClient }) {
           created_at: new Date().toISOString()
         }]);
       
-      if (!error) {
+      if (error) {
+        console.error('Send error:', error);
+        if (showToast) showToast('Could not send message — try again', 'error');
+      } else {
         setNewMessage('');
         await loadMessages();
       }
     } catch (err) {
       console.error('Error sending message:', err);
+      if (showToast) showToast('Could not send message — try again', 'error');
     }
     setSending(false);
   };
@@ -4301,9 +4345,14 @@ function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount
             )}
           </div>
 
-          {event.age_restricted && (
+          {(event.age_tag === '21+' || event.age_restriction === '21+') && (
             <div className="absolute top-4 right-14 bg-red-500 text-white px-3 py-1 rounded-full text-xs font-bold">
               21+
+            </div>
+          )}
+          {(event.age_tag === '18+' || event.age_restriction === '18+') && (
+            <div className="absolute top-4 right-14 bg-amber-500 text-white px-3 py-1 rounded-full text-xs font-bold">
+              18+
             </div>
           )}
         </div>
@@ -4419,41 +4468,124 @@ function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount
   );
 }
 
-function EventSuggestionModal({ onClose, userProfile }) {
+function EventSuggestionModal({ onClose, userProfile, supabaseClient, userBadges = [], showToast }) {
+  // Patch 5 — Gate: requires MIN_BADGES_TO_SUBMIT badges
+  const earnedCount = Array.isArray(userBadges) ? userBadges.length : 0;
+  const isUnlocked = earnedCount >= MIN_BADGES_TO_SUBMIT;
+
   const [venueName, setVenueName] = useState('');
   const [eventName, setEventName] = useState('');
+  const [eventDate, setEventDate] = useState('');
+  const [eventTime, setEventTime] = useState('');
+  const [neighborhood, setNeighborhood] = useState('');
   const [description, setDescription] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
+  const [ageTag, setAgeTag] = useState('21+');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
+  // Quick image picks (subset of admin's library)
+  const quickImages = [
+    { label: '🎵 Live Music', url: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800' },
+    { label: '🍻 Happy Hour', url: 'https://images.unsplash.com/photo-1575037614876-c38a4d44f5b8?w=800' },
+    { label: '🧠 Trivia',     url: 'https://images.unsplash.com/photo-1606761568499-6d2451b23c66?w=800' },
+    { label: '🎤 Karaoke',    url: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=800' },
+    { label: '💃 DJ',         url: 'https://images.unsplash.com/photo-1571266028243-e4733b0f0bb0?w=800' },
+    { label: '🥂 Brunch',     url: 'https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?w=800' },
+    { label: '😂 Comedy',     url: 'https://images.unsplash.com/photo-1527224857830-43a7acc85260?w=800' },
+    { label: '🌆 Rooftop',    url: 'https://images.unsplash.com/photo-1519671482749-fd09be7ccebf?w=800' },
+  ];
+
+  const ageTagToRestriction = (tag) => {
+    if (tag === '21+' || tag === 'date-night') return '21+';
+    if (tag === '18+') return '18+';
+    return 'all';
+  };
+
   const handleSubmit = async () => {
-    if (!venueName.trim() || !eventName.trim()) {
-      alert('Please fill in the venue and event name');
+    if (!isUnlocked) return;
+    if (!venueName.trim() || !eventName.trim() || !eventDate || !eventTime || !neighborhood) {
+      if (showToast) showToast('Please fill in all required fields', 'error');
+      else alert('Please fill in all required fields');
       return;
     }
 
     setSubmitting(true);
-    
     try {
       if (supabaseClient) {
-        await supabaseClient
-          .from('event_suggestions')
+        // Insert directly into events as pending — admin sees it in approval queue
+        const { error } = await supabaseClient
+          .from('events')
           .insert([{
-            user_id: userProfile?.id || null,
-            venue_name: venueName.trim(),
-            event_name: eventName.trim(),
-            description: description.trim(),
-            status: 'pending'
+            name: eventName.trim(),
+            venue: venueName.trim(),
+            neighborhood: neighborhood,
+            date: eventDate,
+            time: eventTime,
+            description: description.trim() || null,
+            image_url: imageUrl || quickImages[0].url,
+            age_tag: ageTag,
+            age_restriction: ageTagToRestriction(ageTag),
+            kid_friendly: ageTag === 'kid-friendly',
+            date_night: ageTag === 'date-night',
+            status: 'pending',
+            submitted_by_user_id: userProfile?.id || null,
+            views: 0,
+            rsvps: 0,
+            checkins: 0
           }]);
+        if (error) throw error;
       }
       setSubmitted(true);
     } catch (error) {
-      console.error('Error submitting suggestion:', error);
-      alert('Error submitting. Please try again.');
+      console.error('Error submitting event:', error);
+      if (showToast) showToast('Could not submit — try again', 'error');
+      else alert('Error submitting. Please try again.');
     } finally {
       setSubmitting(false);
     }
   };
+
+  // Locked state — under 3 badges
+  if (!isUnlocked) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+        <div className="bg-zinc-900 rounded-3xl max-w-md w-full p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-bold text-white">Submit an Event</h2>
+            <button onClick={onClose} className="text-zinc-400 hover:text-white">
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+          <div className="text-center py-6">
+            <div className="w-20 h-20 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-4xl">🔒</span>
+            </div>
+            <h3 className="text-lg font-bold text-white mb-2">Earn {MIN_BADGES_TO_SUBMIT} badges to unlock</h3>
+            <p className="text-zinc-400 text-sm mb-6">
+              Active CrewQ users can submit events for review. You've earned <span className="text-orange-400 font-semibold">{earnedCount} of {MIN_BADGES_TO_SUBMIT}</span> badges so far.
+            </p>
+            <div className="bg-zinc-800 rounded-xl p-4 mb-6">
+              <div className="w-full h-2 bg-zinc-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-orange-500 to-amber-500 transition-all"
+                  style={{ width: `${Math.min((earnedCount / MIN_BADGES_TO_SUBMIT) * 100, 100)}%` }}
+                />
+              </div>
+              <p className="text-zinc-500 text-xs mt-2">{MIN_BADGES_TO_SUBMIT - earnedCount} badge{MIN_BADGES_TO_SUBMIT - earnedCount !== 1 ? 's' : ''} to go</p>
+            </div>
+            <p className="text-zinc-500 text-xs mb-6">Earn badges by completing your profile, swiping events, joining squads, and checking in to events.</p>
+            <button
+              onClick={onClose}
+              className="w-full bg-zinc-800 text-white py-3 rounded-xl font-semibold hover:bg-zinc-700 transition"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (submitted) {
     return (
@@ -4462,8 +4594,8 @@ function EventSuggestionModal({ onClose, userProfile }) {
           <div className="w-16 h-16 bg-emerald-500 bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-4">
             <Check className="w-8 h-8 text-emerald-500" />
           </div>
-          <h2 className="text-xl font-bold text-white mb-2">Thanks for the suggestion!</h2>
-          <p className="text-zinc-400 mb-6">We'll review it and try to add it soon.</p>
+          <h2 className="text-xl font-bold text-white mb-2">Submitted for review!</h2>
+          <p className="text-zinc-400 mb-6">An admin will review your event. You'll get a notification once it's approved or rejected.</p>
           <button
             onClick={onClose}
             className="w-full bg-orange-500 text-white py-3 rounded-xl font-bold hover:bg-orange-600 transition"
@@ -4477,60 +4609,133 @@ function EventSuggestionModal({ onClose, userProfile }) {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
-      <div className="bg-zinc-900 rounded-3xl max-w-md w-full p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-white">Suggest an Event</h2>
+      <div className="bg-zinc-900 rounded-3xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-xl font-bold text-white">Submit an Event</h2>
           <button onClick={onClose} className="text-zinc-400 hover:text-white">
             <X className="w-6 h-6" />
           </button>
         </div>
+        <p className="text-zinc-500 text-xs mb-6">Your submission will be reviewed before going live. Keep it accurate so the community can trust it.</p>
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-semibold text-zinc-400 mb-2">
-              Venue / Location *
-            </label>
-            <input
-              type="text"
-              value={venueName}
-              onChange={(e) => setVenueName(e.target.value)}
-              placeholder="e.g. The Rustic, Deep Ellum"
-              className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-zinc-400 mb-2">
-              Event Name *
-            </label>
+            <label className="block text-sm font-semibold text-zinc-400 mb-2">Event Name *</label>
             <input
               type="text"
               value={eventName}
               onChange={(e) => setEventName(e.target.value)}
-              placeholder="e.g. Live Jazz Night, Taco Tuesday"
+              placeholder="e.g. Live Jazz Night"
               className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-zinc-400 mb-2">
-              Tell us a little about it
-            </label>
+            <label className="block text-sm font-semibold text-zinc-400 mb-2">Venue *</label>
+            <input
+              type="text"
+              value={venueName}
+              onChange={(e) => setVenueName(e.target.value)}
+              placeholder="e.g. The Rustic"
+              className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-zinc-400 mb-2">Neighborhood *</label>
+            <select
+              value={neighborhood}
+              onChange={(e) => setNeighborhood(e.target.value)}
+              className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
+            >
+              <option value="">Select neighborhood</option>
+              {DALLAS_NEIGHBORHOODS.map(n => <option key={n.id} value={n.name}>{n.name}</option>)}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-semibold text-zinc-400 mb-2">Date *</label>
+              <input
+                type="date"
+                value={eventDate}
+                onChange={(e) => setEventDate(e.target.value)}
+                className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-zinc-400 mb-2">Time *</label>
+              <input
+                type="time"
+                value={eventTime}
+                onChange={(e) => setEventTime(e.target.value)}
+                className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-zinc-400 mb-2">Age</label>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { id: 'all-ages',     label: 'All Ages',     emoji: '👨‍👩‍👧' },
+                { id: 'kid-friendly', label: 'Kid-friendly', emoji: '👶' },
+                { id: '18+',          label: '18+',          emoji: '🔞' },
+                { id: '21+',          label: '21+',          emoji: '🍻' },
+                { id: 'date-night',   label: 'Date Night',   emoji: '💕' },
+              ].map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => setAgeTag(t.id)}
+                  className={`px-3 py-2 rounded-xl text-sm font-medium transition ${
+                    ageTag === t.id ? 'bg-orange-500 text-white' : 'bg-zinc-800 text-zinc-300'
+                  }`}
+                >{t.emoji} {t.label}</button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-zinc-400 mb-2">Image (tap to pick)</label>
+            <div className="grid grid-cols-4 gap-2">
+              {quickImages.map((img, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setImageUrl(img.url)}
+                  className={`aspect-square rounded-lg overflow-hidden border-2 transition ${
+                    imageUrl === img.url ? 'border-orange-500' : 'border-transparent'
+                  }`}
+                  title={img.label}
+                >
+                  <img src={img.url} alt={img.label} className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-zinc-400 mb-2">What's it about?</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="What makes this event great? When does it happen?"
+              placeholder="A few words about the event"
               rows={3}
               className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500 resize-none"
             />
           </div>
 
+          <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+            <p className="text-amber-400 text-xs">
+              ⚠️ Only submit events you genuinely know about. False or misleading submissions may result in losing submission privileges.
+            </p>
+          </div>
+
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold hover:shadow-lg transition disabled:opacity-50"
+            className="w-full bg-gradient-to-r from-orange-500 to-amber-500 text-white py-3 rounded-xl font-bold hover:shadow-lg transition disabled:opacity-50"
           >
-            {submitting ? 'Submitting...' : 'Submit Suggestion'}
+            {submitting ? 'Submitting...' : 'Submit for Review'}
           </button>
         </div>
       </div>
@@ -6321,6 +6526,62 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
             )}
           </div>
 
+          {/* Patch 4 — Relationship status */}
+          <div>
+            <label className="block text-sm font-semibold text-zinc-400 mb-2">Relationship Status</label>
+            {isEditing ? (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  {RELATIONSHIP_OPTIONS.map(option => {
+                    const current = editedProfile.relationship_status || 'prefer-not-to-say';
+                    return (
+                      <button
+                        key={option.id}
+                        onClick={() => setEditedProfile({ ...editedProfile, relationship_status: option.id })}
+                        className={`px-3 py-3 rounded-xl text-sm font-semibold transition flex items-center gap-2 ${
+                          current === option.id ? 'bg-orange-500 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                        }`}
+                      >
+                        <span>{option.icon}</span>
+                        <span className="truncate">{option.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {(editedProfile.relationship_status || 'prefer-not-to-say') !== 'prefer-not-to-say' && (
+                  <button
+                    onClick={() => setEditedProfile({ ...editedProfile, show_relationship_status: !editedProfile.show_relationship_status })}
+                    className={`mt-2 w-full flex items-center justify-between p-3 rounded-xl border-2 transition ${
+                      editedProfile.show_relationship_status ? 'bg-orange-500/20 border-orange-500 text-white' : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+                    }`}
+                  >
+                    <span className="text-sm font-medium">Show on my profile</span>
+                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-xs ${editedProfile.show_relationship_status ? 'bg-orange-500' : 'bg-zinc-700'}`}>
+                      {editedProfile.show_relationship_status && '✓'}
+                    </span>
+                  </button>
+                )}
+                <p className="text-xs text-zinc-500 mt-1">Private by default — toggle to share with squads.</p>
+              </>
+            ) : (
+              <div className="flex items-center gap-3 bg-zinc-800 rounded-xl px-4 py-3">
+                {(() => {
+                  const opt = RELATIONSHIP_OPTIONS.find(o => o.id === (userProfile.relationship_status || 'prefer-not-to-say'));
+                  const showing = userProfile.show_relationship_status;
+                  return (
+                    <>
+                      <span>{opt?.icon || '🤐'}</span>
+                      <span className="text-white">{opt?.label || 'Prefer not to say'}</span>
+                      {!showing && opt?.id !== 'prefer-not-to-say' && (
+                        <span className="ml-auto text-xs text-zinc-500">Private</span>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+
           {isEditing && (
             <>
               <div>
@@ -6619,6 +6880,96 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
   );
 }
 
+// Patch 6 — Legal modal (Terms of Service / Privacy Policy)
+function LegalModal({ type, onClose, darkMode }) {
+  const isTos = type === 'tos';
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-[60] p-4">
+      <div className={`${darkMode ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-900'} rounded-3xl max-w-lg w-full max-h-[85vh] flex flex-col`}>
+        <div className={`flex items-center justify-between p-5 border-b ${darkMode ? 'border-zinc-800' : 'border-zinc-200'}`}>
+          <h2 className="text-xl font-bold">{isTos ? 'Terms of Service' : 'Privacy Policy'}</h2>
+          <button onClick={onClose} className={darkMode ? 'text-zinc-400 hover:text-white' : 'text-zinc-500 hover:text-zinc-900'}><X className="w-6 h-6" /></button>
+        </div>
+        <div className="overflow-y-auto p-5 space-y-4 text-sm leading-relaxed">
+          <p className={darkMode ? 'text-zinc-500' : 'text-zinc-500'}>Version {TOS_VERSION} · Last updated {TOS_LAST_UPDATED}</p>
+          {isTos ? (
+            <>
+              <section>
+                <h3 className="font-semibold text-base mb-1">1. Beta Product Notice</h3>
+                <p className={darkMode ? 'text-zinc-300' : 'text-zinc-700'}>CrewQ is currently in beta. Features may change, break, or be removed without notice. Event listings may be incomplete or outdated. Always confirm details directly with the venue before making plans.</p>
+              </section>
+              <section>
+                <h3 className="font-semibold text-base mb-1">2. No Affiliation With Venues</h3>
+                <p className={darkMode ? 'text-zinc-300' : 'text-zinc-700'}>CrewQ aggregates publicly available information about Dallas-area venues and events. We are not affiliated with, endorsed by, or sponsored by any venue listed. Venue names, logos, and event details are the property of their respective owners.</p>
+              </section>
+              <section>
+                <h3 className="font-semibold text-base mb-1">3. User Conduct</h3>
+                <p className={darkMode ? 'text-zinc-300' : 'text-zinc-700'}>You agree to use CrewQ respectfully. Do not harass, threaten, or impersonate other users. Squad coordination features are provided to help groups organize — meeting strangers from any app carries inherent risks. CrewQ is not responsible for in-person interactions that take place off the platform.</p>
+              </section>
+              <section>
+                <h3 className="font-semibold text-base mb-1">4. User-Submitted Content</h3>
+                <p className={darkMode ? 'text-zinc-300' : 'text-zinc-700'}>Events you submit are reviewed before going live. We may reject or remove submissions that violate these terms or our content guidelines. You retain ownership of what you submit but grant CrewQ a license to display it within the app.</p>
+              </section>
+              <section>
+                <h3 className="font-semibold text-base mb-1">5. Eligibility</h3>
+                <p className={darkMode ? 'text-zinc-300' : 'text-zinc-700'}>You must be at least 18 to create an account. Age-restricted events (21+) require you to verify your age at the venue — CrewQ does not perform identity verification.</p>
+              </section>
+              <section>
+                <h3 className="font-semibold text-base mb-1">6. Termination</h3>
+                <p className={darkMode ? 'text-zinc-300' : 'text-zinc-700'}>We may suspend or terminate accounts for violations of these terms. You may delete your account at any time from settings.</p>
+              </section>
+              <section>
+                <h3 className="font-semibold text-base mb-1">7. Disclaimer</h3>
+                <p className={darkMode ? 'text-zinc-300' : 'text-zinc-700'}>CrewQ is provided "as is." We make no warranties about event accuracy, venue availability, or the conduct of other users. Use at your own discretion.</p>
+              </section>
+              <section>
+                <h3 className="font-semibold text-base mb-1">8. Contact</h3>
+                <p className={darkMode ? 'text-zinc-300' : 'text-zinc-700'}>Questions or concerns: duncan.mcaloon@gmail.com</p>
+              </section>
+            </>
+          ) : (
+            <>
+              <section>
+                <h3 className="font-semibold text-base mb-1">What we collect</h3>
+                <p className={darkMode ? 'text-zinc-300' : 'text-zinc-700'}>Account details you provide (name, age, gender, vibes, optional phone, optional photo, optional relationship status), location when you grant permission (used only to filter nearby events — never stored long-term), events you swipe and RSVP to, and basic usage analytics.</p>
+              </section>
+              <section>
+                <h3 className="font-semibold text-base mb-1">How we use it</h3>
+                <p className={darkMode ? 'text-zinc-300' : 'text-zinc-700'}>To personalize your event feed, surface squads that match your vibe, send you relevant notifications, and share aggregate (never personally identifiable) data with venue partners.</p>
+              </section>
+              <section>
+                <h3 className="font-semibold text-base mb-1">What stays private</h3>
+                <p className={darkMode ? 'text-zinc-300' : 'text-zinc-700'}>Your relationship status is private by default. Your profile is squad-only by default. We never sell personal data. We do not share your individual swipe history, RSVPs, or location with any third party.</p>
+              </section>
+              <section>
+                <h3 className="font-semibold text-base mb-1">Your rights</h3>
+                <p className={darkMode ? 'text-zinc-300' : 'text-zinc-700'}>You can edit profile fields at any time, change visibility settings, and request account deletion (which removes your data within 30 days).</p>
+              </section>
+              <section>
+                <h3 className="font-semibold text-base mb-1">Cookies & tracking</h3>
+                <p className={darkMode ? 'text-zinc-300' : 'text-zinc-700'}>CrewQ uses local storage to remember your session and cache lightweight preferences. We do not use third-party advertising trackers.</p>
+              </section>
+              <section>
+                <h3 className="font-semibold text-base mb-1">Children</h3>
+                <p className={darkMode ? 'text-zinc-300' : 'text-zinc-700'}>CrewQ is not directed to anyone under 18.</p>
+              </section>
+              <section>
+                <h3 className="font-semibold text-base mb-1">Contact</h3>
+                <p className={darkMode ? 'text-zinc-300' : 'text-zinc-700'}>Privacy questions: duncan.mcaloon@gmail.com</p>
+              </section>
+            </>
+          )}
+        </div>
+        <div className={`p-4 border-t ${darkMode ? 'border-zinc-800' : 'border-zinc-200'}`}>
+          <button onClick={onClose} className={`w-full py-3 rounded-xl font-semibold text-white ${darkMode ? 'bg-violet-500 hover:bg-violet-600' : 'bg-orange-500 hover:bg-orange-600'} transition`}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AuthScreen({ onAuth, onGoogleAuth, onOpenBusinessPortal }) {
   const [step, setStep] = useState(0); // 0 = welcome/login choice, 1 = basic info, 2 = vibes
   const [name, setName] = useState('');
@@ -6628,6 +6979,13 @@ function AuthScreen({ onAuth, onGoogleAuth, onOpenBusinessPortal }) {
   const [vibes, setVibes] = useState([]);
   const [intents, setIntents] = useState([]);
   const [bio, setBio] = useState('');
+  // Patch 4 — Relationship status with private-by-default toggle
+  const [relationshipStatus, setRelationshipStatus] = useState('prefer-not-to-say');
+  const [showRelationshipStatus, setShowRelationshipStatus] = useState(false);
+  // Patch 6 — Require ToS acceptance to sign up
+  const [tosAccepted, setTosAccepted] = useState(false);
+  const [showTosModal, setShowTosModal] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   
@@ -6666,6 +7024,10 @@ function AuthScreen({ onAuth, onGoogleAuth, onOpenBusinessPortal }) {
       alert('Please enter your name');
       return;
     }
+    if (!tosAccepted) {
+      alert('Please accept the Terms of Service and Privacy Policy to continue');
+      return;
+    }
 
     setIsLoading(true);
     await onAuth({ 
@@ -6678,7 +7040,13 @@ function AuthScreen({ onAuth, onGoogleAuth, onOpenBusinessPortal }) {
       bio, 
       profile_picture: null,
       allow_squad_requests: true,
-      show_age_to_squads: true
+      show_age_to_squads: true,
+      // Patch 4
+      relationship_status: relationshipStatus,
+      show_relationship_status: showRelationshipStatus,
+      // Patch 6
+      tos_accepted_at: new Date().toISOString(),
+      tos_version: TOS_VERSION
     });
     setIsLoading(false);
   };
@@ -6824,6 +7192,43 @@ function AuthScreen({ onAuth, onGoogleAuth, onOpenBusinessPortal }) {
               </div>
             </div>
 
+            {/* Patch 4 — Relationship status (private by default) */}
+            <div>
+              <label className={`block text-sm font-semibold ${textSecondaryClass} mb-2`}>Relationship Status</label>
+              <div className="grid grid-cols-2 gap-2">
+                {RELATIONSHIP_OPTIONS.map(option => (
+                  <button
+                    key={option.id}
+                    onClick={() => setRelationshipStatus(option.id)}
+                    className={`px-3 py-3 rounded-xl text-sm font-semibold transition flex items-center gap-2 ${
+                      relationshipStatus === option.id
+                        ? (isNightMode ? 'bg-violet-500 text-white' : 'bg-orange-500 text-white')
+                        : (isNightMode ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700' : 'bg-amber-100 text-zinc-600 hover:bg-amber-200')
+                    }`}
+                  >
+                    <span>{option.icon}</span>
+                    <span className="truncate">{option.label}</span>
+                  </button>
+                ))}
+              </div>
+              {relationshipStatus !== 'prefer-not-to-say' && (
+                <button
+                  onClick={() => setShowRelationshipStatus(!showRelationshipStatus)}
+                  className={`mt-2 w-full flex items-center justify-between p-3 rounded-xl border-2 transition ${
+                    showRelationshipStatus
+                      ? (isNightMode ? 'bg-violet-500/20 border-violet-500 text-white' : 'bg-orange-500/20 border-orange-500 text-zinc-900')
+                      : (isNightMode ? 'bg-zinc-800 border-zinc-700 text-zinc-400' : 'bg-amber-100 border-amber-200 text-zinc-600')
+                  }`}
+                >
+                  <span className="text-sm font-medium">Show on my profile</span>
+                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-xs ${showRelationshipStatus ? (isNightMode ? 'bg-violet-500' : 'bg-orange-500') : (isNightMode ? 'bg-zinc-700' : 'bg-amber-200')}`}>
+                    {showRelationshipStatus && '✓'}
+                  </span>
+                </button>
+              )}
+              <p className={`text-xs ${textSecondaryClass} mt-1`}>Private by default — toggle to share with squads.</p>
+            </div>
+
             <button
               onClick={() => setStep(2)}
               disabled={!name}
@@ -6884,6 +7289,31 @@ function AuthScreen({ onAuth, onGoogleAuth, onOpenBusinessPortal }) {
               </div>
             </div>
 
+            {/* Patch 6 — ToS acceptance */}
+            <div className={`p-3 rounded-xl ${isNightMode ? 'bg-zinc-800' : 'bg-amber-100'}`}>
+              <button
+                onClick={() => setTosAccepted(!tosAccepted)}
+                className="w-full flex items-start gap-3 text-left"
+              >
+                <span className={`mt-0.5 w-5 h-5 rounded flex-shrink-0 flex items-center justify-center text-white text-xs ${tosAccepted ? (isNightMode ? 'bg-violet-500' : 'bg-orange-500') : (isNightMode ? 'bg-zinc-700' : 'bg-amber-200')}`}>
+                  {tosAccepted && '✓'}
+                </span>
+                <span className={`text-xs ${textSecondaryClass} leading-relaxed`}>
+                  I agree to the{' '}
+                  <span
+                    onClick={(e) => { e.stopPropagation(); setShowTosModal(true); }}
+                    className={`underline font-semibold ${isNightMode ? 'text-violet-400' : 'text-orange-600'}`}
+                  >Terms of Service</span>
+                  {' '}and{' '}
+                  <span
+                    onClick={(e) => { e.stopPropagation(); setShowPrivacyModal(true); }}
+                    className={`underline font-semibold ${isNightMode ? 'text-violet-400' : 'text-orange-600'}`}
+                  >Privacy Policy</span>
+                  . CrewQ is a beta product and is not affiliated with any venue listed.
+                </span>
+              </button>
+            </div>
+
             <div className="flex gap-3">
               <button
                 onClick={() => setStep(1)}
@@ -6893,7 +7323,7 @@ function AuthScreen({ onAuth, onGoogleAuth, onOpenBusinessPortal }) {
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={isLoading}
+                disabled={isLoading || !tosAccepted}
                 className={`flex-1 bg-gradient-to-r ${gradientClasses} text-white py-4 rounded-xl font-bold text-lg hover:shadow-lg transition disabled:opacity-50`}
               >
                 {isLoading ? 'Creating...' : 'Get Started'}
@@ -6901,6 +7331,9 @@ function AuthScreen({ onAuth, onGoogleAuth, onOpenBusinessPortal }) {
             </div>
           </div>
         )}
+        {/* Patch 6 — ToS / Privacy modals */}
+        {showTosModal && <LegalModal type="tos" onClose={() => setShowTosModal(false)} darkMode={isNightMode} />}
+        {showPrivacyModal && <LegalModal type="privacy" onClose={() => setShowPrivacyModal(false)} darkMode={isNightMode} />}
       </div>
     </div>
   );
@@ -6914,6 +7347,13 @@ function GoogleOnboardingModal({ pendingUser, onComplete }) {
   const [vibes, setVibes] = useState([]);
   const [intents, setIntents] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  // Patch 4 — Relationship status
+  const [relationshipStatus, setRelationshipStatus] = useState('prefer-not-to-say');
+  const [showRelationshipStatus, setShowRelationshipStatus] = useState(false);
+  // Patch 6 — ToS
+  const [tosAccepted, setTosAccepted] = useState(false);
+  const [showTosModal, setShowTosModal] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
 
   const handleVibeToggle = (vibeId) => {
     setVibes(prev =>
@@ -6932,6 +7372,10 @@ function GoogleOnboardingModal({ pendingUser, onComplete }) {
   };
 
   const handleSubmit = async () => {
+    if (!tosAccepted) {
+      alert('Please accept the Terms of Service and Privacy Policy to continue');
+      return;
+    }
     setIsLoading(true);
     await onComplete({
       ...pendingUser,
@@ -6940,7 +7384,13 @@ function GoogleOnboardingModal({ pendingUser, onComplete }) {
       vibes,
       intents,
       allow_squad_requests: true,
-      show_age_to_squads: true
+      show_age_to_squads: true,
+      // Patch 4
+      relationship_status: relationshipStatus,
+      show_relationship_status: showRelationshipStatus,
+      // Patch 6
+      tos_accepted_at: new Date().toISOString(),
+      tos_version: TOS_VERSION
     });
     setIsLoading(false);
   };
@@ -7009,6 +7459,41 @@ function GoogleOnboardingModal({ pendingUser, onComplete }) {
               <p className="text-xs text-zinc-500 mt-1">Helps match you with the right squads</p>
             </div>
 
+            {/* Patch 4 — Relationship status (private by default) */}
+            <div>
+              <label className="block text-sm font-semibold text-zinc-300 mb-2">Relationship Status</label>
+              <div className="grid grid-cols-2 gap-2">
+                {RELATIONSHIP_OPTIONS.map(option => (
+                  <button
+                    key={option.id}
+                    onClick={() => setRelationshipStatus(option.id)}
+                    className={`px-3 py-3 rounded-xl text-sm font-semibold transition flex items-center gap-2 ${
+                      relationshipStatus === option.id
+                        ? 'bg-orange-500 text-white'
+                        : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                    }`}
+                  >
+                    <span>{option.icon}</span>
+                    <span className="truncate">{option.label}</span>
+                  </button>
+                ))}
+              </div>
+              {relationshipStatus !== 'prefer-not-to-say' && (
+                <button
+                  onClick={() => setShowRelationshipStatus(!showRelationshipStatus)}
+                  className={`mt-2 w-full flex items-center justify-between p-3 rounded-xl border-2 transition ${
+                    showRelationshipStatus ? 'bg-orange-500/20 border-orange-500 text-white' : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+                  }`}
+                >
+                  <span className="text-sm font-medium">Show on my profile</span>
+                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-xs ${showRelationshipStatus ? 'bg-orange-500' : 'bg-zinc-700'}`}>
+                    {showRelationshipStatus && '✓'}
+                  </span>
+                </button>
+              )}
+              <p className="text-xs text-zinc-500 mt-1">Private by default — toggle to share with squads.</p>
+            </div>
+
             <button
               onClick={() => setStep(2)}
               className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold text-lg hover:shadow-lg transition"
@@ -7068,6 +7553,25 @@ function GoogleOnboardingModal({ pendingUser, onComplete }) {
               </div>
             </div>
 
+            {/* Patch 6 — ToS acceptance */}
+            <div className="p-3 rounded-xl bg-zinc-800">
+              <button
+                onClick={() => setTosAccepted(!tosAccepted)}
+                className="w-full flex items-start gap-3 text-left"
+              >
+                <span className={`mt-0.5 w-5 h-5 rounded flex-shrink-0 flex items-center justify-center text-white text-xs ${tosAccepted ? 'bg-orange-500' : 'bg-zinc-700'}`}>
+                  {tosAccepted && '✓'}
+                </span>
+                <span className="text-xs text-zinc-400 leading-relaxed">
+                  I agree to the{' '}
+                  <span onClick={(e) => { e.stopPropagation(); setShowTosModal(true); }} className="underline font-semibold text-orange-400">Terms of Service</span>
+                  {' '}and{' '}
+                  <span onClick={(e) => { e.stopPropagation(); setShowPrivacyModal(true); }} className="underline font-semibold text-orange-400">Privacy Policy</span>
+                  . CrewQ is a beta product and is not affiliated with any venue listed.
+                </span>
+              </button>
+            </div>
+
             <div className="flex gap-3">
               <button
                 onClick={() => setStep(1)}
@@ -7077,7 +7581,7 @@ function GoogleOnboardingModal({ pendingUser, onComplete }) {
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={isLoading}
+                disabled={isLoading || !tosAccepted}
                 className="flex-1 bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold text-lg hover:shadow-lg transition disabled:opacity-50"
               >
                 {isLoading ? 'Setting up...' : 'Let\'s Go! 🎉'}
@@ -7085,6 +7589,9 @@ function GoogleOnboardingModal({ pendingUser, onComplete }) {
             </div>
           </div>
         )}
+        {/* Patch 6 — ToS / Privacy modals */}
+        {showTosModal && <LegalModal type="tos" onClose={() => setShowTosModal(false)} darkMode={true} />}
+        {showPrivacyModal && <LegalModal type="privacy" onClose={() => setShowPrivacyModal(false)} darkMode={true} />}
       </div>
     </div>
   );
@@ -7255,6 +7762,24 @@ function AdminPortal({ onClose, userEmail }) {
         .single();
       if (error) throw error;
       setEvents(events.map(e => e.id === id ? data : e));
+      // Patch 5 — Notify the submitter (only if it was a user-submitted event)
+      if (data.submitted_by_user_id) {
+        try {
+          await supabaseClient
+            .from('notifications')
+            .insert([{
+              user_id: data.submitted_by_user_id,
+              type: 'event_approved',
+              title: 'Your event was approved!',
+              message: `"${data.name}" is now live in the Discover feed.`,
+              event_id: data.id,
+              read: false,
+              created_at: new Date().toISOString()
+            }]);
+        } catch (notifErr) {
+          console.error('Failed to send approval notification:', notifErr);
+        }
+      }
       showToastMsg('Event approved! Now live in Discover.');
     } catch { showToastMsg('Error approving event', 'error'); }
   };
@@ -7269,6 +7794,24 @@ function AdminPortal({ onClose, userEmail }) {
         .single();
       if (error) throw error;
       setEvents(events.map(e => e.id === id ? data : e));
+      // Patch 5 — Notify the submitter (only if it was a user-submitted event)
+      if (data.submitted_by_user_id) {
+        try {
+          await supabaseClient
+            .from('notifications')
+            .insert([{
+              user_id: data.submitted_by_user_id,
+              type: 'event_rejected',
+              title: 'Event submission not approved',
+              message: `"${data.name}" wasn't approved. Reason: ${data.rejection_reason}`,
+              event_id: data.id,
+              read: false,
+              created_at: new Date().toISOString()
+            }]);
+        } catch (notifErr) {
+          console.error('Failed to send rejection notification:', notifErr);
+        }
+      }
       showToastMsg('Event rejected.');
     } catch { showToastMsg('Error rejecting event', 'error'); }
   };
@@ -9622,6 +10165,8 @@ export default function App() {
   const [showSuggestionModal, setShowSuggestionModal] = useState(false);
   const [userBadges, setUserBadges] = useState([]);
   const [userStats, setUserStats] = useState({});
+  // Patch 7 — RSVPs are now DB-backed via event_rsvps; localStorage is only a fallback cache
+  const [userRsvpedEventIds, setUserRsvpedEventIds] = useState(new Set());
   const [showBadgeEarned, setShowBadgeEarned] = useState(null);
   const [attendedEvents, setAttendedEvents] = useState([]);
   const [userLocation, setUserLocation] = useState(null);
@@ -9846,6 +10391,36 @@ export default function App() {
         }
       }
     });
+    
+    // Patch 5 — Load persisted notifications from DB (event approvals/rejections, etc)
+    try {
+      const { data: dbNotifs } = await supabaseClient
+        .from('notifications')
+        .select('*')
+        .eq('user_id', userProfile.id)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      
+      (dbNotifs || []).forEach(n => {
+        const notifId = `db-${n.id}`;
+        if (clearedNotifs.includes(notifId)) return;
+        const created = n.created_at ? new Date(n.created_at) : null;
+        const timeLabel = created
+          ? (Date.now() - created.getTime() < 24*60*60*1000 ? 'Today' : created.toLocaleDateString())
+          : '';
+        notifs.push({
+          id: notifId,
+          type: n.type || 'system',
+          title: n.title || 'Notification',
+          message: n.message || '',
+          event_id: n.event_id,
+          time: timeLabel,
+          read: !!n.read
+        });
+      });
+    } catch (err) {
+      console.error('Failed to load DB notifications:', err);
+    }
     
     setNotifications(notifs);
   };
@@ -10578,6 +11153,23 @@ export default function App() {
   const handleJoinSquad = async (squad, isRequest = false) => {
     if (!supabaseClient || !userProfile) return;
     
+    // Patch 6 — One-time off-app meeting safety warning
+    const warnKey = `crewq_${userProfile.id}_offapp_warned`;
+    if (!localStorage.getItem(warnKey)) {
+      const ok = window.confirm(
+        "Heads up before you join:\n\n" +
+        "Meeting people from any app carries some risk. A few quick guidelines:\n\n" +
+        "• Meet in public places\n" +
+        "• Tell a friend where you're going\n" +
+        "• Trust your gut — leave if something feels off\n" +
+        "• Don't share personal info like your home address\n\n" +
+        "CrewQ helps coordinate plans but isn't responsible for off-app interactions.\n\n" +
+        "Continue?"
+      );
+      if (!ok) return;
+      localStorage.setItem(warnKey, '1');
+    }
+    
     try {
       if (isRequest && squad.requires_approval) {
         // Submit a join request instead of joining directly
@@ -10798,6 +11390,30 @@ export default function App() {
     }
   };
 
+  // Patch 7 — load RSVPs from DB into state Set, fallback to localStorage cache if DB fails
+  const loadUserRsvps = async (userId) => {
+    if (!supabaseClient || !userId) return;
+    const userKey = `crewq_${userId}`;
+    try {
+      const { data, error } = await supabaseClient
+        .from('event_rsvps')
+        .select('event_id')
+        .eq('user_id', userId);
+      if (error) throw error;
+      const ids = (data || []).map(r => r.event_id);
+      setUserRsvpedEventIds(new Set(ids));
+      // Refresh localStorage cache to match DB
+      localStorage.setItem(`${userKey}_rsvped`, JSON.stringify(ids));
+    } catch (error) {
+      console.error('Error loading RSVPs (using local cache):', error);
+      // Fallback to localStorage
+      try {
+        const cached = JSON.parse(localStorage.getItem(`${userKey}_rsvped`) || '[]');
+        setUserRsvpedEventIds(new Set(cached));
+      } catch { setUserRsvpedEventIds(new Set()); }
+    }
+  };
+
   const checkAuth = async () => {
     if (!supabaseClient) {
       console.log('checkAuth: No supabase client');
@@ -10874,6 +11490,7 @@ export default function App() {
           await loadSquads(existingProfile.id);
           await loadAllSquads();
           await loadCheckedInEvents(existingProfile.id);
+          await loadUserRsvps(existingProfile.id);
         } else {
           // New Google user - store their info and show onboarding
           console.log('checkAuth: New Google user, showing onboarding');
@@ -10914,6 +11531,7 @@ export default function App() {
           await loadSquads(data.id);
           await loadAllSquads();
           await loadCheckedInEvents(data.id);
+          await loadUserRsvps(data.id);
         } else {
           localStorage.removeItem('crewq_user_id');
         }
@@ -11019,6 +11637,12 @@ export default function App() {
       if (profile.vibes && profile.vibes.length > 0) newUserData.vibes = profile.vibes;
       if (profile.intents && profile.intents.length > 0) newUserData.intents = profile.intents;
       if (profile.bio) newUserData.bio = profile.bio;
+      // Patch 4 — Relationship status (default prefer-not-to-say, private by default)
+      if (profile.relationship_status) newUserData.relationship_status = profile.relationship_status;
+      if (typeof profile.show_relationship_status === 'boolean') newUserData.show_relationship_status = profile.show_relationship_status;
+      // Patch 6 — ToS acceptance
+      if (profile.tos_accepted_at) newUserData.tos_accepted_at = profile.tos_accepted_at;
+      if (profile.tos_version) newUserData.tos_version = profile.tos_version;
 
       const { data: newUser, error } = await supabaseClient
         .from('users')
@@ -11038,6 +11662,8 @@ export default function App() {
       await loadCrewMembers(newUser.id);
       await loadSquads(newUser.id);
       await loadAllSquads();
+      await loadCheckedInEvents(newUser.id);
+      await loadUserRsvps(newUser.id);
     } catch (error) {
       console.error('Error creating account:', error);
       alert('Error creating account: ' + error.message);
@@ -11058,7 +11684,10 @@ export default function App() {
           bio: updatedProfile.bio,
           bio_answers: updatedProfile.bio_answers,
           profile_picture: updatedProfile.profile_picture,
-          profile_visibility: updatedProfile.profile_visibility || 'squad_only'
+          profile_visibility: updatedProfile.profile_visibility || 'squad_only',
+          // Patch 4 — Relationship status
+          relationship_status: updatedProfile.relationship_status || 'prefer-not-to-say',
+          show_relationship_status: typeof updatedProfile.show_relationship_status === 'boolean' ? updatedProfile.show_relationship_status : false
         })
         .eq('id', userProfile.id);
 
@@ -11246,6 +11875,9 @@ const loadSquads = async (userId) => {
       seenEvents.push(currentEvent.id);
       localStorage.setItem(`${userKey}_seen`, JSON.stringify(seenEvents));
       
+      // Patch 3 — Track daily swipe count for daily cap
+      incrementTodaysSwipeCount();
+      
       // Only count UNIQUE swipes for badges
       const currentSwipes = parseInt(localStorage.getItem(`${userKey}_swipes`) || '0');
       localStorage.setItem(`${userKey}_swipes`, (currentSwipes + 1).toString());
@@ -11302,46 +11934,56 @@ const loadSquads = async (userId) => {
     }
   };
 
-  // Handle RSVP - explicit user action
+  // Handle RSVP - explicit user action (Patch 7: DB-backed via event_rsvps)
   const handleRSVP = async (event) => {
     if (!userProfile?.id || !supabaseClient) return;
     
     const userKey = `crewq_${userProfile.id}`;
-    const rsvpedEvents = JSON.parse(localStorage.getItem(`${userKey}_rsvped`) || '[]');
     
-    // Check if already RSVPed
-    if (rsvpedEvents.includes(event.id)) {
+    // Source of truth: in-memory Set (synced with event_rsvps table)
+    if (userRsvpedEventIds.has(event.id)) {
       showToast('You\'ve already RSVPed to this event!', 'info');
       return;
     }
     
     try {
-      // Increment RSVP count in database
+      // Insert into event_rsvps (source of truth) — let DB error propagate
+      const { error: rsvpError } = await supabaseClient
+        .from('event_rsvps')
+        .insert([{
+          user_id: userProfile.id,
+          event_id: event.id,
+          created_at: new Date().toISOString()
+        }]);
+      
+      if (rsvpError) {
+        // Unique-constraint violation = already RSVPed elsewhere; treat as soft-success
+        if (rsvpError.code !== '23505') throw rsvpError;
+      }
+      
+      // Increment RSVP count on event
       await supabaseClient
         .from('events')
         .update({ rsvps: (event.rsvps || 0) + 1 })
         .eq('id', event.id);
       
-      // Save RSVP to user's list
-      rsvpedEvents.push(event.id);
-      localStorage.setItem(`${userKey}_rsvped`, JSON.stringify(rsvpedEvents));
+      // Update in-memory state
+      setUserRsvpedEventIds(prev => {
+        const next = new Set(prev);
+        next.add(event.id);
+        return next;
+      });
       
-      // Also save to event_rsvps table if it exists
-      try {
-        await supabaseClient
-          .from('event_rsvps')
-          .insert([{
-            user_id: userProfile.id,
-            event_id: event.id,
-            created_at: new Date().toISOString()
-          }]);
-      } catch (e) {
-        // Table might not exist, that's ok
+      // Update localStorage cache
+      const cached = JSON.parse(localStorage.getItem(`${userKey}_rsvped`) || '[]');
+      if (!cached.includes(event.id)) {
+        cached.push(event.id);
+        localStorage.setItem(`${userKey}_rsvped`, JSON.stringify(cached));
       }
       
       showToast('🎉 RSVP confirmed! See you there!', 'success');
       
-      // Update local events data
+      // Update local events arrays
       setEvents(events.map(e => e.id === event.id ? {...e, rsvps: (e.rsvps || 0) + 1} : e));
       setAllEvents(allEvents.map(e => e.id === event.id ? {...e, rsvps: (e.rsvps || 0) + 1} : e));
       
@@ -11351,44 +11993,47 @@ const loadSquads = async (userId) => {
     }
   };
 
-  // Undo RSVP - cancel attendance
+  // Undo RSVP - cancel attendance (Patch 7: DB-backed)
   const handleUndoRSVP = async (event) => {
     if (!userProfile?.id || !supabaseClient) return;
     
     const userKey = `crewq_${userProfile.id}`;
-    let rsvpedEvents = JSON.parse(localStorage.getItem(`${userKey}_rsvped`) || '[]');
     
-    // Check if not RSVPed
-    if (!rsvpedEvents.includes(event.id)) {
+    if (!userRsvpedEventIds.has(event.id)) {
       return;
     }
     
     try {
-      // Decrement RSVP count in database (don't go below 0)
+      // Delete from event_rsvps (source of truth)
+      const { error: deleteError } = await supabaseClient
+        .from('event_rsvps')
+        .delete()
+        .eq('user_id', userProfile.id)
+        .eq('event_id', event.id);
+      
+      if (deleteError) throw deleteError;
+      
+      // Decrement RSVP count
       const newCount = Math.max((event.rsvps || 1) - 1, 0);
       await supabaseClient
         .from('events')
         .update({ rsvps: newCount })
         .eq('id', event.id);
       
-      // Remove from user's RSVP list
-      rsvpedEvents = rsvpedEvents.filter(id => id !== event.id);
-      localStorage.setItem(`${userKey}_rsvped`, JSON.stringify(rsvpedEvents));
+      // Update in-memory state
+      setUserRsvpedEventIds(prev => {
+        const next = new Set(prev);
+        next.delete(event.id);
+        return next;
+      });
       
-      // Remove from event_rsvps table if it exists
-      try {
-        await supabaseClient
-          .from('event_rsvps')
-          .delete()
-          .eq('user_id', userProfile.id)
-          .eq('event_id', event.id);
-      } catch (e) {
-        // Table might not exist, that's ok
-      }
+      // Update localStorage cache
+      const cached = JSON.parse(localStorage.getItem(`${userKey}_rsvped`) || '[]');
+      const updated = cached.filter(id => id !== event.id);
+      localStorage.setItem(`${userKey}_rsvped`, JSON.stringify(updated));
       
       showToast('RSVP cancelled', 'info');
       
-      // Update local events data
       setEvents(events.map(e => e.id === event.id ? {...e, rsvps: newCount} : e));
       setAllEvents(allEvents.map(e => e.id === event.id ? {...e, rsvps: newCount} : e));
       
@@ -11398,54 +12043,145 @@ const loadSquads = async (userId) => {
     }
   };
 
-  // Check if user has RSVPed to an event
+  // Check if user has RSVPed (Patch 7: reads from in-memory Set, falls back to localStorage)
   const hasRSVPed = (eventId) => {
     if (!userProfile?.id) return false;
+    if (userRsvpedEventIds.has(eventId)) return true;
+    // Fallback to localStorage in case state hasn't loaded yet
     const userKey = `crewq_${userProfile.id}`;
-    const rsvpedEvents = JSON.parse(localStorage.getItem(`${userKey}_rsvped`) || '[]');
-    return rsvpedEvents.includes(eventId);
+    const cached = JSON.parse(localStorage.getItem(`${userKey}_rsvped`) || '[]');
+    return cached.includes(eventId);
   };
 
-  // Apply vibe filter to events for discover feed
+  // Patch 3 — Helper: today's date as YYYY-MM-DD for daily-cap tracking
+  const getTodayKey = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  };
+
+  // Patch 3 — How many cards has the user swiped today (for daily cap)
+  const getTodaysSwipeCount = () => {
+    if (!userProfile?.id) return 0;
+    const key = `crewq_${userProfile.id}_swipes_${getTodayKey()}`;
+    return parseInt(localStorage.getItem(key) || '0', 10);
+  };
+
+  // Patch 3 — Increment today's swipe count
+  const incrementTodaysSwipeCount = () => {
+    if (!userProfile?.id) return;
+    const key = `crewq_${userProfile.id}_swipes_${getTodayKey()}`;
+    const current = getTodaysSwipeCount();
+    localStorage.setItem(key, String(current + 1));
+  };
+
+  // Patch 3 — Apply hard filters to an event list (date, distance, age, status)
+  const applyHardFilters = (eventList, opts = {}) => {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const horizonDays = opts.maxDaysAhead != null ? opts.maxDaysAhead : FEED_DAYS_AHEAD;
+    const horizon = new Date(todayStart);
+    horizon.setDate(horizon.getDate() + horizonDays);
+
+    const userAge = userProfile?.age ? parseInt(userProfile.age, 10) : null;
+
+    return eventList.filter(event => {
+      // Status: only live/approved
+      if (event.status && event.status !== 'live' && event.status !== 'approved') return false;
+
+      // Date: not past, within horizon
+      if (!event.date) return false;
+      const evtDate = new Date(event.date);
+      if (isNaN(evtDate.getTime())) return false;
+      if (evtDate < todayStart) return false;
+      if (opts.minDaysAhead != null) {
+        const minDate = new Date(todayStart);
+        minDate.setDate(minDate.getDate() + opts.minDaysAhead);
+        if (evtDate < minDate) return false;
+      }
+      if (evtDate > horizon) return false;
+
+      // Distance (only if userLocation + event lat/lng available)
+      if (userLocation && event.latitude != null && event.longitude != null) {
+        const dist = calculateDistance(userLocation.latitude, userLocation.longitude, event.latitude, event.longitude);
+        const maxDist = opts.maxMiles != null ? opts.maxMiles : DEFAULT_FEED_DISTANCE_MILES;
+        if (dist > maxDist) return false;
+      }
+
+      // Age-appropriate
+      if (userAge != null) {
+        const tag = event.age_tag || '';
+        const restriction = event.age_restriction || '';
+        if ((tag === '21+' || restriction === '21+') && userAge < 21) return false;
+        if ((tag === '18+' || restriction === '18+') && userAge < 18) return false;
+      }
+
+      return true;
+    });
+  };
+
+  // Patch 3 — Soft ranking by vibe match score (returns score 0..N)
+  const getVibeMatchScore = (event) => {
+    if (!userProfile?.vibes || !event.vibes) return 0;
+    const eventVibes = Array.isArray(event.vibes) ? event.vibes : [];
+    const userVibes = Array.isArray(userProfile.vibes) ? userProfile.vibes : [];
+    return eventVibes.filter(v => userVibes.includes(v)).length;
+  };
+
+  // Apply vibe filter + hard filters to events for discover feed (Patch 3 — full visibility logic)
   const getVibeFilteredEvents = () => {
     let filtered = events;
-    
-    // Apply vibe filter if enabled
+
+    // Hard filters: status, date window, distance, age
+    filtered = applyHardFilters(filtered);
+
+    // Optional vibe hard-filter (when toggle on AND user has vibes set)
     if (vibeFilterEnabled && userProfile?.vibes && userProfile.vibes.length > 0) {
       filtered = filtered.filter(event => {
         const eventVibes = event.vibes || event.tags || [];
         const eventCategory = event.category || '';
-        
-        if (Array.isArray(eventVibes) && eventVibes.some(v => userProfile.vibes.includes(v))) {
-          return true;
-        }
-        
+        if (Array.isArray(eventVibes) && eventVibes.some(v => userProfile.vibes.includes(v))) return true;
         const categoryVibeMap = {
-          'live-music': ['live-music', 'concerts'],
-          'trivia': ['trivia', 'games'],
-          'happy-hour': ['happy-hour', 'chill-drinks'],
-          'sports': ['sports-bars'],
-          'karaoke': ['karaoke'],
-          'dancing': ['dancing'],
-          'comedy': ['comedy'],
-          'networking': ['networking'],
-          'brunch': ['foodie'],
-          'food': ['foodie', 'tacos'],
-          'rooftop': ['rooftop', 'sunsets'],
-          'outdoor': ['outdoor']
+          'live-music': ['live-music', 'concerts'], 'trivia': ['trivia', 'games'],
+          'happy-hour': ['happy-hour', 'chill-drinks'], 'sports': ['sports-bars'],
+          'karaoke': ['karaoke'], 'dancing': ['dancing'], 'comedy': ['comedy'],
+          'networking': ['networking'], 'brunch': ['foodie'], 'food': ['foodie', 'tacos'],
+          'rooftop': ['rooftop', 'sunsets'], 'outdoor': ['outdoor']
         };
-        
         const matchedVibes = categoryVibeMap[eventCategory] || [eventCategory];
         return matchedVibes.some(v => userProfile.vibes.includes(v));
       });
     }
-    
-    // Apply tonight mode filter
+
+    // Tonight mode filter (existing behavior)
     if (tonightMode) {
       filtered = getTonightEvents(filtered);
     }
-    
-    return filtered;
+
+    // Soft ranking: sort by vibe match desc, then by date asc
+    filtered = [...filtered].sort((a, b) => {
+      const scoreDiff = getVibeMatchScore(b) - getVibeMatchScore(a);
+      if (scoreDiff !== 0) return scoreDiff;
+      return (a.date || '').localeCompare(b.date || '');
+    });
+
+    // Daily cap: only show DAILY_FEED_CAP cards minus what user has already seen today
+    const todayCount = getTodaysSwipeCount();
+    const remaining = Math.max(DAILY_FEED_CAP - todayCount, 0);
+    return filtered.slice(0, remaining);
+  };
+
+  // Patch 3 — Coming Up lane: ticketed/special events 7–30 days out
+  const getComingUpEvents = () => {
+    const baseList = applyHardFilters(allEvents, {
+      minDaysAhead: COMING_UP_DAYS_MIN,
+      maxDaysAhead: COMING_UP_DAYS_MAX,
+      maxMiles: DEFAULT_FEED_DISTANCE_MILES * 2 // a bit wider for special events
+    });
+    // Special = has tickets_url OR is_special flag
+    return baseList
+      .filter(e => e.tickets_url || e.is_special)
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+      .slice(0, 10);
   };
 
   // Get events happening tonight (within 6 hours or starting soon)
@@ -11672,10 +12408,14 @@ const loadSquads = async (userId) => {
         {/* Fixed Header */}
         <div className={`sticky top-0 z-40 ${darkMode ? 'bg-zinc-900/95 backdrop-blur-sm border-zinc-800' : 'bg-amber-100 border-amber-200'} border-b px-4 py-4`}>
           <div className="flex items-center justify-between mb-4">
-            <div>
+            <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold">
                 Crew<span className={darkMode ? 'text-violet-400' : 'text-orange-500'}>Q</span>
               </h1>
+              {/* Patch 6 — Beta pill */}
+              <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${darkMode ? 'bg-violet-500/20 text-violet-300 border border-violet-500/40' : 'bg-orange-500/20 text-orange-700 border border-orange-500/40'}`}>
+                Beta
+              </span>
             </div>
             <div className="flex items-center gap-3">
               <button 
@@ -11795,19 +12535,39 @@ const loadSquads = async (userId) => {
                   <p>You haven't set your vibes yet! <button onClick={() => setCurrentTab('profile')} className="underline font-semibold">Set vibes in your profile</button> to filter events.</p>
                 </div>
               )}
-              
+
+              {/* Patch 3 — Remaining stack counter (scarcity) */}
+              {displayEvents.length > currentIndex && (
+                <div className={`mb-3 flex items-center justify-center gap-1.5 text-xs font-medium ${darkMode ? 'text-zinc-500' : 'text-zinc-600'}`}>
+                  <span className={`inline-block w-1.5 h-1.5 rounded-full ${darkMode ? 'bg-violet-400' : 'bg-orange-500'}`} />
+                  <span>{displayEvents.length - currentIndex} left today · {DAILY_FEED_CAP - getTodaysSwipeCount()} of {DAILY_FEED_CAP} remaining</span>
+                </div>
+              )}
+
               {currentIndex >= displayEvents.length || displayEvents.length === 0 ? (
                 <div className="text-center py-16">
                   <div className={`w-20 h-20 ${darkMode ? 'bg-zinc-800' : 'bg-amber-100'} rounded-full flex items-center justify-center mx-auto mb-6`}>
                     <Calendar className={`w-10 h-10 ${darkMode ? 'text-violet-400' : 'text-orange-500'}`} />
                   </div>
-                  <h2 className="text-2xl font-bold mb-3">{vibeFilterEnabled ? 'No Events Match Your Vibes' : 'You\'ve Seen All Events!'}</h2>
-                  <p className={`${darkMode ? 'text-zinc-400' : 'text-zinc-600'} mb-8 px-4`}>
-                    {vibeFilterEnabled 
-                      ? 'Try turning off the vibe filter to see more events, or adjust your vibes in your profile.'
-                      : 'You\'ve swiped through all available events. Check back later for new ones or reset to see them again.'
-                    }
-                  </p>
+                  {/* Patch 3 — Differentiate daily-cap from out-of-events */}
+                  {getTodaysSwipeCount() >= DAILY_FEED_CAP ? (
+                    <>
+                      <h2 className="text-2xl font-bold mb-3">You're caught up for today!</h2>
+                      <p className={`${darkMode ? 'text-zinc-400' : 'text-zinc-600'} mb-8 px-4`}>
+                        You've seen your daily {DAILY_FEED_CAP} cards. Come back tomorrow for fresh events — or check what's coming up below.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <h2 className="text-2xl font-bold mb-3">{vibeFilterEnabled ? 'No Events Match Your Vibes' : 'You\'ve Seen All Events!'}</h2>
+                      <p className={`${darkMode ? 'text-zinc-400' : 'text-zinc-600'} mb-8 px-4`}>
+                        {vibeFilterEnabled 
+                          ? 'Try turning off the vibe filter to see more events, or adjust your vibes in your profile.'
+                          : 'You\'ve swiped through all available events. Check back later for new ones or reset to see them again.'
+                        }
+                      </p>
+                    </>
+                  )}
                   
                   <div className="flex flex-col gap-3 px-8">
                     <button
@@ -11815,6 +12575,8 @@ const loadSquads = async (userId) => {
                         if (userProfile?.id) {
                           const userKey = `crewq_${userProfile.id}`;
                           localStorage.removeItem(`${userKey}_seen`);
+                          // Patch 3 — Also reset today's daily cap so reset is meaningful
+                          localStorage.removeItem(`${userKey}_swipes_${getTodayKey()}`);
                           loadEvents(userProfile.id);
                           showToast('Events reset! Swipe away 🎉', 'success');
                         }
@@ -11890,6 +12652,53 @@ const loadSquads = async (userId) => {
                   </div>
                 </div>
               )}
+
+              {/* Patch 3 — "Coming Up" lane: ticketed/special events 7–30 days out */}
+              {(() => {
+                const comingUp = getComingUpEvents();
+                if (comingUp.length === 0) return null;
+                return (
+                  <div className="mt-6">
+                    <div className="flex items-center justify-between mb-3 px-1">
+                      <h3 className={`text-sm font-bold uppercase tracking-wide ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                        🎫 Coming Up
+                      </h3>
+                      <span className={`text-xs ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>{comingUp.length} special events</span>
+                    </div>
+                    <div className="overflow-x-auto -mx-4 px-4 pb-2">
+                      <div className="flex gap-3" style={{ minWidth: 'min-content' }}>
+                        {comingUp.map(ev => {
+                          const evDate = new Date(ev.date);
+                          const dateLabel = isNaN(evDate.getTime()) ? ev.date : `${evDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+                          return (
+                            <button
+                              key={ev.id}
+                              onClick={() => { setSelectedEvent(ev); }}
+                              className={`flex-shrink-0 w-44 rounded-xl overflow-hidden text-left ${darkMode ? 'bg-zinc-900 border border-zinc-800 hover:border-zinc-700' : 'bg-white border border-amber-200 hover:border-amber-300'} transition`}
+                            >
+                              <div className="relative aspect-[4/3] bg-zinc-800">
+                                {ev.image_url && <img src={ev.image_url} alt={ev.name} className="w-full h-full object-cover" />}
+                                <div className={`absolute top-2 left-2 px-2 py-0.5 rounded-full text-xs font-bold ${darkMode ? 'bg-violet-500 text-white' : 'bg-orange-500 text-white'}`}>
+                                  {dateLabel}
+                                </div>
+                                {ev.tickets_url && (
+                                  <div className="absolute top-2 right-2 px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-500 text-white">
+                                    Tix
+                                  </div>
+                                )}
+                              </div>
+                              <div className="p-2.5">
+                                <p className={`font-semibold text-sm truncate ${darkMode ? 'text-white' : 'text-zinc-900'}`}>{ev.name}</p>
+                                <p className={`text-xs truncate ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>{ev.venue}</p>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -12050,6 +12859,9 @@ const loadSquads = async (userId) => {
           <EventSuggestionModal
             onClose={() => setShowSuggestionModal(false)}
             userProfile={userProfile}
+            supabaseClient={supabaseClient}
+            userBadges={userBadges}
+            showToast={showToast}
           />
         )}
 
@@ -12246,6 +13058,7 @@ const loadSquads = async (userId) => {
             darkMode={darkMode}
             onClose={() => setShowSquadChat(null)}
             supabaseClient={supabaseClient}
+            showToast={showToast}
           />
         )}
 
