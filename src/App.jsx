@@ -8572,6 +8572,12 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
   const [evtImageUrl, setEvtImageUrl] = useState('');
   const [evtRecurring, setEvtRecurring] = useState(false);
   const [evtRecurringType, setEvtRecurringType] = useState('weekly');
+  // Patch 2 — new event fields (mirrors admin CreateEventForm)
+  const [evtAgeTag, setEvtAgeTag] = useState('21+'); // 'all-ages' | 'kid-friendly' | '18+' | '21+' | 'date-night'
+  const [evtKidFriendly, setEvtKidFriendly] = useState(false);
+  const [evtDateNight, setEvtDateNight] = useState(false);
+  const [evtMenuUrl, setEvtMenuUrl] = useState('');
+  const [evtDuplicateFromId, setEvtDuplicateFromId] = useState('');
   const [editingEvent, setEditingEvent] = useState(null);
 
   // Constants
@@ -8817,6 +8823,33 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
     setLoading(false);
   };
 
+  // Patch 2 — Duplicate-event handler (copies fields from selected event)
+  const handleDuplicateFromEvent = (eventId) => {
+    setEvtDuplicateFromId(eventId);
+    if (!eventId) return;
+    const src = events.find(e => String(e.id) === String(eventId));
+    if (!src) return;
+    setEvtName(src.name || '');
+    setEvtCategory(src.category || '');
+    setEvtType(src.type || '');
+    setEvtStartTime(src.time || '');
+    setEvtEndTime(src.end_time || '');
+    setEvtDescription(src.description || '');
+    setEvtCoverCharge(src.cover_charge ? String(src.cover_charge) : '');
+    setEvtDrinkSpecials(src.drink_specials || '');
+    setEvtFoodSpecials(src.food_specials || '');
+    setEvtAgeRestriction(src.age_restriction || '21+');
+    setEvtDressCode(src.dress_code || 'casual');
+    setEvtMusicGenre(src.music_genre || '');
+    setEvtCapacity(src.capacity ? String(src.capacity) : '');
+    setEvtImageUrl(src.image_url || '');
+    setEvtAgeTag(src.age_tag || (src.age_restriction === '18+' ? '18+' : src.age_restriction === 'all' ? 'all-ages' : '21+'));
+    setEvtKidFriendly(!!src.kid_friendly);
+    setEvtDateNight(!!src.date_night);
+    setEvtMenuUrl(src.menu_url || '');
+    showToastMsg(`Duplicated "${src.name}" — pick a new date`, 'success');
+  };
+
   // Create Event
   const handleCreateEvent = async () => {
     if (!evtName || !evtDate || !evtStartTime) {
@@ -8841,13 +8874,18 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
         cover_charge: evtCoverCharge ? parseFloat(evtCoverCharge) : 0,
         drink_specials: evtDrinkSpecials,
         food_specials: evtFoodSpecials,
-        age_restriction: evtAgeRestriction,
+        age_restriction: (evtAgeTag === '21+' || evtAgeTag === 'date-night') ? '21+' : (evtAgeTag === '18+' ? '18+' : 'all'),
         dress_code: evtDressCode,
         music_genre: evtMusicGenre,
         capacity: evtCapacity ? parseInt(evtCapacity) : null,
         image_url: evtImageUrl,
         recurring: evtRecurring,
         recurring_type: evtRecurring ? evtRecurringType : null,
+        // Patch 2 — new fields
+        age_tag: evtAgeTag,
+        kid_friendly: evtKidFriendly,
+        date_night: evtDateNight,
+        menu_url: evtMenuUrl || null,
         status: 'pending',
         views: 0,
         rsvps: 0,
@@ -8871,6 +8909,9 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
       setEvtCoverCharge(''); setEvtDrinkSpecials(''); setEvtFoodSpecials('');
       setEvtAgeRestriction('21+'); setEvtDressCode('casual'); setEvtMusicGenre('');
       setEvtCapacity(''); setEvtImageUrl(''); setEvtRecurring(false);
+      // Patch 2 — reset new fields
+      setEvtAgeTag('21+'); setEvtKidFriendly(false); setEvtDateNight(false);
+      setEvtMenuUrl(''); setEvtDuplicateFromId('');
       
       setCurrentView('events');
     } catch (err) {
@@ -9347,6 +9388,28 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
               <div className="max-w-3xl space-y-6">
                 <div><h1 className="text-2xl font-bold text-white">Create Event</h1><p className="text-slate-400">Events require admin approval before going live</p></div>
                 <div className="bg-slate-800 rounded-xl border border-slate-700 p-6 space-y-6">
+                  {/* Patch 2 — Duplicate from existing event */}
+                  {events.length > 0 && (
+                    <div className="p-3 bg-violet-500/10 border border-violet-500/30 rounded-xl">
+                      <label className="block text-xs text-violet-300 mb-2 font-semibold uppercase tracking-wide">⚡ Duplicate from existing event</label>
+                      <select
+                        value={evtDuplicateFromId}
+                        onChange={e => handleDuplicateFromEvent(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm"
+                      >
+                        <option value="">— Start from scratch —</option>
+                        {[...events]
+                          .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+                          .slice(0, 50)
+                          .map(ev => (
+                            <option key={ev.id} value={ev.id}>
+                              {ev.name} ({ev.date || 'no date'})
+                            </option>
+                          ))}
+                      </select>
+                      <p className="text-violet-300/60 text-xs mt-1">Copies all fields except date. Pick a new date below.</p>
+                    </div>
+                  )}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="md:col-span-2">
                       <label className="block text-sm text-slate-400 mb-1">Event Name <span className="text-red-400">*</span></label>
@@ -9395,27 +9458,76 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
                       <input type="text" value={evtFoodSpecials} onChange={e => setEvtFoodSpecials(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" placeholder="Half-price apps" />
                     </div>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm text-slate-400 mb-1">Cover Charge ($)</label>
                       <input type="number" value={evtCoverCharge} onChange={e => setEvtCoverCharge(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" placeholder="0" />
-                    </div>
-                    <div>
-                      <label className="block text-sm text-slate-400 mb-1">Age Restriction</label>
-                      <select value={evtAgeRestriction} onChange={e => setEvtAgeRestriction(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none">
-                        <option value="all">All Ages</option>
-                        <option value="18+">18+</option>
-                        <option value="21+">21+</option>
-                      </select>
                     </div>
                     <div>
                       <label className="block text-sm text-slate-400 mb-1">Capacity</label>
                       <input type="number" value={evtCapacity} onChange={e => setEvtCapacity(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" placeholder="Unlimited" />
                     </div>
                   </div>
+                  {/* Patch 2 — Age tag (5 options) */}
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-2">Age <span className="text-red-400">*</span></label>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { id: 'all-ages',     label: 'All Ages',     emoji: '👨‍👩‍👧' },
+                        { id: 'kid-friendly', label: 'Kid-friendly', emoji: '👶' },
+                        { id: '18+',          label: '18+',          emoji: '🔞' },
+                        { id: '21+',          label: '21+',          emoji: '🍻' },
+                        { id: 'date-night',   label: 'Date Night',   emoji: '💕' },
+                      ].map(t => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={(e) => { e.preventDefault(); setEvtAgeTag(t.id); }}
+                          className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
+                            evtAgeTag === t.id ? 'bg-orange-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                          }`}
+                        >
+                          {t.emoji} {t.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Patch 2 — Kid-friendly & Date Night toggles */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); setEvtKidFriendly(!evtKidFriendly); }}
+                      className={`flex items-center justify-between p-3 rounded-lg border-2 transition ${
+                        evtKidFriendly ? 'bg-emerald-500/20 border-emerald-500 text-white' : 'bg-slate-700/50 border-slate-600 text-slate-400 hover:border-slate-500'
+                      }`}
+                    >
+                      <span className="text-sm font-medium">👶 Kid-friendly</span>
+                      <span className={`w-5 h-5 rounded-full flex items-center justify-center ${evtKidFriendly ? 'bg-emerald-500 text-white text-xs' : 'bg-slate-600'}`}>
+                        {evtKidFriendly && '✓'}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); setEvtDateNight(!evtDateNight); }}
+                      className={`flex items-center justify-between p-3 rounded-lg border-2 transition ${
+                        evtDateNight ? 'bg-pink-500/20 border-pink-500 text-white' : 'bg-slate-700/50 border-slate-600 text-slate-400 hover:border-slate-500'
+                      }`}
+                    >
+                      <span className="text-sm font-medium">💕 Date Night</span>
+                      <span className={`w-5 h-5 rounded-full flex items-center justify-center ${evtDateNight ? 'bg-pink-500 text-white text-xs' : 'bg-slate-600'}`}>
+                        {evtDateNight && '✓'}
+                      </span>
+                    </button>
+                  </div>
                   <div>
                     <label className="block text-sm text-slate-400 mb-1">Event Image URL</label>
                     <input type="url" value={evtImageUrl} onChange={e => setEvtImageUrl(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" placeholder="https://..." />
+                  </div>
+                  {/* Patch 2 — Menu URL */}
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1">Menu URL <span className="text-slate-500">(optional)</span></label>
+                    <input type="url" value={evtMenuUrl} onChange={e => setEvtMenuUrl(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" placeholder="https://example.com/menu.pdf" />
+                    <p className="text-slate-500 text-xs mt-1">Shows on the event card if provided.</p>
                   </div>
                   <button onClick={handleCreateEvent} disabled={loading || !evtName || !evtDate || !evtStartTime} className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-semibold rounded-lg hover:from-orange-600 hover:to-amber-600 transition disabled:opacity-50">
                     {loading ? 'Submitting...' : 'Submit for Approval'}
