@@ -7766,9 +7766,61 @@ function AdminPortal({ onClose, userEmail }) {
     const [recurringDay, setRecurringDay] = useState(''); // 'monday', 'tuesday', etc.
     const [recurringWeeks, setRecurringWeeks] = useState(4); // How many weeks to create
     
+    // Patch 1 — new event fields
+    const [ageTag, setAgeTag] = useState('21+'); // 'all-ages' | 'kid-friendly' | '18+' | '21+' | 'date-night'
+    const [kidFriendly, setKidFriendly] = useState(false);
+    const [dateNight, setDateNight] = useState(false);
+    const [menuUrl, setMenuUrl] = useState('');
+    const [duplicateFromId, setDuplicateFromId] = useState('');
+    
     // For selecting existing venues
     const approvedVenues = establishments.filter(e => e.status === 'approved');
     const allVenues = establishments;
+    
+    // Age tag options (5 — per spec)
+    const AGE_TAGS = [
+      { id: 'all-ages',     label: 'All Ages',     emoji: '👨‍👩‍👧' },
+      { id: 'kid-friendly', label: 'Kid-friendly', emoji: '👶' },
+      { id: '18+',          label: '18+',          emoji: '🔞' },
+      { id: '21+',          label: '21+',          emoji: '🍻' },
+      { id: 'date-night',   label: 'Date Night',   emoji: '💕' },
+    ];
+    
+    // Map age_tag → age_restriction (text col) for backward compat
+    const ageTagToRestriction = (tag) => {
+      if (tag === '21+' || tag === 'date-night') return '21+';
+      if (tag === '18+') return '18+';
+      return 'all'; // all-ages, kid-friendly
+    };
+    
+    // Duplicate-event handler — copies fields from selected event into the form
+    const handleDuplicateFrom = (eventId) => {
+      setDuplicateFromId(eventId);
+      if (!eventId) return;
+      const src = events.find(e => String(e.id) === String(eventId));
+      if (!src) return;
+      // Pre-fill everything except date (user picks a new date)
+      setName(src.name || '');
+      setVenueId(src.establishment_id ? String(src.establishment_id) : '');
+      if (!src.establishment_id) {
+        setVenueName(src.venue || '');
+        setNeighborhood(src.neighborhood || '');
+        setVenueAddress(src.address || '');
+      }
+      setTime(src.time || '');
+      setEndTime(src.end_time || '');
+      setCat(src.category || '');
+      setEvtType(src.type || '');
+      setSpecials(src.drink_specials || '');
+      setDesc(src.description || '');
+      setImageUrl(src.image_url || '');
+      setEventVibes(Array.isArray(src.vibes) ? src.vibes : (Array.isArray(src.tags) ? src.tags : []));
+      setAgeTag(src.age_tag || (src.age_restriction === '18+' ? '18+' : src.age_restriction === 'all' ? 'all-ages' : '21+'));
+      setKidFriendly(!!src.kid_friendly);
+      setDateNight(!!src.date_night);
+      setMenuUrl(src.menu_url || '');
+      showToastMsg(`Duplicated "${src.name}" — pick a new date`, 'success');
+    };
     
     // Common image URLs for quick selection - 40 options
     const quickImages = [
@@ -7881,6 +7933,12 @@ function AdminPortal({ onClose, userEmail }) {
           vibes: eventVibes,
           status: 'live',
           is_recurring: isRecurring,
+          // Patch 1 — new fields
+          age_tag: ageTag,
+          age_restriction: ageTagToRestriction(ageTag),
+          kid_friendly: kidFriendly,
+          date_night: dateNight,
+          menu_url: menuUrl || null,
           views: 0,
           rsvps: 0,
           checkins: 0
@@ -7922,6 +7980,29 @@ function AdminPortal({ onClose, userEmail }) {
         </div>
 
         <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 space-y-4 max-h-[70vh] overflow-y-auto">
+          {/* Duplicate from existing event — quick-fill */}
+          {events.length > 0 && (
+            <div className="p-3 bg-violet-500/10 border border-violet-500/30 rounded-xl">
+              <label className="block text-xs text-violet-300 mb-2 font-semibold uppercase tracking-wide">⚡ Duplicate from existing event</label>
+              <select
+                value={duplicateFromId}
+                onChange={e => handleDuplicateFrom(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm"
+              >
+                <option value="">— Start from scratch —</option>
+                {[...events]
+                  .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+                  .slice(0, 50)
+                  .map(ev => (
+                    <option key={ev.id} value={ev.id}>
+                      {ev.name} — {ev.venue || 'No venue'} ({ev.date || 'no date'})
+                    </option>
+                  ))}
+              </select>
+              <p className="text-violet-300/60 text-xs mt-1">Copies all fields except date. Pick a new date below.</p>
+            </div>
+          )}
+
           {/* Event Name - Always Required */}
           <div>
             <label className="block text-sm text-gray-400 mb-2">Event Name *</label>
@@ -8002,6 +8083,53 @@ function AdminPortal({ onClose, userEmail }) {
                 className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" 
               />
             </div>
+          </div>
+
+          {/* Age Tag — single-select (5 options) */}
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">Age *</label>
+            <div className="flex flex-wrap gap-2">
+              {AGE_TAGS.map(t => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={(e) => { e.preventDefault(); setAgeTag(t.id); }}
+                  className={`px-3 py-2 rounded-xl text-sm font-medium transition ${
+                    ageTag === t.id ? 'bg-orange-500 text-white' : 'bg-gray-700 text-gray-300'
+                  }`}
+                >
+                  {t.emoji} {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Tag toggles — Kid-friendly & Date-night (additional descriptors for filtering) */}
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={(e) => { e.preventDefault(); setKidFriendly(!kidFriendly); }}
+              className={`flex items-center justify-between p-3 rounded-xl border-2 transition ${
+                kidFriendly ? 'bg-emerald-500/20 border-emerald-500 text-white' : 'bg-gray-700/50 border-gray-600 text-gray-400'
+              }`}
+            >
+              <span className="text-sm font-medium">👶 Kid-friendly</span>
+              <span className={`w-5 h-5 rounded-full ${kidFriendly ? 'bg-emerald-500' : 'bg-gray-600'}`}>
+                {kidFriendly && <span className="text-white text-xs flex items-center justify-center h-full">✓</span>}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={(e) => { e.preventDefault(); setDateNight(!dateNight); }}
+              className={`flex items-center justify-between p-3 rounded-xl border-2 transition ${
+                dateNight ? 'bg-pink-500/20 border-pink-500 text-white' : 'bg-gray-700/50 border-gray-600 text-gray-400'
+              }`}
+            >
+              <span className="text-sm font-medium">💕 Date Night</span>
+              <span className={`w-5 h-5 rounded-full ${dateNight ? 'bg-pink-500' : 'bg-gray-600'}`}>
+                {dateNight && <span className="text-white text-xs flex items-center justify-center h-full">✓</span>}
+              </span>
+            </button>
           </div>
 
           {/* Quick Image Selection */}
@@ -8118,6 +8246,18 @@ function AdminPortal({ onClose, userEmail }) {
               <div>
                 <label className="block text-sm text-gray-400 mb-2">Description</label>
                 <textarea value={desc} onChange={e => setDesc(e.target.value)} rows={2} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="Describe your event..." />
+              </div>
+              
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Menu URL <span className="text-gray-500">(optional)</span></label>
+                <input
+                  type="url"
+                  value={menuUrl}
+                  onChange={e => setMenuUrl(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white"
+                  placeholder="https://example.com/menu.pdf"
+                />
+                <p className="text-gray-500 text-xs mt-1">Shows on the event card if provided.</p>
               </div>
               
               <div>
