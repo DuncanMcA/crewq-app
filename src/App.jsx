@@ -138,6 +138,38 @@ const formatDistance = (miles) => {
   return `${miles.toFixed(1)} mi`;
 };
 
+// Patch A — Mapbox forward geocoder. Returns { latitude, longitude } or null.
+// Fails silently — distance filter fails open when lat/lng missing.
+const geocodeAddress = async (address) => {
+  if (!address || !MAPBOX_TOKEN) return null;
+  try {
+    const encoded = encodeURIComponent(address.trim());
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?access_token=${MAPBOX_TOKEN}&limit=1`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const feature = data?.features?.[0];
+    if (!feature?.center || feature.center.length < 2) return null;
+    // Mapbox returns [lng, lat]
+    return {
+      longitude: feature.center[0],
+      latitude: feature.center[1],
+      place_name: feature.place_name || null
+    };
+  } catch (err) {
+    console.warn('Geocoding failed for address:', address, err);
+    return null;
+  }
+};
+
+// Patch A — Pull together a venue's full address for geocoding
+const buildAddressString = (parts) => {
+  const cleaned = [parts.address, parts.neighborhood, parts.city || 'Dallas', parts.state || 'TX']
+    .filter(p => p && String(p).trim())
+    .map(p => String(p).trim());
+  return cleaned.join(', ');
+};
+
 const isEventLive = (event) => {
   const now = new Date();
   const eventDate = new Date(event.date);
@@ -334,11 +366,220 @@ const TOS_LAST_UPDATED = 'April 28, 2026';
 const FEED_DAYS_AHEAD = 7;          // hard filter: events within this many days
 const COMING_UP_DAYS_MIN = 7;       // "Coming Up" lane lower bound (days out)
 const COMING_UP_DAYS_MAX = 30;      // "Coming Up" lane upper bound
-const DAILY_FEED_CAP = 12;          // cards per day (within 10–15 spec range)
+const DAILY_FEED_CAP = 15;          // cards per day (top of 10–15 spec range; data-driven tuning later)
 const DEFAULT_FEED_DISTANCE_MILES = 25; // default discover radius
 
 // Patch 5 — User submission gate
 const MIN_BADGES_TO_SUBMIT = 3;
+
+// Patch A — Stock image library, ~120 curated images organized by category.
+// Diverse along: people (race/age/body type/gender), event types (nightlife + daytime + niche),
+// and venue contexts (bars, restaurants, parks, galleries, studios, community spaces).
+// Used by: admin event creator, business portal event creator, user submission modal.
+const STOCK_IMAGE_CATEGORIES = [
+  {
+    id: 'live-music',
+    label: 'Live Music',
+    icon: '🎵',
+    images: [
+      { label: 'Live band',         url: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800' },
+      { label: 'Concert crowd',     url: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=800' },
+      { label: 'Jazz club',         url: 'https://images.unsplash.com/photo-1415201364774-f6f0bb35f28f?w=800' },
+      { label: 'Piano bar',         url: 'https://images.unsplash.com/photo-1520523839897-bd0b52f945a0?w=800' },
+      { label: 'Acoustic set',      url: 'https://images.unsplash.com/photo-1499415479124-43c32433a620?w=800' },
+      { label: 'Open mic',          url: 'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?w=800' },
+      { label: 'DJ set',            url: 'https://images.unsplash.com/photo-1571266028243-e4733b0f0bb0?w=800' },
+      { label: 'Outdoor concert',   url: 'https://images.unsplash.com/photo-1429962714451-bb934ecdc4ec?w=800' },
+      { label: 'Singer-songwriter', url: 'https://images.unsplash.com/photo-1511192336575-5a79af67a629?w=800' },
+      { label: 'Hip-hop show',      url: 'https://images.unsplash.com/photo-1574391884720-bbc049ec09ad?w=800' },
+    ]
+  },
+  {
+    id: 'bars-drinks',
+    label: 'Bars & Drinks',
+    icon: '🍻',
+    images: [
+      { label: 'Happy hour',     url: 'https://images.unsplash.com/photo-1575037614876-c38a4d44f5b8?w=800' },
+      { label: 'Cocktails',      url: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=800' },
+      { label: 'Wine bar',       url: 'https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?w=800' },
+      { label: 'Whiskey flight', url: 'https://images.unsplash.com/photo-1527281400683-1aae777175f8?w=800' },
+      { label: 'Craft beer',     url: 'https://images.unsplash.com/photo-1535958636474-b021ee887b13?w=800' },
+      { label: 'Bar scene',      url: 'https://images.unsplash.com/photo-1572116469696-31de0f17cc34?w=800' },
+      { label: 'Tequila tasting',url: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=800' },
+      { label: 'Mezcal bar',     url: 'https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=800' },
+      { label: 'Beer garden',    url: 'https://images.unsplash.com/photo-1538488881038-e252a119ace7?w=800' },
+      { label: 'Speakeasy',      url: 'https://images.unsplash.com/photo-1470337458703-46ad1756a187?w=800' },
+      { label: 'Tiki bar',       url: 'https://images.unsplash.com/photo-1546171753-97d7676e4602?w=800' },
+      { label: 'Wine tasting',   url: 'https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?w=800' },
+    ]
+  },
+  {
+    id: 'nightlife',
+    label: 'Nightlife',
+    icon: '🪩',
+    images: [
+      { label: 'DJ booth',     url: 'https://images.unsplash.com/photo-1598387993281-cecf8b71a8f8?w=800' },
+      { label: 'Club lights',  url: 'https://images.unsplash.com/photo-1504680177321-2e6a879aac86?w=800' },
+      { label: 'Disco ball',   url: 'https://images.unsplash.com/photo-1566737236500-c8ac43014a67?w=800' },
+      { label: 'Dance floor',  url: 'https://images.unsplash.com/photo-1581974944026-5d6ed762f617?w=800' },
+      { label: 'Latin night',  url: 'https://images.unsplash.com/photo-1535525153412-5a42439a210d?w=800' },
+      { label: 'Salsa dancing',url: 'https://images.unsplash.com/photo-1504609813442-a8924e83f76e?w=800' },
+      { label: 'Drag show',    url: 'https://images.unsplash.com/photo-1626124619495-c5664a6116a6?w=800' },
+      { label: 'Late night',   url: 'https://images.unsplash.com/photo-1516802273409-68526ee1bdd6?w=800' },
+      { label: 'Neon vibes',   url: 'https://images.unsplash.com/photo-1557787163-1635e2efb160?w=800' },
+      { label: 'Lit venue',    url: 'https://images.unsplash.com/photo-1578736641330-3155e606cd40?w=800' },
+    ]
+  },
+  {
+    id: 'food-dining',
+    label: 'Food & Dining',
+    icon: '🍽️',
+    images: [
+      { label: 'Brunch',          url: 'https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?w=800' },
+      { label: 'Tacos',           url: 'https://images.unsplash.com/photo-1565299585323-38d6b0865b47?w=800' },
+      { label: 'Pizza',           url: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=800' },
+      { label: 'Burgers',         url: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=800' },
+      { label: 'BBQ',             url: 'https://images.unsplash.com/photo-1544025162-d76694265947?w=800' },
+      { label: 'Sushi',           url: 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=800' },
+      { label: 'Tasting menu',    url: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800' },
+      { label: 'Food hall',       url: 'https://images.unsplash.com/photo-1533777324565-a040eb52facd?w=800' },
+      { label: 'Pop-up dinner',   url: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800' },
+      { label: 'Vegan / plant',   url: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=800' },
+      { label: 'Coffee shop',     url: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=800' },
+      { label: 'Bakery',          url: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=800' },
+    ]
+  },
+  {
+    id: 'games-entertainment',
+    label: 'Games & Entertainment',
+    icon: '🎲',
+    images: [
+      { label: 'Trivia night',     url: 'https://images.unsplash.com/photo-1606761568499-6d2451b23c66?w=800' },
+      { label: 'Karaoke',          url: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=800' },
+      { label: 'Comedy show',      url: 'https://images.unsplash.com/photo-1527224857830-43a7acc85260?w=800' },
+      { label: 'Board game night', url: 'https://images.unsplash.com/photo-1611371805429-8b5c1b2c34ba?w=800' },
+      { label: 'Pool / billiards', url: 'https://images.unsplash.com/photo-1585314540237-13cb52440d96?w=800' },
+      { label: 'Bingo',            url: 'https://images.unsplash.com/photo-1610890716171-6b1bb98ffd09?w=800' },
+      { label: 'Arcade',           url: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=800' },
+      { label: 'Bowling',          url: 'https://images.unsplash.com/photo-1538511503723-f7c6e4a01dcc?w=800' },
+      { label: 'Video games',      url: 'https://images.unsplash.com/photo-1580327344181-c1163234e5a0?w=800' },
+      { label: 'Magic show',       url: 'https://images.unsplash.com/photo-1500627964684-141351970a7f?w=800' },
+    ]
+  },
+  {
+    id: 'creative-arts',
+    label: 'Creative & Arts',
+    icon: '🎨',
+    images: [
+      { label: 'Paint and sip',   url: 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=800' },
+      { label: 'Pottery class',   url: 'https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?w=800' },
+      { label: 'Art gallery',     url: 'https://images.unsplash.com/photo-1577720580479-7d839d829c73?w=800' },
+      { label: 'Gallery opening', url: 'https://images.unsplash.com/photo-1605429523419-d828abe425a8?w=800' },
+      { label: 'Craft workshop',  url: 'https://images.unsplash.com/photo-1452860606245-08befc0ff44b?w=800' },
+      { label: 'Photography',     url: 'https://images.unsplash.com/photo-1452780212940-6f5c0d14d848?w=800' },
+      { label: 'Film screening',  url: 'https://images.unsplash.com/photo-1489599735184-3f1f1e0f8e9e?w=800' },
+      { label: 'Theater',         url: 'https://images.unsplash.com/photo-1503095396549-807759245b35?w=800' },
+      { label: 'Dance class',     url: 'https://images.unsplash.com/photo-1547153760-18fc86324498?w=800' },
+      { label: 'Music workshop',  url: 'https://images.unsplash.com/photo-1485579149621-3123dd979885?w=800' },
+    ]
+  },
+  {
+    id: 'community-social',
+    label: 'Community & Social',
+    icon: '👥',
+    images: [
+      { label: 'Book club',       url: 'https://images.unsplash.com/photo-1521587760476-6c12a4b040da?w=800' },
+      { label: 'Run club',        url: 'https://images.unsplash.com/photo-1571008887538-b36bb32f4571?w=800' },
+      { label: 'Cycling group',   url: 'https://images.unsplash.com/photo-1517649763962-0c623066013b?w=800' },
+      { label: 'Yoga class',      url: 'https://images.unsplash.com/photo-1545205597-3d9d02c29597?w=800' },
+      { label: 'Meditation',      url: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?w=800' },
+      { label: 'Networking',      url: 'https://images.unsplash.com/photo-1515187029135-18ee286d815b?w=800' },
+      { label: 'Language meetup', url: 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=800' },
+      { label: 'Volunteer event', url: 'https://images.unsplash.com/photo-1593113598332-cd288d649433?w=800' },
+      { label: 'Knitting circle', url: 'https://images.unsplash.com/photo-1617038260897-41a1f14a8ca0?w=800' },
+      { label: 'Group fitness',   url: 'https://images.unsplash.com/photo-1571902943202-507ec2618e8f?w=800' },
+    ]
+  },
+  {
+    id: 'sports-watching',
+    label: 'Sports & Watch Parties',
+    icon: '🏈',
+    images: [
+      { label: 'Sports bar',     url: 'https://images.unsplash.com/photo-1489944440615-453fc2b6a9a9?w=800' },
+      { label: 'Watch party',    url: 'https://images.unsplash.com/photo-1577471488278-16eec37ffcc2?w=800' },
+      { label: 'Football',       url: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800' },
+      { label: 'Basketball',     url: 'https://images.unsplash.com/photo-1504450758481-7338eba7524a?w=800' },
+      { label: 'Baseball',       url: 'https://images.unsplash.com/photo-1508344928928-7165b67de128?w=800' },
+      { label: 'Hockey',         url: 'https://images.unsplash.com/photo-1515703407324-5f753afd8be8?w=800' },
+      { label: 'UFC / boxing',   url: 'https://images.unsplash.com/photo-1517649763962-0c623066013b?w=800' },
+      { label: 'Tailgate',       url: 'https://images.unsplash.com/photo-1543351611-58f69d7c1781?w=800' },
+    ]
+  },
+  {
+    id: 'venues-spaces',
+    label: 'Venue Types',
+    icon: '🌆',
+    images: [
+      { label: 'Rooftop',          url: 'https://images.unsplash.com/photo-1519671482749-fd09be7ccebf?w=800' },
+      { label: 'Skyline view',     url: 'https://images.unsplash.com/photo-1470219556762-1771e7f9427d?w=800' },
+      { label: 'Patio',            url: 'https://images.unsplash.com/photo-1517457373958-b7bdd4587205?w=800' },
+      { label: 'Lounge',           url: 'https://images.unsplash.com/photo-1543007630-9710e4a00a20?w=800' },
+      { label: 'Park / outdoor',   url: 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=800' },
+      { label: 'Warehouse space',  url: 'https://images.unsplash.com/photo-1572177812156-58036aae439c?w=800' },
+      { label: 'Backyard / lawn',  url: 'https://images.unsplash.com/photo-1532635241-17e820acc59f?w=800' },
+      { label: 'Brewery',          url: 'https://images.unsplash.com/photo-1535958636474-b021ee887b13?w=800' },
+      { label: 'Distillery',       url: 'https://images.unsplash.com/photo-1569529465841-dfecdab7503b?w=800' },
+      { label: 'Pool / poolside',  url: 'https://images.unsplash.com/photo-1505816014357-96b5ff457e9a?w=800' },
+    ]
+  },
+  {
+    id: 'celebration',
+    label: 'Celebration & Special',
+    icon: '🎉',
+    images: [
+      { label: 'Party',         url: 'https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=800' },
+      { label: 'Celebration',   url: 'https://images.unsplash.com/photo-1496843916299-590492c751f4?w=800' },
+      { label: 'Birthday',      url: 'https://images.unsplash.com/photo-1464349095431-e9a21285b5f3?w=800' },
+      { label: 'Holiday party', url: 'https://images.unsplash.com/photo-1543589077-47d81606c1bf?w=800' },
+      { label: 'Festival',      url: 'https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=800' },
+      { label: 'Pride event',   url: 'https://images.unsplash.com/photo-1563346116-23e0a5b30dc4?w=800' },
+      { label: 'NYE',           url: 'https://images.unsplash.com/photo-1546271876-af6caec5fae4?w=800' },
+      { label: 'Halloween',     url: 'https://images.unsplash.com/photo-1509557965875-b88c97052f0e?w=800' },
+    ]
+  },
+  {
+    id: 'family-daytime',
+    label: 'Family & Daytime',
+    icon: '👨‍👩‍👧',
+    images: [
+      { label: 'Farmers market',  url: 'https://images.unsplash.com/photo-1488459716781-31db52582fe9?w=800' },
+      { label: 'Family event',    url: 'https://images.unsplash.com/photo-1602002418082-a4443e081dd1?w=800' },
+      { label: 'Kids activity',   url: 'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=800' },
+      { label: 'Outdoor festival',url: 'https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=800' },
+      { label: 'Picnic',          url: 'https://images.unsplash.com/photo-1526401485004-46910ecc8e51?w=800' },
+      { label: 'Pet-friendly',    url: 'https://images.unsplash.com/photo-1450778869180-41d0601e046e?w=800' },
+      { label: 'Storytime',       url: 'https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=800' },
+      { label: 'Cooking class',   url: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=800' },
+    ]
+  },
+  {
+    id: 'date-romantic',
+    label: 'Date Night',
+    icon: '💕',
+    images: [
+      { label: 'Romantic dinner', url: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800' },
+      { label: 'Couple dancing',  url: 'https://images.unsplash.com/photo-1504609813442-a8924e83f76e?w=800' },
+      { label: 'Wine for two',    url: 'https://images.unsplash.com/photo-1510627489930-0c1b0bfb6785?w=800' },
+      { label: 'Sunset patio',    url: 'https://images.unsplash.com/photo-1501426026826-31c667bdf23d?w=800' },
+      { label: 'Candlelit',       url: 'https://images.unsplash.com/photo-1559329007-40df8a9345d8?w=800' },
+      { label: 'Couple cooking',  url: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=800' },
+    ]
+  }
+];
+
+// Flat list for legacy/fallback consumers
+const STOCK_IMAGE_FLAT = STOCK_IMAGE_CATEGORIES.flatMap(cat => cat.images);
+
 
 // Life stage options
 const LIFE_STAGE_OPTIONS = [
@@ -4484,17 +4725,8 @@ function EventSuggestionModal({ onClose, userProfile, supabaseClient, userBadges
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  // Quick image picks (subset of admin's library)
-  const quickImages = [
-    { label: '🎵 Live Music', url: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800' },
-    { label: '🍻 Happy Hour', url: 'https://images.unsplash.com/photo-1575037614876-c38a4d44f5b8?w=800' },
-    { label: '🧠 Trivia',     url: 'https://images.unsplash.com/photo-1606761568499-6d2451b23c66?w=800' },
-    { label: '🎤 Karaoke',    url: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=800' },
-    { label: '💃 DJ',         url: 'https://images.unsplash.com/photo-1571266028243-e4733b0f0bb0?w=800' },
-    { label: '🥂 Brunch',     url: 'https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?w=800' },
-    { label: '😂 Comedy',     url: 'https://images.unsplash.com/photo-1527224857830-43a7acc85260?w=800' },
-    { label: '🌆 Rooftop',    url: 'https://images.unsplash.com/photo-1519671482749-fd09be7ccebf?w=800' },
-  ];
+  // Patch A — Use shared image library; legacy alias for fallback default
+  const quickImages = STOCK_IMAGE_FLAT;
 
   const ageTagToRestriction = (tag) => {
     if (tag === '21+' || tag === 'date-night') return '21+';
@@ -4512,6 +4744,15 @@ function EventSuggestionModal({ onClose, userProfile, supabaseClient, userBadges
 
     setSubmitting(true);
     try {
+      // Patch A — Geocode the venue address
+      let geoLat = null, geoLng = null;
+      const geo = await geocodeAddress(buildAddressString({
+        address: venueName.trim(), // Best guess — venueName + neighborhood + city
+        neighborhood: neighborhood,
+        city: 'Dallas'
+      }));
+      if (geo) { geoLat = geo.latitude; geoLng = geo.longitude; }
+      
       if (supabaseClient) {
         // Insert directly into events as pending — admin sees it in approval queue
         const { error } = await supabaseClient
@@ -4530,6 +4771,9 @@ function EventSuggestionModal({ onClose, userProfile, supabaseClient, userBadges
             date_night: ageTag === 'date-night',
             status: 'pending',
             submitted_by_user_id: userProfile?.id || null,
+            // Patch A — geocoded location
+            latitude: geoLat,
+            longitude: geoLng,
             views: 0,
             rsvps: 0,
             checkins: 0
@@ -4696,21 +4940,8 @@ function EventSuggestionModal({ onClose, userProfile, supabaseClient, userBadges
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-zinc-400 mb-2">Image (tap to pick)</label>
-            <div className="grid grid-cols-4 gap-2">
-              {quickImages.map((img, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => setImageUrl(img.url)}
-                  className={`aspect-square rounded-lg overflow-hidden border-2 transition ${
-                    imageUrl === img.url ? 'border-orange-500' : 'border-transparent'
-                  }`}
-                  title={img.label}
-                >
-                  <img src={img.url} alt={img.label} className="w-full h-full object-cover" />
-                </button>
-              ))}
-            </div>
+            <label className="block text-sm font-semibold text-zinc-400 mb-2">Image</label>
+            <ImagePicker value={imageUrl} onChange={setImageUrl} darkMode={true} />
           </div>
 
           <div>
@@ -6881,6 +7112,122 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
 }
 
 // Patch 6 — Legal modal (Terms of Service / Privacy Policy)
+// Patch A — Reusable image picker. Categorized accordion with custom URL fallback.
+// Used by admin form, business portal form, and user submission modal.
+function ImagePicker({ value, onChange, darkMode = true, defaultCategory = 'live-music' }) {
+  const [openCat, setOpenCat] = useState(defaultCategory);
+  const [showCustom, setShowCustom] = useState(false);
+  const [customUrl, setCustomUrl] = useState('');
+
+  // If the current value matches a stock image, find its category
+  useEffect(() => {
+    const stockMatch = STOCK_IMAGE_CATEGORIES.find(cat => cat.images.some(i => i.url === value));
+    if (stockMatch && !showCustom) {
+      setOpenCat(stockMatch.id);
+    } else if (value && !STOCK_IMAGE_FLAT.some(i => i.url === value)) {
+      // Value is a custom URL
+      setCustomUrl(value);
+      setShowCustom(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const baseBg = darkMode ? 'bg-zinc-800' : 'bg-amber-50';
+  const baseHover = darkMode ? 'hover:bg-zinc-700' : 'hover:bg-amber-100';
+  const textColor = darkMode ? 'text-white' : 'text-zinc-900';
+  const subtextColor = darkMode ? 'text-zinc-400' : 'text-zinc-600';
+  const borderColor = darkMode ? 'border-zinc-700' : 'border-amber-200';
+
+  const totalImageCount = STOCK_IMAGE_FLAT.length;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className={`text-xs ${subtextColor}`}>{totalImageCount} stock images organized by category</span>
+        <button
+          type="button"
+          onClick={() => setShowCustom(!showCustom)}
+          className={`text-xs font-semibold ${darkMode ? 'text-violet-400 hover:text-violet-300' : 'text-orange-600 hover:text-orange-700'}`}
+        >
+          {showCustom ? '← Use stock library' : 'Use custom URL →'}
+        </button>
+      </div>
+
+      {showCustom ? (
+        <div className="space-y-2">
+          <input
+            type="url"
+            value={customUrl}
+            onChange={e => {
+              setCustomUrl(e.target.value);
+              if (onChange) onChange(e.target.value);
+            }}
+            placeholder="https://example.com/image.jpg"
+            className={`w-full px-4 py-3 ${baseBg} border ${borderColor} rounded-xl ${textColor} text-sm`}
+          />
+          {customUrl && (
+            <div className={`relative rounded-xl overflow-hidden border ${borderColor}`}>
+              <img
+                src={customUrl}
+                alt="Preview"
+                className="w-full h-40 object-cover"
+                onError={(e) => { e.target.style.display = 'none'; }}
+              />
+            </div>
+          )}
+          <p className={`text-xs ${subtextColor}`}>Tip: paste a Unsplash, Imgur, or any public image URL.</p>
+        </div>
+      ) : (
+        <div className={`rounded-xl border ${borderColor} overflow-hidden`}>
+          {STOCK_IMAGE_CATEGORIES.map(cat => {
+            const isOpen = openCat === cat.id;
+            return (
+              <div key={cat.id} className={`${darkMode ? 'border-b border-zinc-700/50' : 'border-b border-amber-200/50'} last:border-b-0`}>
+                <button
+                  type="button"
+                  onClick={() => setOpenCat(isOpen ? null : cat.id)}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 ${baseBg} ${baseHover} text-left transition`}
+                >
+                  <span className={`text-sm font-semibold ${textColor}`}>
+                    <span className="mr-2">{cat.icon}</span>
+                    {cat.label}
+                    <span className={`ml-2 text-xs ${subtextColor}`}>({cat.images.length})</span>
+                  </span>
+                  <span className={`text-xs ${subtextColor}`}>{isOpen ? '−' : '+'}</span>
+                </button>
+                {isOpen && (
+                  <div className={`p-2 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
+                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                      {cat.images.map((img, idx) => {
+                        const selected = value === img.url;
+                        return (
+                          <button
+                            key={`${cat.id}-${idx}`}
+                            type="button"
+                            onClick={() => onChange && onChange(img.url)}
+                            title={img.label}
+                            className={`relative aspect-square rounded-lg overflow-hidden border-2 transition ${selected ? (darkMode ? 'border-violet-500 ring-2 ring-violet-500/40' : 'border-orange-500 ring-2 ring-orange-500/40') : 'border-transparent hover:border-zinc-500'}`}
+                          >
+                            <img src={img.url} alt={img.label} className="w-full h-full object-cover" loading="lazy" />
+                            {selected && (
+                              <span className="absolute top-1 right-1 w-5 h-5 rounded-full bg-violet-500 text-white text-xs flex items-center justify-center">✓</span>
+                            )}
+                            <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] px-1 py-0.5 truncate">{img.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LegalModal({ type, onClose, darkMode }) {
   const isTos = type === 'tos';
   return (
@@ -7751,6 +8098,48 @@ function AdminPortal({ onClose, userEmail }) {
     } catch { showToastMsg('Error deleting event', 'error'); }
   };
 
+  // Patch A — Backfill helper: geocode every event missing lat/long
+  const handleBackfillGeocoding = async () => {
+    if (!supabaseClient) return;
+    try {
+      const { data: missing, error } = await supabaseClient
+        .from('events')
+        .select('id, name, venue, address, neighborhood')
+        .or('latitude.is.null,longitude.is.null')
+        .limit(50);
+      if (error) throw error;
+      if (!missing || missing.length === 0) {
+        showToastMsg('All events already have coordinates ✓');
+        return;
+      }
+      showToastMsg(`Geocoding ${missing.length} events…`);
+      let success = 0;
+      for (const ev of missing) {
+        const geo = await geocodeAddress(buildAddressString({
+          address: ev.address || ev.venue,
+          neighborhood: ev.neighborhood,
+          city: 'Dallas'
+        }));
+        if (geo) {
+          await supabaseClient
+            .from('events')
+            .update({ latitude: geo.latitude, longitude: geo.longitude })
+            .eq('id', ev.id);
+          success++;
+        }
+        // Stay well under Mapbox's 600/min free tier
+        await new Promise(r => setTimeout(r, 200));
+      }
+      showToastMsg(`Geocoded ${success} of ${missing.length} events`);
+      // Reload events
+      const { data: reloaded } = await supabaseClient.from('events').select('*').order('created_at', { ascending: false });
+      if (reloaded) setEvents(reloaded);
+    } catch (err) {
+      console.error('Backfill error:', err);
+      showToastMsg('Backfill failed — check console', 'error');
+    }
+  };
+
   // Approval handlers
   const handleApproveEvent = async (id) => {
     try {
@@ -8366,64 +8755,8 @@ function AdminPortal({ onClose, userEmail }) {
     };
     
     // Common image URLs for quick selection - 40 options
-    const quickImages = [
-      // Live Music & Concerts
-      { label: '🎵 Live Music', url: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800' },
-      { label: '🎸 Concert', url: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=800' },
-      { label: '🎷 Jazz', url: 'https://images.unsplash.com/photo-1415201364774-f6f0bb35f28f?w=800' },
-      { label: '🎹 Piano Bar', url: 'https://images.unsplash.com/photo-1520523839897-bd0b52f945a0?w=800' },
-      
-      // Bars & Drinks
-      { label: '🍻 Happy Hour', url: 'https://images.unsplash.com/photo-1575037614876-c38a4d44f5b8?w=800' },
-      { label: '🍸 Cocktails', url: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=800' },
-      { label: '🍷 Wine Bar', url: 'https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?w=800' },
-      { label: '🥃 Whiskey', url: 'https://images.unsplash.com/photo-1527281400683-1aae777175f8?w=800' },
-      { label: '🍺 Craft Beer', url: 'https://images.unsplash.com/photo-1535958636474-b021ee887b13?w=800' },
-      { label: '🧊 Bar Scene', url: 'https://images.unsplash.com/photo-1572116469696-31de0f17cc34?w=800' },
-      
-      // Nightlife & Dancing
-      { label: '💃 DJ/Dancing', url: 'https://images.unsplash.com/photo-1571266028243-e4733b0f0bb0?w=800' },
-      { label: '🪩 Nightclub', url: 'https://images.unsplash.com/photo-1566737236500-c8ac43014a67?w=800' },
-      { label: '🎧 DJ Booth', url: 'https://images.unsplash.com/photo-1598387993281-cecf8b71a8f8?w=800' },
-      { label: '✨ Club Lights', url: 'https://images.unsplash.com/photo-1504680177321-2e6a879aac86?w=800' },
-      
-      // Food & Dining
-      { label: '🍽️ Food Event', url: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800' },
-      { label: '🌮 Tacos', url: 'https://images.unsplash.com/photo-1565299585323-38d6b0865b47?w=800' },
-      { label: '🍕 Pizza', url: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=800' },
-      { label: '🥂 Brunch', url: 'https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?w=800' },
-      { label: '🍔 Burgers', url: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=800' },
-      
-      // Entertainment
-      { label: '🧠 Trivia', url: 'https://images.unsplash.com/photo-1606761568499-6d2451b23c66?w=800' },
-      { label: '🎤 Karaoke', url: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=800' },
-      { label: '😂 Comedy', url: 'https://images.unsplash.com/photo-1527224857830-43a7acc85260?w=800' },
-      { label: '🎲 Game Night', url: 'https://images.unsplash.com/photo-1611371805429-8b5c1b2c34ba?w=800' },
-      { label: '🎱 Pool/Billiards', url: 'https://images.unsplash.com/photo-1585314540237-13cb52440d96?w=800' },
-      
-      // Sports
-      { label: '🏈 Sports Bar', url: 'https://images.unsplash.com/photo-1489944440615-453fc2b6a9a9?w=800' },
-      { label: '⚽ Soccer', url: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=800' },
-      { label: '🏀 Basketball', url: 'https://images.unsplash.com/photo-1504450758481-7338eba7524a?w=800' },
-      
-      // Venue Types
-      { label: '🌆 Rooftop', url: 'https://images.unsplash.com/photo-1519671482749-fd09be7ccebf?w=800' },
-      { label: '🌇 Skyline View', url: 'https://images.unsplash.com/photo-1470219556762-1771e7f9427d?w=800' },
-      { label: '🌳 Patio', url: 'https://images.unsplash.com/photo-1517457373958-b7bdd4587205?w=800' },
-      { label: '🏠 Lounge', url: 'https://images.unsplash.com/photo-1543007630-9710e4a00a20?w=800' },
-      
-      // Events & Social
-      { label: '🎉 Party', url: 'https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=800' },
-      { label: '🤝 Networking', url: 'https://images.unsplash.com/photo-1515187029135-18ee286d815b?w=800' },
-      { label: '🎊 Celebration', url: 'https://images.unsplash.com/photo-1496843916299-590492c751f4?w=800' },
-      { label: '👥 Social', url: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=800' },
-      
-      // Misc Nightlife
-      { label: '🌙 Night Out', url: 'https://images.unsplash.com/photo-1516802273409-68526ee1bdd6?w=800' },
-      { label: '🔥 Lit Venue', url: 'https://images.unsplash.com/photo-1578736641330-3155e606cd40?w=800' },
-      { label: '💜 Neon Vibes', url: 'https://images.unsplash.com/photo-1557787163-1635e2efb160?w=800' },
-      { label: '🎭 Entertainment', url: 'https://images.unsplash.com/photo-1603190287605-e6ade32fa852?w=800' },
-    ];
+    // Patch A — Use shared STOCK_IMAGE_CATEGORIES via ImagePicker; keep `quickImages` alias for legacy refs in this scope
+    const quickImages = STOCK_IMAGE_FLAT;
     
     const handleQuickSubmit = async () => {
       if (!name) { showToastMsg('Please enter an event name', 'error'); return; }
@@ -8458,6 +8791,33 @@ function AdminPortal({ onClose, userEmail }) {
         }
       }
       
+      // Patch A — Geocode the venue address once (shared across all recurring instances)
+      let geoLat = null;
+      let geoLng = null;
+      if (venueId) {
+        // Existing venue: prefer its stored coords, geocode its stored address otherwise
+        const v = allVenues.find(e => String(e.id) === String(venueId));
+        if (v?.latitude != null && v?.longitude != null) {
+          geoLat = v.latitude;
+          geoLng = v.longitude;
+        } else if (v?.address || v?.neighborhood) {
+          const geo = await geocodeAddress(buildAddressString({
+            address: v.address,
+            neighborhood: v.neighborhood,
+            city: v.city || 'Dallas'
+          }));
+          if (geo) { geoLat = geo.latitude; geoLng = geo.longitude; }
+        }
+      } else if (venueAddress || finalNeighborhood) {
+        // New venue: geocode the address the admin entered
+        const geo = await geocodeAddress(buildAddressString({
+          address: venueAddress,
+          neighborhood: finalNeighborhood,
+          city: 'Dallas'
+        }));
+        if (geo) { geoLat = geo.latitude; geoLng = geo.longitude; }
+      }
+      
       for (const eventDate of datesToCreate) {
         await handleCreateEvent({ 
           name, 
@@ -8482,6 +8842,9 @@ function AdminPortal({ onClose, userEmail }) {
           kid_friendly: kidFriendly,
           date_night: dateNight,
           menu_url: menuUrl || null,
+          // Patch A — geocoded coordinates (null if geocoding fails — distance filter fails open)
+          latitude: geoLat,
+          longitude: geoLng,
           views: 0,
           rsvps: 0,
           checkins: 0
@@ -8675,45 +9038,10 @@ function AdminPortal({ onClose, userEmail }) {
             </button>
           </div>
 
-          {/* Quick Image Selection */}
+          {/* Patch A — Categorized image picker (120 stock + custom URL) */}
           <div>
-            <label className="block text-sm text-gray-400 mb-2">Event Image (tap to select)</label>
-            <div className="max-h-40 overflow-y-auto rounded-xl bg-gray-700/50 p-2 mb-2">
-              <div className="grid grid-cols-5 sm:grid-cols-8 gap-2">
-                {quickImages.map((img, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={(e) => { e.preventDefault(); setImageUrl(img.url); }}
-                    className={`aspect-square rounded-lg overflow-hidden border-2 transition ${
-                      imageUrl === img.url ? 'border-orange-500 ring-2 ring-orange-500/50' : 'border-transparent hover:border-gray-500'
-                    }`}
-                    title={img.label}
-                  >
-                    <img src={img.url} alt={img.label} className="w-full h-full object-cover" />
-                  </button>
-                ))}
-              </div>
-            </div>
-            {imageUrl && (
-              <div className="flex items-center gap-2 mb-2 p-2 bg-gray-700/50 rounded-lg">
-                <img src={imageUrl} alt="Selected" className="w-12 h-12 rounded-lg object-cover" />
-                <span className="text-green-400 text-sm flex-1 truncate">✓ {quickImages.find(i => i.url === imageUrl)?.label || 'Custom image'}</span>
-                <button 
-                  type="button"
-                  onClick={(e) => { e.preventDefault(); setImageUrl(''); }} 
-                  className="text-gray-400 hover:text-red-400"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-            <input 
-              value={imageUrl} 
-              onChange={e => setImageUrl(e.target.value)} 
-              className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm" 
-              placeholder="Or paste custom image URL" 
-            />
+            <label className="block text-sm text-gray-400 mb-2">Event Image</label>
+            <ImagePicker value={imageUrl} onChange={setImageUrl} darkMode={true} />
           </div>
 
           {/* Recurring Event Toggle */}
@@ -9108,7 +9436,6 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
   const [evtCoverCharge, setEvtCoverCharge] = useState('');
   const [evtDrinkSpecials, setEvtDrinkSpecials] = useState('');
   const [evtFoodSpecials, setEvtFoodSpecials] = useState('');
-  const [evtAgeRestriction, setEvtAgeRestriction] = useState('21+');
   const [evtDressCode, setEvtDressCode] = useState('casual');
   const [evtMusicGenre, setEvtMusicGenre] = useState('');
   const [evtCapacity, setEvtCapacity] = useState('');
@@ -9381,7 +9708,6 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
     setEvtCoverCharge(src.cover_charge ? String(src.cover_charge) : '');
     setEvtDrinkSpecials(src.drink_specials || '');
     setEvtFoodSpecials(src.food_specials || '');
-    setEvtAgeRestriction(src.age_restriction || '21+');
     setEvtDressCode(src.dress_code || 'casual');
     setEvtMusicGenre(src.music_genre || '');
     setEvtCapacity(src.capacity ? String(src.capacity) : '');
@@ -9403,6 +9729,20 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
     setLoading(true);
     
     try {
+      // Patch A — Geocode the venue address (use stored coords if venue already has them)
+      let geoLat = null, geoLng = null;
+      if (venue.latitude != null && venue.longitude != null) {
+        geoLat = venue.latitude;
+        geoLng = venue.longitude;
+      } else if (venue.address || venue.neighborhood) {
+        const geo = await geocodeAddress(buildAddressString({
+          address: venue.address,
+          neighborhood: venue.neighborhood,
+          city: venue.city || 'Dallas'
+        }));
+        if (geo) { geoLat = geo.latitude; geoLng = geo.longitude; }
+      }
+      
       const eventData = {
         name: evtName,
         venue: venue.name,
@@ -9429,6 +9769,9 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
         kid_friendly: evtKidFriendly,
         date_night: evtDateNight,
         menu_url: evtMenuUrl || null,
+        // Patch A — geocoded location
+        latitude: geoLat,
+        longitude: geoLng,
         status: 'pending',
         views: 0,
         rsvps: 0,
@@ -9450,7 +9793,7 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
       setEvtName(''); setEvtCategory(''); setEvtType(''); setEvtDate('');
       setEvtStartTime(''); setEvtEndTime(''); setEvtDescription('');
       setEvtCoverCharge(''); setEvtDrinkSpecials(''); setEvtFoodSpecials('');
-      setEvtAgeRestriction('21+'); setEvtDressCode('casual'); setEvtMusicGenre('');
+      setEvtDressCode('casual'); setEvtMusicGenre('');
       setEvtCapacity(''); setEvtImageUrl(''); setEvtRecurring(false);
       // Patch 2 — reset new fields
       setEvtAgeTag('21+'); setEvtKidFriendly(false); setEvtDateNight(false);
@@ -9735,9 +10078,19 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
             {/* EVENTS LIST VIEW */}
             {currentView === 'events' && (
               <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <div><h1 className="text-2xl font-bold text-white">Events</h1><p className="text-slate-400">{events.length} total</p></div>
-                  <button onClick={() => setCurrentView('create-event')} className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"><Plus className="w-4 h-4" />Create</button>
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div><h1 className="text-2xl font-bold text-white">Events</h1><p className="text-slate-400">{events.length} total · {events.filter(e => e.latitude == null || e.longitude == null).length} missing coordinates</p></div>
+                  <div className="flex items-center gap-2">
+                    {/* Patch A — Geocode backfill */}
+                    <button
+                      onClick={handleBackfillGeocoding}
+                      className="flex items-center gap-2 px-3 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition text-sm"
+                      title="Geocode events that are missing latitude/longitude"
+                    >
+                      <MapPin className="w-4 h-4" />Geocode missing
+                    </button>
+                    <button onClick={() => setCurrentView('create-event')} className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"><Plus className="w-4 h-4" />Create</button>
+                  </div>
                 </div>
                 <div className="bg-slate-800 rounded-xl border border-slate-700">
                   {events.map(event => (
@@ -9749,7 +10102,12 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
                       <Calendar className="w-6 h-6 text-slate-400" />
                       <div className="flex-1">
                         <p className="text-white font-medium">{event.name}</p>
-                        <p className="text-slate-500 text-sm">{event.venue} • {event.date}</p>
+                        <p className="text-slate-500 text-sm flex items-center gap-2">
+                          <span>{event.venue} • {event.date}</span>
+                          {(event.latitude == null || event.longitude == null) && (
+                            <span className="text-amber-400 text-xs" title="Missing coordinates — click 'Geocode missing' to fix">⚠ no geo</span>
+                          )}
+                        </p>
                       </div>
                       <span className={`px-2 py-1 rounded-full text-xs ${event.status === 'pending' ? 'bg-amber-500/20 text-amber-400' : event.status === 'live' || event.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400' : event.status === 'rejected' ? 'bg-red-500/20 text-red-400' : 'bg-slate-600 text-slate-400'}`}>
                         {event.status === 'approved' ? 'Live' : event.status || 'live'}
@@ -10062,9 +10420,10 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
                       </span>
                     </button>
                   </div>
+                  {/* Patch A — Categorized image picker (replaces single URL input) */}
                   <div>
-                    <label className="block text-sm text-slate-400 mb-1">Event Image URL</label>
-                    <input type="url" value={evtImageUrl} onChange={e => setEvtImageUrl(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" placeholder="https://..." />
+                    <label className="block text-sm text-slate-400 mb-1">Event Image</label>
+                    <ImagePicker value={evtImageUrl} onChange={setEvtImageUrl} darkMode={true} />
                   </div>
                   {/* Patch 2 — Menu URL */}
                   <div>
@@ -12170,18 +12529,24 @@ const loadSquads = async (userId) => {
     return filtered.slice(0, remaining);
   };
 
-  // Patch 3 — Coming Up lane: ticketed/special events 7–30 days out
+  // Patch 3 + Patch A — Coming Up lane: all events 7–30 days out.
+  // Special events (tickets_url or is_special) bubble to the top.
   const getComingUpEvents = () => {
     const baseList = applyHardFilters(allEvents, {
       minDaysAhead: COMING_UP_DAYS_MIN,
       maxDaysAhead: COMING_UP_DAYS_MAX,
       maxMiles: DEFAULT_FEED_DISTANCE_MILES * 2 // a bit wider for special events
     });
-    // Special = has tickets_url OR is_special flag
     return baseList
-      .filter(e => e.tickets_url || e.is_special)
-      .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
-      .slice(0, 10);
+      .sort((a, b) => {
+        // Special events first
+        const aSpecial = (a.tickets_url || a.is_special) ? 1 : 0;
+        const bSpecial = (b.tickets_url || b.is_special) ? 1 : 0;
+        if (aSpecial !== bSpecial) return bSpecial - aSpecial;
+        // Then by date ascending
+        return (a.date || '').localeCompare(b.date || '');
+      })
+      .slice(0, 12);
   };
 
   // Get events happening tonight (within 6 hours or starting soon)
@@ -12661,9 +13026,9 @@ const loadSquads = async (userId) => {
                   <div className="mt-6">
                     <div className="flex items-center justify-between mb-3 px-1">
                       <h3 className={`text-sm font-bold uppercase tracking-wide ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
-                        🎫 Coming Up
+                        📅 Coming Up
                       </h3>
-                      <span className={`text-xs ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>{comingUp.length} special events</span>
+                      <span className={`text-xs ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>{comingUp.length} event{comingUp.length !== 1 ? 's' : ''} in the next 30 days</span>
                     </div>
                     <div className="overflow-x-auto -mx-4 px-4 pb-2">
                       <div className="flex gap-3" style={{ minWidth: 'min-content' }}>
