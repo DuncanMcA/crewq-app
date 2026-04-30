@@ -8073,7 +8073,12 @@ function AdminPortal({ onClose, userEmail }) {
       setEvents([data, ...events]);
       showToastMsg(`Event "${eventData.name}" created!`);
       setCurrentView('events');
-    } catch (err) { console.error(err); showToastMsg('Error creating event', 'error'); }
+    } catch (err) {
+      // Patch A.1 — Surface the real Supabase error so missing columns / constraint violations are visible
+      console.error('Create event failed:', err, 'Payload:', eventData);
+      const msg = err?.message || err?.hint || err?.details || 'Error creating event';
+      showToastMsg(`Create failed: ${msg}`, 'error');
+    }
   };
 
   const handleUpdateEvent = async (id, updates) => {
@@ -8084,7 +8089,11 @@ function AdminPortal({ onClose, userEmail }) {
       showToastMsg('Event updated!');
       setEditingEvent(null);
       if (selectedEvent?.id === id) setSelectedEvent(data);
-    } catch { showToastMsg('Error updating event', 'error'); }
+    } catch (err) {
+      console.error('Update event failed:', err);
+      const msg = err?.message || err?.hint || 'Error updating event';
+      showToastMsg(`Update failed: ${msg}`, 'error');
+    }
   };
 
   const handleDeleteEvent = async (id) => {
@@ -8792,30 +8801,35 @@ function AdminPortal({ onClose, userEmail }) {
       }
       
       // Patch A — Geocode the venue address once (shared across all recurring instances)
+      // Patch A.1 — Wrapped in try/catch: geocoding must never block event creation
       let geoLat = null;
       let geoLng = null;
-      if (venueId) {
-        // Existing venue: prefer its stored coords, geocode its stored address otherwise
-        const v = allVenues.find(e => String(e.id) === String(venueId));
-        if (v?.latitude != null && v?.longitude != null) {
-          geoLat = v.latitude;
-          geoLng = v.longitude;
-        } else if (v?.address || v?.neighborhood) {
+      try {
+        if (venueId) {
+          // Existing venue: prefer its stored coords, geocode its stored address otherwise
+          const v = allVenues.find(e => String(e.id) === String(venueId));
+          if (v?.latitude != null && v?.longitude != null) {
+            geoLat = v.latitude;
+            geoLng = v.longitude;
+          } else if (v?.address || v?.neighborhood) {
+            const geo = await geocodeAddress(buildAddressString({
+              address: v.address,
+              neighborhood: v.neighborhood,
+              city: v.city || 'Dallas'
+            }));
+            if (geo) { geoLat = geo.latitude; geoLng = geo.longitude; }
+          }
+        } else if (venueAddress || finalNeighborhood) {
+          // New venue: geocode the address the admin entered
           const geo = await geocodeAddress(buildAddressString({
-            address: v.address,
-            neighborhood: v.neighborhood,
-            city: v.city || 'Dallas'
+            address: venueAddress,
+            neighborhood: finalNeighborhood,
+            city: 'Dallas'
           }));
           if (geo) { geoLat = geo.latitude; geoLng = geo.longitude; }
         }
-      } else if (venueAddress || finalNeighborhood) {
-        // New venue: geocode the address the admin entered
-        const geo = await geocodeAddress(buildAddressString({
-          address: venueAddress,
-          neighborhood: finalNeighborhood,
-          city: 'Dallas'
-        }));
-        if (geo) { geoLat = geo.latitude; geoLng = geo.longitude; }
+      } catch (geoErr) {
+        console.warn('Geocoding step failed — saving without coordinates:', geoErr);
       }
       
       for (const eventDate of datesToCreate) {
@@ -8835,7 +8849,7 @@ function AdminPortal({ onClose, userEmail }) {
           image_url: imageUrl || quickImages[0].url,
           vibes: eventVibes,
           status: 'live',
-          is_recurring: isRecurring,
+          recurring: isRecurring,
           // Patch 1 — new fields
           age_tag: ageTag,
           age_restriction: ageTagToRestriction(ageTag),
