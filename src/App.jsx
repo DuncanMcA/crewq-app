@@ -372,6 +372,71 @@ const DEFAULT_FEED_DISTANCE_MILES = 25; // default discover radius
 // Patch 5 — User submission gate
 const MIN_BADGES_TO_SUBMIT = 3;
 
+// Patch B — Display city. Static for now; designed to swap to a per-user value when expanding to other cities.
+const DISPLAY_CITY = 'Dallas, Texas';
+
+// Patch B — How long a card must be in view before counting as "viewed" (daily cap)
+const FEED_CARD_VIEW_MS = 2000;
+
+// Patch B — Resolve solo-friendliness. Order: explicit DB column → date_night signal → category heuristic.
+// Returns true (solo OK), false (not solo), or null (unknown — treat as ok in lenient mode).
+const resolveSoloFriendly = (event) => {
+  // Admin override (column may not exist on older rows — null is treated as "use heuristic")
+  if (event.solo_friendly === true) return true;
+  if (event.solo_friendly === false) return false;
+  
+  // Explicit not-solo signals
+  if (event.date_night === true) return false;
+  if (event.age_tag === 'date-night') return false;
+  if (event.kid_friendly === true) return false; // assume kid-friendly = brought-a-kid context, not solo
+  
+  // Category-based heuristic
+  const cat = (event.category || '').toLowerCase();
+  const NOT_SOLO_CATEGORIES = new Set([
+    'date-night', 'romantic', 'couples',
+    'family', 'kids', 'kid-friendly',
+    'birthday', 'private-party'
+  ]);
+  if (NOT_SOLO_CATEGORIES.has(cat)) return false;
+  
+  // Tag-based heuristic
+  const tags = Array.isArray(event.tags) ? event.tags : (Array.isArray(event.vibes) ? event.vibes : []);
+  const NOT_SOLO_TAGS = new Set(['date-night', 'romantic', 'couples-only', 'private']);
+  if (tags.some(t => NOT_SOLO_TAGS.has((t || '').toLowerCase()))) return false;
+  
+  // Default to solo-friendly — most public events work for solo attendees
+  return true;
+};
+
+// Patch B — Search helper. Case-insensitive substring across the obvious fields.
+const matchesSearch = (event, query) => {
+  if (!query) return true;
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const haystack = [
+    event.name, event.venue, event.neighborhood,
+    event.category, event.type, event.description,
+    ...(Array.isArray(event.tags) ? event.tags : [])
+  ].filter(Boolean).map(s => String(s).toLowerCase()).join(' | ');
+  return haystack.includes(q);
+};
+
+// Patch B — Categories for the browse chip row. Picks the most common ones from the spec.
+const BROWSE_CATEGORIES = [
+  { id: 'all',         label: 'All' },
+  { id: 'live-music',  label: '🎵 Live Music' },
+  { id: 'happy-hour',  label: '🍻 Happy Hour' },
+  { id: 'trivia',      label: '🧠 Trivia' },
+  { id: 'karaoke',     label: '🎤 Karaoke' },
+  { id: 'comedy',      label: '😂 Comedy' },
+  { id: 'sports',      label: '🏈 Sports' },
+  { id: 'food',        label: '🍽️ Food' },
+  { id: 'nightlife',   label: '🪩 Nightlife' },
+  { id: 'creative',    label: '🎨 Creative' },
+  { id: 'community',   label: '👥 Community' },
+];
+
+
 // Patch A — Stock image library, ~120 curated images organized by category.
 // Diverse along: people (race/age/body type/gender), event types (nightlife + daytime + niche),
 // and venue contexts (bars, restaurants, parks, galleries, studios, community spaces).
@@ -4971,6 +5036,239 @@ function EventSuggestionModal({ onClose, userProfile, supabaseClient, userBadges
         </div>
       </div>
     </div>
+  );
+}
+
+// Patch B — Vertical-scroll editorial-style card for the Discover feed.
+// Full-bleed image, info below image, single-tap RSVP, no UI overlapping the photo.
+// Replaces the swipe-card pattern in the Discover view only.
+function EventFeedCard({
+  event,
+  hasRSVPed,
+  onRSVP,
+  onPass,
+  onSave,
+  onShare,
+  isSaved,
+  vibeMatch,
+  countdown,
+  goingCount,
+  darkMode = true,
+  onView, // called when card has been on screen FEED_CARD_VIEW_MS
+}) {
+  const cardRef = useRef(null);
+  const viewedRef = useRef(false);
+
+  // IntersectionObserver — counts as "viewed" when on screen for FEED_CARD_VIEW_MS
+  useEffect(() => {
+    if (!cardRef.current || viewedRef.current) return;
+    let timer = null;
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+          if (!viewedRef.current && !timer) {
+            timer = setTimeout(() => {
+              if (!viewedRef.current) {
+                viewedRef.current = true;
+                if (onView) onView(event);
+              }
+            }, FEED_CARD_VIEW_MS);
+          }
+        } else {
+          if (timer) { clearTimeout(timer); timer = null; }
+        }
+      });
+    }, { threshold: [0, 0.5, 1] });
+    obs.observe(cardRef.current);
+    return () => { obs.disconnect(); if (timer) clearTimeout(timer); };
+  }, [event, onView]);
+
+  // Format date as "Mon, May 5" or "Today" / "Tomorrow"
+  const formatEventDate = (dateStr) => {
+    if (!dateStr) return '';
+    const evt = new Date(dateStr + 'T00:00:00');
+    if (isNaN(evt.getTime())) return dateStr;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const inAWeek = new Date(today);
+    inAWeek.setDate(inAWeek.getDate() + 7);
+    if (evt.getTime() === today.getTime()) return 'Today';
+    if (evt.getTime() === tomorrow.getTime()) return 'Tomorrow';
+    if (evt < inAWeek) return evt.toLocaleDateString('en-US', { weekday: 'long' });
+    return evt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  };
+
+  // Format time as "7:00 PM"
+  const formatEventTime = (timeStr) => {
+    if (!timeStr) return '';
+    const [h, m] = timeStr.split(':');
+    const hour = parseInt(h, 10);
+    if (isNaN(hour)) return timeStr;
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${m || '00'} ${ampm}`;
+  };
+
+  const ageTag = event.age_tag || event.age_restriction;
+  const showAgeBadge = ageTag === '21+' || ageTag === '18+';
+  const isFree = !event.cover_charge || parseFloat(event.cover_charge) === 0;
+
+  return (
+    <article
+      ref={cardRef}
+      className="relative w-full snap-start mb-4"
+      style={{ scrollSnapAlign: 'start', scrollSnapStop: 'always' }}
+    >
+      <div className={`rounded-3xl overflow-hidden ${darkMode ? 'bg-zinc-900 border border-zinc-800' : 'bg-white border border-amber-200'} shadow-xl`}>
+        {/* Hero image — full bleed, no UI overlay */}
+        <div className="relative aspect-[4/5] sm:aspect-[16/10] bg-zinc-800">
+          {event.image_url && (
+            <img
+              src={event.image_url}
+              alt={event.name}
+              className="w-full h-full object-cover"
+              loading="lazy"
+            />
+          )}
+          {/* Subtle gradient at top so date pill is legible */}
+          <div className="absolute top-0 inset-x-0 h-20 bg-gradient-to-b from-black/50 to-transparent pointer-events-none" />
+          
+          {/* Top row: date pill (left) + submitted-by-user pill (if applicable) */}
+          <div className="absolute top-3 left-3 right-3 flex items-start justify-between gap-2">
+            <span className={`px-3 py-1 rounded-full text-xs font-bold ${darkMode ? 'bg-violet-500 text-white' : 'bg-orange-500 text-white'} shadow-lg`}>
+              {formatEventDate(event.date)} · {formatEventTime(event.time)}
+            </span>
+            {event.submitted_by_user_id && (
+              <span className="px-2 py-1 rounded-full text-[10px] font-semibold bg-violet-500/90 backdrop-blur text-white whitespace-nowrap">
+                👥 Community
+              </span>
+            )}
+          </div>
+          
+          {/* Bottom right: countdown if event is soon */}
+          {countdown && (
+            <span className="absolute bottom-3 right-3 px-3 py-1 rounded-full text-xs font-bold bg-red-500 text-white shadow-lg">
+              {countdown}
+            </span>
+          )}
+        </div>
+
+        {/* Info section — below the image, no overlap */}
+        <div className="p-4 sm:p-5 space-y-3">
+          {/* Title + venue */}
+          <div>
+            <h2 className={`text-xl sm:text-2xl font-bold leading-tight ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
+              {event.name}
+            </h2>
+            <p className={`text-sm mt-1 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+              <MapPin className="w-3.5 h-3.5 inline mr-1" />
+              {event.venue}{event.neighborhood ? ` · ${event.neighborhood}` : ''}
+            </p>
+          </div>
+
+          {/* Info pills row */}
+          <div className="flex flex-wrap items-center gap-2">
+            {isFree ? (
+              <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-500">
+                Free Entry
+              </span>
+            ) : (
+              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${darkMode ? 'bg-zinc-800 text-zinc-300' : 'bg-amber-100 text-zinc-700'}`}>
+                ${parseFloat(event.cover_charge).toFixed(0)} cover
+              </span>
+            )}
+            {showAgeBadge && (
+              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${ageTag === '21+' ? 'bg-red-500/15 text-red-400' : 'bg-amber-500/15 text-amber-500'}`}>
+                {ageTag}
+              </span>
+            )}
+            {event.category && (
+              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${darkMode ? 'bg-zinc-800 text-zinc-300' : 'bg-amber-100 text-zinc-700'}`}>
+                {event.category.replace(/-/g, ' ')}
+              </span>
+            )}
+            {vibeMatch > 0 && (
+              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${darkMode ? 'bg-violet-500/15 text-violet-400' : 'bg-orange-500/15 text-orange-600'}`}>
+                ✨ {vibeMatch} vibe match{vibeMatch > 1 ? 'es' : ''}
+              </span>
+            )}
+            {goingCount > 0 && (
+              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${darkMode ? 'bg-zinc-800 text-zinc-300' : 'bg-amber-100 text-zinc-700'}`}>
+                {goingCount} going
+              </span>
+            )}
+          </div>
+
+          {/* Description preview (if present) */}
+          {event.description && (
+            <p className={`text-sm leading-relaxed ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+              {event.description.length > 140 ? event.description.slice(0, 140).trim() + '…' : event.description}
+            </p>
+          )}
+
+          {/* Drink specials line (if present) */}
+          {event.drink_specials && (
+            <p className={`text-xs ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>
+              🍹 {event.drink_specials}
+            </p>
+          )}
+
+          {/* Action row — RSVP primary, secondary actions on the right */}
+          <div className="flex items-center gap-2 pt-2">
+            <button
+              onClick={() => onRSVP && onRSVP(event)}
+              disabled={hasRSVPed}
+              className={`flex-1 py-3 rounded-xl font-bold text-base transition ${
+                hasRSVPed
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 cursor-default'
+                  : (darkMode ? 'bg-violet-500 hover:bg-violet-600 text-white' : 'bg-orange-500 hover:bg-orange-600 text-white')
+              }`}
+            >
+              {hasRSVPed ? '✓ You\'re going' : 'RSVP'}
+            </button>
+            <button
+              onClick={() => onSave && onSave(event)}
+              className={`p-3 rounded-xl transition ${
+                isSaved
+                  ? (darkMode ? 'bg-violet-500/20 text-violet-400 border border-violet-500/40' : 'bg-orange-500/20 text-orange-600 border border-orange-500/40')
+                  : (darkMode ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700' : 'bg-amber-100 text-zinc-600 hover:bg-amber-200')
+              }`}
+              title={isSaved ? 'Saved' : 'Save for later'}
+            >
+              <Heart className={`w-5 h-5 ${isSaved ? 'fill-current' : ''}`} />
+            </button>
+            <button
+              onClick={() => onShare && onShare(event)}
+              className={`p-3 rounded-xl transition ${darkMode ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700' : 'bg-amber-100 text-zinc-600 hover:bg-amber-200'}`}
+              title="Share"
+            >
+              <Share2 className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => onPass && onPass(event)}
+              className={`p-3 rounded-xl transition ${darkMode ? 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300' : 'bg-amber-100 text-zinc-500 hover:bg-amber-200'}`}
+              title="Not for me"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Menu link if present */}
+          {event.menu_url && (
+            <a
+              href={event.menu_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`block text-center text-xs underline ${darkMode ? 'text-zinc-500 hover:text-zinc-400' : 'text-zinc-500 hover:text-zinc-700'}`}
+            >
+              View menu →
+            </a>
+          )}
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -10551,6 +10849,11 @@ export default function App() {
   
   // Tonight mode - shows only events happening now/soon
   const [tonightMode, setTonightMode] = useState(false);
+  // Patch B — Discover feed UI state
+  const [soloModeEnabled, setSoloModeEnabled] = useState(false);
+  const [discoverSearchQuery, setDiscoverSearchQuery] = useState('');
+  const [discoverCategoryFilter, setDiscoverCategoryFilter] = useState('all');
+  const [savedEventIds, setSavedEventIds] = useState(new Set());
   
   // New feature modals
   const [showNotificationPrefs, setShowNotificationPrefs] = useState(false);
@@ -11785,6 +12088,11 @@ export default function App() {
         setUserRsvpedEventIds(new Set(cached));
       } catch { setUserRsvpedEventIds(new Set()); }
     }
+    // Patch B — Hydrate saved events (right-swiped/liked) from localStorage
+    try {
+      const liked = JSON.parse(localStorage.getItem(`${userKey}_liked`) || '[]');
+      setSavedEventIds(new Set(liked.map(e => e.id).filter(Boolean)));
+    } catch { setSavedEventIds(new Set()); }
   };
 
   const checkAuth = async () => {
@@ -12307,6 +12615,85 @@ const loadSquads = async (userId) => {
     }
   };
 
+  // Patch B — Mark a feed card as "viewed" once it's been on screen for FEED_CARD_VIEW_MS.
+  // Replaces swipe-based seen-tracking. Idempotent — safe to call multiple times.
+  const handleFeedCardViewed = async (event) => {
+    if (!userProfile?.id || !event?.id) return;
+    const userKey = `crewq_${userProfile.id}`;
+    const seenEvents = JSON.parse(localStorage.getItem(`${userKey}_seen`) || '[]');
+    if (seenEvents.includes(event.id)) return; // already counted
+    seenEvents.push(event.id);
+    localStorage.setItem(`${userKey}_seen`, JSON.stringify(seenEvents));
+    incrementTodaysSwipeCount();
+    const currentSwipes = parseInt(localStorage.getItem(`${userKey}_swipes`) || '0');
+    localStorage.setItem(`${userKey}_swipes`, (currentSwipes + 1).toString());
+    // Increment view count in DB (best-effort, fail silent)
+    if (supabaseClient) {
+      try {
+        await supabaseClient.rpc('increment_event_views', { event_uuid: event.id });
+      } catch {
+        try {
+          await supabaseClient.from('events').update({ views: (event.views || 0) + 1 }).eq('id', event.id);
+        } catch (e) { /* fail silent */ }
+      }
+    }
+  };
+
+  // Patch B — Save (bookmark) toggle. Backed by the existing _liked localStorage + liked_events table.
+  const handleFeedCardSave = async (event) => {
+    if (!userProfile?.id || !event?.id) return;
+    const userKey = `crewq_${userProfile.id}`;
+    const liked = JSON.parse(localStorage.getItem(`${userKey}_liked`) || '[]');
+    const isCurrentlySaved = savedEventIds.has(event.id);
+    
+    if (isCurrentlySaved) {
+      // Unsave
+      const next = liked.filter(e => e.id !== event.id);
+      localStorage.setItem(`${userKey}_liked`, JSON.stringify(next));
+      setSavedEventIds(prev => { const s = new Set(prev); s.delete(event.id); return s; });
+      if (supabaseClient) {
+        try {
+          await supabaseClient.from('liked_events').delete().eq('user_id', userProfile.id).eq('event_id', event.id);
+        } catch (e) { /* fail silent */ }
+      }
+      showToast('Removed from saved', 'info');
+    } else {
+      // Save
+      if (!liked.find(e => e.id === event.id)) {
+        liked.push(event);
+        localStorage.setItem(`${userKey}_liked`, JSON.stringify(liked));
+      }
+      setSavedEventIds(prev => { const s = new Set(prev); s.add(event.id); return s; });
+      setLikedEventsRefresh(prev => prev + 1);
+      if (supabaseClient) {
+        try {
+          await supabaseClient.from('liked_events').insert([{ user_id: userProfile.id, event_id: event.id, created_at: new Date().toISOString() }]);
+        } catch (e) { /* unique-constraint or table-missing, fail silent */ }
+      }
+      showToast('💜 Saved to your list', 'success');
+    }
+  };
+
+  // Patch B — Pass / not-for-me. Marks event seen so it won't reappear in feed.
+  const handleFeedCardPass = async (event) => {
+    if (!userProfile?.id || !event?.id) return;
+    const userKey = `crewq_${userProfile.id}`;
+    const seenEvents = JSON.parse(localStorage.getItem(`${userKey}_seen`) || '[]');
+    if (!seenEvents.includes(event.id)) {
+      seenEvents.push(event.id);
+      localStorage.setItem(`${userKey}_seen`, JSON.stringify(seenEvents));
+    }
+    // Force re-render of feed to drop the passed card
+    setLikedEventsRefresh(prev => prev + 1);
+    showToast('Passed — won\'t show this one again', 'info');
+  };
+
+  // Patch B — Share opens the existing share modal pre-set to this event
+  const handleFeedCardShare = (event) => {
+    setSelectedEvent(event);
+    setShowShareModal(true);
+  };
+
   // Handle RSVP - explicit user action (Patch 7: DB-backed via event_rsvps)
   const handleRSVP = async (event) => {
     if (!userProfile?.id || !supabaseClient) return;
@@ -12503,11 +12890,44 @@ const loadSquads = async (userId) => {
   };
 
   // Apply vibe filter + hard filters to events for discover feed (Patch 3 — full visibility logic)
+  // Patch B — Adds search, category filter, solo filter, and seen-event exclusion
   const getVibeFilteredEvents = () => {
     let filtered = events;
 
     // Hard filters: status, date window, distance, age
     filtered = applyHardFilters(filtered);
+
+    // Patch B — Skip events already seen/passed (so the feed doesn't repeat)
+    if (userProfile?.id) {
+      const userKey = `crewq_${userProfile.id}`;
+      const seenEvents = JSON.parse(localStorage.getItem(`${userKey}_seen`) || '[]');
+      if (seenEvents.length > 0) {
+        const seenSet = new Set(seenEvents);
+        filtered = filtered.filter(e => !seenSet.has(e.id));
+      }
+    }
+
+    // Patch B — Free-text search
+    if (discoverSearchQuery && discoverSearchQuery.trim()) {
+      filtered = filtered.filter(e => matchesSearch(e, discoverSearchQuery));
+    }
+
+    // Patch B — Category filter chip
+    if (discoverCategoryFilter && discoverCategoryFilter !== 'all') {
+      filtered = filtered.filter(e => {
+        const cat = (e.category || '').toLowerCase();
+        const target = discoverCategoryFilter.toLowerCase();
+        if (cat === target) return true;
+        // Tag-based fuzzy match (e.g., category 'trivia' should also match events tagged 'trivia')
+        const tags = Array.isArray(e.tags) ? e.tags : [];
+        return tags.map(t => String(t).toLowerCase()).includes(target);
+      });
+    }
+
+    // Patch B — Solo mode filter (opt-in)
+    if (soloModeEnabled) {
+      filtered = filtered.filter(e => resolveSoloFriendly(e) !== false);
+    }
 
     // Optional vibe hard-filter (when toggle on AND user has vibes set)
     if (vibeFilterEnabled && userProfile?.vibes && userProfile.vibes.length > 0) {
@@ -12533,17 +12953,16 @@ const loadSquads = async (userId) => {
       filtered = getTonightEvents(filtered);
     }
 
-    // Soft ranking: sort by vibe match desc, then by date asc
+    // Soft ranking: sort by vibe match desc, then by date asc (soonest-first)
     filtered = [...filtered].sort((a, b) => {
       const scoreDiff = getVibeMatchScore(b) - getVibeMatchScore(a);
       if (scoreDiff !== 0) return scoreDiff;
       return (a.date || '').localeCompare(b.date || '');
     });
 
-    // Daily cap: only show DAILY_FEED_CAP cards minus what user has already seen today
-    const todayCount = getTodaysSwipeCount();
-    const remaining = Math.max(DAILY_FEED_CAP - todayCount, 0);
-    return filtered.slice(0, remaining);
+    // Patch B — Daily cap is now a CEILING, not a target.
+    // If we have 4 events, show 4 (not "11 of 15 remaining"). If we have 50, cap at 15.
+    return filtered.slice(0, DAILY_FEED_CAP);
   };
 
   // Patch 3 + Patch A — Coming Up lane: all events 7–30 days out.
@@ -12845,9 +13264,8 @@ const loadSquads = async (userId) => {
               </button>
             </div>
             
-            <div className={`flex items-center gap-2 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
-              <MapPin className="w-4 h-4" />
-              <span className="text-sm">Dallas, Texas</span>
+            <div className={`flex items-center justify-center ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>
+              <span className="text-sm">{DISPLAY_CITY}</span>
             </div>
           </div>
         </div>
@@ -12855,230 +13273,202 @@ const loadSquads = async (userId) => {
         {/* Scrollable Content Area */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden pb-20 sm:pb-24 -webkit-overflow-scrolling-touch">
           {currentTab === 'discover' && (
-            <div className="px-3 py-3 sm:px-4 sm:py-6">
-              {/* Tonight Mode Button */}
-              <button
-                onClick={() => {
-                  setTonightMode(!tonightMode);
-                }}
-                className={`w-full mb-4 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition ${
-                  tonightMode
-                    ? 'bg-gradient-to-r from-red-500 to-orange-500 text-white shadow-lg shadow-red-500/25'
-                    : darkMode 
-                      ? 'bg-gradient-to-r from-violet-500/20 to-purple-500/20 text-violet-300 border border-violet-500/30' 
-                      : 'bg-gradient-to-r from-orange-100 to-yellow-100 text-orange-600 border border-orange-300'
-                }`}
-              >
-                <div className={`w-3 h-3 rounded-full ${tonightMode ? 'bg-white animate-pulse' : 'bg-red-500 animate-pulse'}`} />
-                {tonightMode ? '🔥 Tonight Mode ON - Showing What\'s Happening Now!' : '🌙 See What\'s Happening Tonight'}
-                {tonightMode && (
-                  <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full ml-2">
-                    {getTonightEvents().length} events
-                  </span>
-                )}
-              </button>
-
-              {/* Vibe Filter Toggle */}
-              <div className="mb-4 flex items-center justify-between">
-                <button
-                  onClick={() => setVibeFilterEnabled(!vibeFilterEnabled)}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition ${
-                    vibeFilterEnabled
-                      ? 'bg-violet-500/20 text-violet-400 border border-violet-500/30'
-                      : darkMode ? 'bg-zinc-800 text-zinc-400' : 'bg-amber-100 text-zinc-600'
-                  }`}
-                >
-                  <Sparkles className="w-4 h-4" />
-                  {vibeFilterEnabled ? 'My Vibes Filter ON' : 'Filter by My Vibes'}
-                  <div className={`w-8 h-4 rounded-full relative transition ${vibeFilterEnabled ? 'bg-violet-500' : 'bg-zinc-600'}`}>
-                    <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${vibeFilterEnabled ? 'left-4' : 'left-0.5'}`} />
-                  </div>
-                </button>
-                
-                {vibeFilterEnabled && userProfile?.vibes?.length > 0 && (
-                  <div className="flex gap-1 flex-wrap justify-end max-w-[50%]">
-                    {userProfile.vibes.slice(0, 3).map(vibeId => {
-                      const vibe = VIBE_OPTIONS.find(v => v.id === vibeId);
-                      return vibe ? (
-                        <span key={vibeId} className="text-xs bg-violet-500/20 text-violet-300 px-2 py-1 rounded-full">
-                          {vibe.icon}
-                        </span>
-                      ) : null;
-                    })}
-                    {userProfile.vibes.length > 3 && (
-                      <span className="text-xs text-violet-400">+{userProfile.vibes.length - 3}</span>
-                    )}
-                  </div>
+            <div className="px-3 py-3 sm:px-4 sm:py-6 max-w-2xl mx-auto">
+              {/* Patch B — Search bar */}
+              <div className="relative mb-3">
+                <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`} />
+                <input
+                  type="text"
+                  value={discoverSearchQuery}
+                  onChange={(e) => setDiscoverSearchQuery(e.target.value)}
+                  placeholder="Search events, venues, or vibes…"
+                  className={`w-full pl-10 pr-10 py-3 rounded-2xl text-sm transition outline-none ${darkMode ? 'bg-zinc-900 border border-zinc-800 text-white placeholder:text-zinc-500 focus:border-violet-500' : 'bg-white border border-amber-200 text-zinc-900 placeholder:text-zinc-400 focus:border-orange-500'}`}
+                />
+                {discoverSearchQuery && (
+                  <button
+                    onClick={() => setDiscoverSearchQuery('')}
+                    className={`absolute right-3 top-1/2 -translate-y-1/2 ${darkMode ? 'text-zinc-500 hover:text-zinc-300' : 'text-zinc-400 hover:text-zinc-700'}`}
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
                 )}
               </div>
-              
-              {vibeFilterEnabled && (!userProfile?.vibes || userProfile.vibes.length === 0) && (
-                <div className={`mb-4 p-3 rounded-xl text-sm ${darkMode ? 'bg-amber-500/10 border border-amber-500/30 text-amber-400' : 'bg-amber-100 text-amber-700'}`}>
-                  <p>You haven't set your vibes yet! <button onClick={() => setCurrentTab('profile')} className="underline font-semibold">Set vibes in your profile</button> to filter events.</p>
-                </div>
-              )}
 
-              {/* Patch 3 — Remaining stack counter (scarcity) */}
-              {displayEvents.length > currentIndex && (
-                <div className={`mb-3 flex items-center justify-center gap-1.5 text-xs font-medium ${darkMode ? 'text-zinc-500' : 'text-zinc-600'}`}>
-                  <span className={`inline-block w-1.5 h-1.5 rounded-full ${darkMode ? 'bg-violet-400' : 'bg-orange-500'}`} />
-                  <span>{displayEvents.length - currentIndex} left today · {DAILY_FEED_CAP - getTodaysSwipeCount()} of {DAILY_FEED_CAP} remaining</span>
-                </div>
-              )}
-
-              {currentIndex >= displayEvents.length || displayEvents.length === 0 ? (
-                <div className="text-center py-16">
-                  <div className={`w-20 h-20 ${darkMode ? 'bg-zinc-800' : 'bg-amber-100'} rounded-full flex items-center justify-center mx-auto mb-6`}>
-                    <Calendar className={`w-10 h-10 ${darkMode ? 'text-violet-400' : 'text-orange-500'}`} />
-                  </div>
-                  {/* Patch 3 — Differentiate daily-cap from out-of-events */}
-                  {getTodaysSwipeCount() >= DAILY_FEED_CAP ? (
-                    <>
-                      <h2 className="text-2xl font-bold mb-3">You're caught up for today!</h2>
-                      <p className={`${darkMode ? 'text-zinc-400' : 'text-zinc-600'} mb-8 px-4`}>
-                        You've seen your daily {DAILY_FEED_CAP} cards. Come back tomorrow for fresh events — or check what's coming up below.
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <h2 className="text-2xl font-bold mb-3">{vibeFilterEnabled ? 'No Events Match Your Vibes' : 'You\'ve Seen All Events!'}</h2>
-                      <p className={`${darkMode ? 'text-zinc-400' : 'text-zinc-600'} mb-8 px-4`}>
-                        {vibeFilterEnabled 
-                          ? 'Try turning off the vibe filter to see more events, or adjust your vibes in your profile.'
-                          : 'You\'ve swiped through all available events. Check back later for new ones or reset to see them again.'
-                        }
-                      </p>
-                    </>
-                  )}
-                  
-                  <div className="flex flex-col gap-3 px-8">
+              {/* Patch B — Category browse chips (horizontal scroll) */}
+              <div className="overflow-x-auto -mx-3 px-3 sm:-mx-4 sm:px-4 mb-3 pb-1">
+                <div className="flex gap-2" style={{ minWidth: 'min-content' }}>
+                  {BROWSE_CATEGORIES.map(cat => (
                     <button
-                      onClick={() => {
-                        if (userProfile?.id) {
-                          const userKey = `crewq_${userProfile.id}`;
-                          localStorage.removeItem(`${userKey}_seen`);
-                          // Patch 3 — Also reset today's daily cap so reset is meaningful
-                          localStorage.removeItem(`${userKey}_swipes_${getTodayKey()}`);
-                          loadEvents(userProfile.id);
-                          showToast('Events reset! Swipe away 🎉', 'success');
-                        }
-                      }}
-                      className={`bg-gradient-to-r ${darkMode ? 'from-violet-500 to-purple-600' : 'from-orange-400 to-yellow-500'} text-white px-8 py-4 rounded-xl font-bold hover:shadow-lg transition flex items-center justify-center gap-2 mx-auto w-full`}
+                      key={cat.id}
+                      onClick={() => setDiscoverCategoryFilter(cat.id)}
+                      className={`flex-shrink-0 px-3 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
+                        discoverCategoryFilter === cat.id
+                          ? (darkMode ? 'bg-violet-500 text-white' : 'bg-orange-500 text-white')
+                          : (darkMode ? 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:border-zinc-700' : 'bg-white text-zinc-600 border border-amber-200 hover:border-amber-300')
+                      }`}
                     >
-                      <Zap className="w-5 h-5" />
-                      Reset & See All Events Again
+                      {cat.label}
                     </button>
-                    
-                    <button
-                      onClick={() => setShowSuggestionModal(true)}
-                      className={`${darkMode ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-amber-100 hover:bg-amber-200'} ${darkMode ? 'text-white' : 'text-zinc-900'} px-8 py-4 rounded-xl font-bold transition flex items-center justify-center gap-2 mx-auto w-full`}
-                    >
-                      <MessageCircle className="w-5 h-5" />
-                      Suggest an Event
-                    </button>
-                  </div>
+                  ))}
+                </div>
+              </div>
 
-                  {likedEvents.length > 0 && (
-                    <div className={`mt-8 pt-6 border-t ${darkMode ? 'border-zinc-800' : 'border-amber-200'}`}>
-                      <p className={`${darkMode ? 'text-zinc-500' : 'text-zinc-400'} text-sm mb-3`}>Meanwhile, check out your liked events:</p>
+              {/* Patch B — Filter row: Tonight + Vibes + Solo */}
+              <div className="flex flex-wrap items-center gap-2 mb-4">
+                <button
+                  onClick={() => setTonightMode(!tonightMode)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition ${
+                    tonightMode
+                      ? 'bg-gradient-to-r from-red-500 to-orange-500 text-white shadow shadow-red-500/30'
+                      : (darkMode ? 'bg-zinc-900 text-zinc-400 border border-zinc-800' : 'bg-white text-zinc-600 border border-amber-200')
+                  }`}
+                >
+                  🌙 Tonight
+                  {tonightMode && <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full">{getTonightEvents().length}</span>}
+                </button>
+                <button
+                  onClick={() => setVibeFilterEnabled(!vibeFilterEnabled)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition ${
+                    vibeFilterEnabled
+                      ? (darkMode ? 'bg-violet-500/20 text-violet-300 border border-violet-500/40' : 'bg-orange-500/20 text-orange-700 border border-orange-500/40')
+                      : (darkMode ? 'bg-zinc-900 text-zinc-400 border border-zinc-800' : 'bg-white text-zinc-600 border border-amber-200')
+                  }`}
+                >
+                  ✨ My Vibes
+                </button>
+                <button
+                  onClick={() => setSoloModeEnabled(!soloModeEnabled)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition ${
+                    soloModeEnabled
+                      ? (darkMode ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-emerald-500/20 text-emerald-700 border border-emerald-500/40')
+                      : (darkMode ? 'bg-zinc-900 text-zinc-400 border border-zinc-800' : 'bg-white text-zinc-600 border border-amber-200')
+                  }`}
+                  title="Show events that work well to attend solo"
+                >
+                  🎒 Solo-friendly
+                </button>
+              </div>
+
+              {/* Patch B — Vertical feed */}
+              {(() => {
+                const feedEvents = getVibeFilteredEvents();
+                const totalAvailable = applyHardFilters(events).length;
+                
+                if (feedEvents.length === 0) {
+                  return (
+                    <div className="text-center py-16">
+                      <div className={`w-20 h-20 ${darkMode ? 'bg-zinc-800' : 'bg-amber-100'} rounded-full flex items-center justify-center mx-auto mb-6`}>
+                        <Calendar className={`w-10 h-10 ${darkMode ? 'text-violet-400' : 'text-orange-500'}`} />
+                      </div>
+                      {discoverSearchQuery || discoverCategoryFilter !== 'all' || soloModeEnabled || vibeFilterEnabled || tonightMode ? (
+                        <>
+                          <h2 className="text-xl font-bold mb-2">No matches</h2>
+                          <p className={`${darkMode ? 'text-zinc-400' : 'text-zinc-600'} mb-6 px-4 text-sm`}>
+                            Try clearing some filters to see more events.
+                          </p>
+                          <button
+                            onClick={() => {
+                              setDiscoverSearchQuery('');
+                              setDiscoverCategoryFilter('all');
+                              setSoloModeEnabled(false);
+                              setVibeFilterEnabled(false);
+                              setTonightMode(false);
+                            }}
+                            className={`px-6 py-3 rounded-xl font-semibold ${darkMode ? 'bg-violet-500 text-white' : 'bg-orange-500 text-white'} hover:shadow-lg transition`}
+                          >
+                            Clear all filters
+                          </button>
+                        </>
+                      ) : totalAvailable === 0 ? (
+                        <>
+                          <h2 className="text-xl font-bold mb-2">No events yet</h2>
+                          <p className={`${darkMode ? 'text-zinc-400' : 'text-zinc-600'} mb-6 px-4 text-sm`}>
+                            Check back soon — new events get added regularly.
+                          </p>
+                          <button
+                            onClick={() => setShowSuggestionModal(true)}
+                            className={`${darkMode ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-amber-100 hover:bg-amber-200 text-zinc-900'} px-6 py-3 rounded-xl font-semibold transition`}
+                          >
+                            Suggest an Event
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <h2 className="text-xl font-bold mb-2">You're caught up</h2>
+                          <p className={`${darkMode ? 'text-zinc-400' : 'text-zinc-600'} mb-6 px-4 text-sm`}>
+                            You've seen all events for the next 7 days. Check the Events tab for what's coming up later, or reset to browse again.
+                          </p>
+                          <div className="flex flex-col gap-3 max-w-xs mx-auto">
+                            <button
+                              onClick={() => {
+                                if (userProfile?.id) {
+                                  const userKey = `crewq_${userProfile.id}`;
+                                  localStorage.removeItem(`${userKey}_seen`);
+                                  localStorage.removeItem(`${userKey}_swipes_${getTodayKey()}`);
+                                  loadEvents(userProfile.id);
+                                  showToast('Feed reset 🎉', 'success');
+                                }
+                              }}
+                              className={`bg-gradient-to-r ${darkMode ? 'from-violet-500 to-purple-600' : 'from-orange-500 to-amber-500'} text-white px-6 py-3 rounded-xl font-semibold hover:shadow-lg transition`}
+                            >
+                              Reset feed
+                            </button>
+                            <button
+                              onClick={() => setCurrentTab('events')}
+                              className={`${darkMode ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-amber-100 hover:bg-amber-200 text-zinc-900'} px-6 py-3 rounded-xl font-semibold transition`}
+                            >
+                              See what's coming up →
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                }
+                
+                return (
+                  <>
+                    {/* Inventory indicator — honest about how much is available */}
+                    <div className={`mb-3 flex items-center justify-center gap-1.5 text-xs font-medium ${darkMode ? 'text-zinc-500' : 'text-zinc-600'}`}>
+                      <span className={`inline-block w-1.5 h-1.5 rounded-full ${darkMode ? 'bg-violet-400' : 'bg-orange-500'}`} />
+                      <span>{feedEvents.length} event{feedEvents.length !== 1 ? 's' : ''} happening soon</span>
+                    </div>
+
+                    {/* Vertical-scroll feed with native CSS snap */}
+                    <div
+                      className="space-y-4"
+                      style={{ scrollSnapType: 'y mandatory' }}
+                    >
+                      {feedEvents.map(event => (
+                        <EventFeedCard
+                          key={event.id}
+                          event={event}
+                          hasRSVPed={hasRSVPed(event.id)}
+                          isSaved={savedEventIds.has(event.id)}
+                          vibeMatch={getVibeMatchScore(event)}
+                          countdown={getCountdown(event)}
+                          goingCount={(event.rsvps || 0) + (event.checkins || 0)}
+                          darkMode={darkMode}
+                          onRSVP={handleRSVP}
+                          onSave={handleFeedCardSave}
+                          onPass={handleFeedCardPass}
+                          onShare={handleFeedCardShare}
+                          onView={handleFeedCardViewed}
+                        />
+                      ))}
+                    </div>
+
+                    {/* End-of-feed footer */}
+                    <div className={`text-center py-8 ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>
+                      <p className="text-sm">That's everything for now.</p>
                       <button
                         onClick={() => setCurrentTab('events')}
-                        className={`${darkMode ? 'text-violet-400 hover:text-violet-300' : 'text-orange-500 hover:text-orange-400'} font-semibold transition`}
+                        className={`mt-3 text-sm font-semibold underline ${darkMode ? 'text-violet-400 hover:text-violet-300' : 'text-orange-600 hover:text-orange-700'}`}
                       >
-                        View {likedEvents.length} Liked Event{likedEvents.length !== 1 ? 's' : ''} →
+                        See what's coming up →
                       </button>
                     </div>
-                  )}
-                </div>
-              ) : (
-                <div className="relative h-[420px] sm:h-[480px] md:h-[560px]" style={{ touchAction: 'pan-y' }}>
-                  {displayEvents.slice(currentIndex, currentIndex + 2).reverse().map((event, idx) => (
-                    <EventCard
-                      key={event.id}
-                      event={event}
-                      onSwipe={idx === 1 ? handleSwipe : () => {}}
-                      style={{
-                        zIndex: idx === 1 ? 10 : 9,
-                        scale: idx === 1 ? 1 : 0.95,
-                        top: idx === 1 ? 0 : '10px'
-                      }}
-                      isTrending={isTrending(event)}
-                      vibeMatch={getVibeMatch(event)}
-                      countdown={getCountdown(event)}
-                      goingCount={(event.rsvps || 0) + (event.checkins || 0)}
-                      rsvpUsers={eventRsvpUsers[event.id] || []}
-                    />
-                  ))}
-
-                  <div className="absolute bottom-2 sm:bottom-4 left-1/2 transform -translate-x-1/2 flex items-center gap-3 sm:gap-4 z-20">
-                    <button
-                      onClick={() => handleSwipe('left')}
-                      className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-zinc-800 bg-opacity-90 backdrop-blur-sm border border-zinc-700 flex items-center justify-center hover:bg-red-500 hover:border-red-500 transition shadow-lg"
-                    >
-                      <X className="w-5 h-5 sm:w-7 sm:h-7 text-white" />
-                    </button>
-
-                    <button
-                      onClick={() => setShowShareModal(true)}
-                      className={`w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-zinc-800 bg-opacity-90 backdrop-blur-sm border border-zinc-700 flex items-center justify-center transition shadow-lg ${darkMode ? 'hover:bg-violet-500 hover:border-violet-500' : 'hover:bg-orange-500 hover:border-orange-500'}`}
-                    >
-                      <Share2 className="w-5 h-5 sm:w-7 sm:h-7 text-white" />
-                    </button>
-
-                    <button
-                      onClick={() => handleSwipe('right')}
-                      className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-zinc-800 bg-opacity-90 backdrop-blur-sm border border-zinc-700 flex items-center justify-center hover:bg-emerald-500 hover:border-emerald-500 transition shadow-lg"
-                    >
-                      <Heart className="w-5 h-5 sm:w-7 sm:h-7 text-white" />
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Patch 3 — "Coming Up" lane: ticketed/special events 7–30 days out */}
-              {(() => {
-                const comingUp = getComingUpEvents();
-                if (comingUp.length === 0) return null;
-                return (
-                  <div className="mt-6">
-                    <div className="flex items-center justify-between mb-3 px-1">
-                      <h3 className={`text-sm font-bold uppercase tracking-wide ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
-                        📅 Coming Up
-                      </h3>
-                      <span className={`text-xs ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>{comingUp.length} event{comingUp.length !== 1 ? 's' : ''} in the next 30 days</span>
-                    </div>
-                    <div className="overflow-x-auto -mx-4 px-4 pb-2">
-                      <div className="flex gap-3" style={{ minWidth: 'min-content' }}>
-                        {comingUp.map(ev => {
-                          const evDate = new Date(ev.date);
-                          const dateLabel = isNaN(evDate.getTime()) ? ev.date : `${evDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
-                          return (
-                            <button
-                              key={ev.id}
-                              onClick={() => { setSelectedEvent(ev); }}
-                              className={`flex-shrink-0 w-44 rounded-xl overflow-hidden text-left ${darkMode ? 'bg-zinc-900 border border-zinc-800 hover:border-zinc-700' : 'bg-white border border-amber-200 hover:border-amber-300'} transition`}
-                            >
-                              <div className="relative aspect-[4/3] bg-zinc-800">
-                                {ev.image_url && <img src={ev.image_url} alt={ev.name} className="w-full h-full object-cover" />}
-                                <div className={`absolute top-2 left-2 px-2 py-0.5 rounded-full text-xs font-bold ${darkMode ? 'bg-violet-500 text-white' : 'bg-orange-500 text-white'}`}>
-                                  {dateLabel}
-                                </div>
-                                {ev.tickets_url && (
-                                  <div className="absolute top-2 right-2 px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-500 text-white">
-                                    Tix
-                                  </div>
-                                )}
-                              </div>
-                              <div className="p-2.5">
-                                <p className={`font-semibold text-sm truncate ${darkMode ? 'text-white' : 'text-zinc-900'}`}>{ev.name}</p>
-                                <p className={`text-xs truncate ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>{ev.venue}</p>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
+                  </>
                 );
               })()}
             </div>
