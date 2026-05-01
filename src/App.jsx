@@ -366,7 +366,7 @@ const TOS_LAST_UPDATED = 'April 28, 2026';
 const FEED_DAYS_AHEAD = 7;          // hard filter: events within this many days
 const COMING_UP_DAYS_MIN = 7;       // "Coming Up" lane lower bound (days out)
 const COMING_UP_DAYS_MAX = 30;      // "Coming Up" lane upper bound
-const DAILY_FEED_CAP = 15;          // cards per day (top of 10–15 spec range; data-driven tuning later)
+// Patch B.2 — Daily cap removed. Feed shows all events that pass hard filters.
 const DEFAULT_FEED_DISTANCE_MILES = 25; // default discover radius
 
 // Patch 5 — User submission gate
@@ -375,8 +375,8 @@ const MIN_BADGES_TO_SUBMIT = 3;
 // Patch B — Display city. Static for now; designed to swap to a per-user value when expanding to other cities.
 const DISPLAY_CITY = 'Dallas, Texas';
 
-// Patch B — How long a card must be in view before counting as "viewed" (daily cap)
-const FEED_CARD_VIEW_MS = 2000;
+// Patch B.2 — Minimum time on screen before logging a view (filters out fast scroll-bys)
+const FEED_CARD_VIEW_MS_MIN = 1500;
 
 // Patch B — Resolve solo-friendliness. Order: explicit DB column → date_night signal → category heuristic.
 // Returns true (solo OK), false (not solo), or null (unknown — treat as ok in lenient mode).
@@ -3221,21 +3221,21 @@ function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, 
               <h3 className={`font-semibold mb-3 ${darkMode ? 'text-white' : 'text-zinc-900'}`}>Storage Usage</h3>
               <div className="space-y-2">
                 <div className="flex justify-between">
-                  <span className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>Seen Events</span>
-                  <span className={darkMode ? 'text-white' : 'text-zinc-900'}>
-                    {JSON.parse(localStorage.getItem(`crewq_${userProfile?.id}_seen`) || '[]').length} events
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>Liked Events</span>
+                  <span className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>Saved Events</span>
                   <span className={darkMode ? 'text-white' : 'text-zinc-900'}>
                     {JSON.parse(localStorage.getItem(`crewq_${userProfile?.id}_liked`) || '[]').length} events
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>Total Swipes</span>
+                  <span className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>Passed Events</span>
                   <span className={darkMode ? 'text-white' : 'text-zinc-900'}>
-                    {JSON.parse(localStorage.getItem(`crewq_${userProfile?.id}_seen`) || '[]').length}
+                    {JSON.parse(localStorage.getItem(`crewq_${userProfile?.id}_passed`) || '[]').length} events
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>RSVP'd Events</span>
+                  <span className={darkMode ? 'text-white' : 'text-zinc-900'}>
+                    {JSON.parse(localStorage.getItem(`crewq_${userProfile?.id}_rsvped`) || '[]').length} events
                   </span>
                 </div>
               </div>
@@ -5054,34 +5054,61 @@ function EventFeedCard({
   countdown,
   goingCount,
   darkMode = true,
-  onView, // called when card has been on screen FEED_CARD_VIEW_MS
+  onView, // called with (event, durationMs) — when card scrolls out of view (or unmounts)
 }) {
   const cardRef = useRef(null);
-  const viewedRef = useRef(false);
+  // Track total ms this card has been ≥50% visible
+  const viewStateRef = useRef({
+    visibleSince: null,         // timestamp when card most recently became visible, or null
+    accumulatedMs: 0,           // total visible time across all visibility changes
+    hasBeenLogged: false,       // log once per mount (avoid double-counts)
+  });
 
-  // IntersectionObserver — counts as "viewed" when on screen for FEED_CARD_VIEW_MS
+  // Patch B.2 — IntersectionObserver tracks accumulated view-duration.
+  // Card becomes ≥50% visible → start timer. Drops below → pause timer + add elapsed to total.
+  // On unmount or when accumulated total clears the floor → log once.
   useEffect(() => {
-    if (!cardRef.current || viewedRef.current) return;
-    let timer = null;
+    if (!cardRef.current) return;
+
+    const flush = (final = false) => {
+      const s = viewStateRef.current;
+      // Close any open visible window
+      if (s.visibleSince != null) {
+        s.accumulatedMs += Date.now() - s.visibleSince;
+        s.visibleSince = null;
+      }
+      // Log once when we have enough total view time, OR on final flush regardless (with min floor)
+      if (!s.hasBeenLogged && s.accumulatedMs >= FEED_CARD_VIEW_MS_MIN) {
+        s.hasBeenLogged = true;
+        if (onView) onView(event, s.accumulatedMs);
+      } else if (final && !s.hasBeenLogged && s.accumulatedMs > 0) {
+        // Final flush: log even short views, but only if non-zero
+        s.hasBeenLogged = true;
+        if (onView) onView(event, s.accumulatedMs);
+      }
+    };
+
     const obs = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
-        if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
-          if (!viewedRef.current && !timer) {
-            timer = setTimeout(() => {
-              if (!viewedRef.current) {
-                viewedRef.current = true;
-                if (onView) onView(event);
-              }
-            }, FEED_CARD_VIEW_MS);
-          }
-        } else {
-          if (timer) { clearTimeout(timer); timer = null; }
+        const isVisible = entry.isIntersecting && entry.intersectionRatio >= 0.5;
+        const s = viewStateRef.current;
+        if (isVisible && s.visibleSince == null) {
+          s.visibleSince = Date.now();
+        } else if (!isVisible && s.visibleSince != null) {
+          // Card just left view — accumulate duration and maybe log
+          flush(false);
         }
       });
     }, { threshold: [0, 0.5, 1] });
+
     obs.observe(cardRef.current);
-    return () => { obs.disconnect(); if (timer) clearTimeout(timer); };
-  }, [event, onView]);
+
+    return () => {
+      obs.disconnect();
+      flush(true); // final flush on unmount
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event?.id]); // re-init only when the event changes
 
   // Format date as "Mon, May 5" or "Today" / "Tomorrow"
   const formatEventDate = (dateStr) => {
@@ -10853,6 +10880,10 @@ export default function App() {
   const [discoverSearchQuery, setDiscoverSearchQuery] = useState('');
   const [discoverCategoryFilter, setDiscoverCategoryFilter] = useState('all');
   const [savedEventIds, setSavedEventIds] = useState(new Set());
+  // Patch B.2 — Pass-tracking. Replaces the global "_seen" filter with explicit user dismissal.
+  const [passedEventIds, setPassedEventIds] = useState(new Set());
+  // Patch B.2 — Most recent pass, for the 3-second Undo affordance. { event, timeoutId } | null
+  const [recentPass, setRecentPass] = useState(null);
   
   // New feature modals
   const [showNotificationPrefs, setShowNotificationPrefs] = useState(false);
@@ -12092,6 +12123,11 @@ export default function App() {
       const liked = JSON.parse(localStorage.getItem(`${userKey}_liked`) || '[]');
       setSavedEventIds(new Set(liked.map(e => e.id).filter(Boolean)));
     } catch { setSavedEventIds(new Set()); }
+    // Patch B.2 — Hydrate passed events from localStorage
+    try {
+      const passed = JSON.parse(localStorage.getItem(`${userKey}_passed`) || '[]');
+      setPassedEventIds(new Set(passed));
+    } catch { setPassedEventIds(new Set()); }
   };
 
   const checkAuth = async () => {
@@ -12417,16 +12453,11 @@ export default function App() {
         !event.status || event.status === 'live' || event.status === 'approved'
       );
       
-      // Filter out seen events if user is logged in (for discover feed only)
-      const effectiveUserId = userId || userProfile?.id;
-      if (effectiveUserId) {
-        const userKey = `crewq_${effectiveUserId}`;
-        const seenEvents = JSON.parse(localStorage.getItem(`${userKey}_seen`) || '[]');
-        filteredEvents = filteredEvents.filter(event => !seenEvents.includes(event.id));
-      }
+      // Patch B.2 — Removed legacy "_seen" filter at fetch time.
+      // The discover feed now applies a passed-events filter at render time via getVibeFilteredEvents.
       
       setEvents(filteredEvents);
-      setCurrentIndex(0); // Reset to first unseen event
+      setCurrentIndex(0);
     } catch (error) {
       console.error('Error loading events:', error);
     }
@@ -12555,9 +12586,6 @@ const loadSquads = async (userId) => {
       seenEvents.push(currentEvent.id);
       localStorage.setItem(`${userKey}_seen`, JSON.stringify(seenEvents));
       
-      // Patch 3 — Track daily swipe count for daily cap
-      incrementTodaysSwipeCount();
-      
       // Only count UNIQUE swipes for badges
       const currentSwipes = parseInt(localStorage.getItem(`${userKey}_swipes`) || '0');
       localStorage.setItem(`${userKey}_swipes`, (currentSwipes + 1).toString());
@@ -12614,19 +12642,40 @@ const loadSquads = async (userId) => {
     }
   };
 
-  // Patch B — Mark a feed card as "viewed" once it's been on screen for FEED_CARD_VIEW_MS.
-  // Replaces swipe-based seen-tracking. Idempotent — safe to call multiple times.
-  const handleFeedCardViewed = async (event) => {
+  // Patch B.2 — Fire-and-forget analytics logger. Writes to event_interactions table.
+  // SQL migration required:
+  //   CREATE TABLE event_interactions (id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  //     user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  //     event_id uuid NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  //     interaction_type text NOT NULL, view_duration_ms integer, metadata jsonb,
+  //     created_at timestamptz DEFAULT now());
+  // Fails silently if table is missing — UX is never blocked by analytics.
+  const logInteraction = async (eventId, type, options = {}) => {
+    if (!supabaseClient || !userProfile?.id || !eventId || !type) return;
+    try {
+      const row = {
+        user_id: userProfile.id,
+        event_id: eventId,
+        interaction_type: type,
+        view_duration_ms: options.viewDurationMs != null ? options.viewDurationMs : null,
+        metadata: options.metadata || null,
+      };
+      await supabaseClient.from('event_interactions').insert([row]);
+    } catch (err) {
+      // Table may not exist yet — don't spam console
+      if (err?.code !== 'PGRST205' && err?.code !== 'PGRST204') {
+        console.warn('logInteraction failed:', err?.message);
+      }
+    }
+  };
+
+  // Patch B.2 — Card view callback. Logs view + duration. No more seen-blocking.
+  // Increments view count on the event row (best-effort; falls back to direct update).
+  const handleFeedCardViewed = async (event, durationMs) => {
     if (!userProfile?.id || !event?.id) return;
-    const userKey = `crewq_${userProfile.id}`;
-    const seenEvents = JSON.parse(localStorage.getItem(`${userKey}_seen`) || '[]');
-    if (seenEvents.includes(event.id)) return; // already counted
-    seenEvents.push(event.id);
-    localStorage.setItem(`${userKey}_seen`, JSON.stringify(seenEvents));
-    incrementTodaysSwipeCount();
-    const currentSwipes = parseInt(localStorage.getItem(`${userKey}_swipes`) || '0');
-    localStorage.setItem(`${userKey}_swipes`, (currentSwipes + 1).toString());
-    // Increment view count in DB (best-effort, fail silent)
+    // Log to analytics
+    logInteraction(event.id, durationMs >= 5000 ? 'viewed_long' : 'viewed', { viewDurationMs: durationMs });
+    // Increment event.views (legacy counter — keep for now for venue-facing display)
     if (supabaseClient) {
       try {
         await supabaseClient.rpc('increment_event_views', { event_uuid: event.id });
@@ -12655,6 +12704,7 @@ const loadSquads = async (userId) => {
           await supabaseClient.from('liked_events').delete().eq('user_id', userProfile.id).eq('event_id', event.id);
         } catch (e) { /* fail silent */ }
       }
+      logInteraction(event.id, 'unsaved');
       showToast('Removed from saved', 'info');
     } else {
       // Save
@@ -12669,28 +12719,56 @@ const loadSquads = async (userId) => {
           await supabaseClient.from('liked_events').insert([{ user_id: userProfile.id, event_id: event.id, created_at: new Date().toISOString() }]);
         } catch (e) { /* unique-constraint or table-missing, fail silent */ }
       }
+      logInteraction(event.id, 'saved');
       showToast('💜 Saved to your list', 'success');
     }
   };
 
-  // Patch B — Pass / not-for-me. Marks event seen so it won't reappear in feed.
+  // Patch B.2 — Pass = permanent dismissal (until event ends). 3-sec undo window.
+  // Stored in localStorage `_passed`. Logged to event_interactions.
   const handleFeedCardPass = async (event) => {
     if (!userProfile?.id || !event?.id) return;
+    
     const userKey = `crewq_${userProfile.id}`;
-    const seenEvents = JSON.parse(localStorage.getItem(`${userKey}_seen`) || '[]');
-    if (!seenEvents.includes(event.id)) {
-      seenEvents.push(event.id);
-      localStorage.setItem(`${userKey}_seen`, JSON.stringify(seenEvents));
+    const passed = JSON.parse(localStorage.getItem(`${userKey}_passed`) || '[]');
+    if (!passed.includes(event.id)) {
+      passed.push(event.id);
+      localStorage.setItem(`${userKey}_passed`, JSON.stringify(passed));
     }
-    // Force re-render of feed to drop the passed card
-    setLikedEventsRefresh(prev => prev + 1);
-    showToast('Passed — won\'t show this one again', 'info');
+    setPassedEventIds(prev => { const s = new Set(prev); s.add(event.id); return s; });
+    
+    // Clear any pending undo (only one undo window at a time)
+    if (recentPass?.timeoutId) clearTimeout(recentPass.timeoutId);
+    
+    // Set 3-sec undo window. After timeout: log pass to analytics + clear undo.
+    const timeoutId = setTimeout(() => {
+      logInteraction(event.id, 'passed');
+      setRecentPass(null);
+    }, 3000);
+    
+    setRecentPass({ event, timeoutId });
+  };
+
+  // Patch B.2 — Undo a recent pass (within 3-sec window). Removes from passed list.
+  const handleUndoPass = () => {
+    if (!recentPass?.event || !userProfile?.id) return;
+    const event = recentPass.event;
+    const userKey = `crewq_${userProfile.id}`;
+    const passed = JSON.parse(localStorage.getItem(`${userKey}_passed`) || '[]');
+    const next = passed.filter(id => id !== event.id);
+    localStorage.setItem(`${userKey}_passed`, JSON.stringify(next));
+    setPassedEventIds(prev => { const s = new Set(prev); s.delete(event.id); return s; });
+    if (recentPass.timeoutId) clearTimeout(recentPass.timeoutId);
+    setRecentPass(null);
+    showToast('Pass undone — back in your feed', 'info');
   };
 
   // Patch B — Share opens the existing share modal pre-set to this event
   const handleFeedCardShare = (event) => {
     setSelectedEvent(event);
     setShowShareModal(true);
+    // Patch B.2 — Log to analytics (share intent — actual share platform is unknown until they pick)
+    logInteraction(event.id, 'shared');
   };
 
   // Handle RSVP - explicit user action (Patch 7: DB-backed via event_rsvps)
@@ -12741,6 +12819,9 @@ const loadSquads = async (userId) => {
       }
       
       showToast('🎉 RSVP confirmed! See you there!', 'success');
+      
+      // Patch B.2 — Log to analytics
+      logInteraction(event.id, 'rsvped');
       
       // Update local events arrays
       setEvents(events.map(e => e.id === event.id ? {...e, rsvps: (e.rsvps || 0) + 1} : e));
@@ -12793,6 +12874,9 @@ const loadSquads = async (userId) => {
       
       showToast('RSVP cancelled', 'info');
       
+      // Patch B.2 — Log to analytics
+      logInteraction(event.id, 'unrsvped');
+      
       setEvents(events.map(e => e.id === event.id ? {...e, rsvps: newCount} : e));
       setAllEvents(allEvents.map(e => e.id === event.id ? {...e, rsvps: newCount} : e));
       
@@ -12813,25 +12897,8 @@ const loadSquads = async (userId) => {
   };
 
   // Patch 3 — Helper: today's date as YYYY-MM-DD for daily-cap tracking
-  const getTodayKey = () => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  };
-
-  // Patch 3 — How many cards has the user swiped today (for daily cap)
-  const getTodaysSwipeCount = () => {
-    if (!userProfile?.id) return 0;
-    const key = `crewq_${userProfile.id}_swipes_${getTodayKey()}`;
-    return parseInt(localStorage.getItem(key) || '0', 10);
-  };
-
-  // Patch 3 — Increment today's swipe count
-  const incrementTodaysSwipeCount = () => {
-    if (!userProfile?.id) return;
-    const key = `crewq_${userProfile.id}_swipes_${getTodayKey()}`;
-    const current = getTodaysSwipeCount();
-    localStorage.setItem(key, String(current + 1));
-  };
+  // Patch B.2 — Removed getTodayKey, getTodaysSwipeCount, incrementTodaysSwipeCount.
+  // Daily cap is gone; swipe counter is replaced by event_interactions analytics.
 
   // Patch 3 — Apply hard filters to an event list (date, distance, age, status)
   const applyHardFilters = (eventList, opts = {}) => {
@@ -12896,14 +12963,10 @@ const loadSquads = async (userId) => {
     // Hard filters: status, date window, distance, age
     filtered = applyHardFilters(filtered);
 
-    // Patch B — Skip events already seen/passed (so the feed doesn't repeat)
-    if (userProfile?.id) {
-      const userKey = `crewq_${userProfile.id}`;
-      const seenEvents = JSON.parse(localStorage.getItem(`${userKey}_seen`) || '[]');
-      if (seenEvents.length > 0) {
-        const seenSet = new Set(seenEvents);
-        filtered = filtered.filter(e => !seenSet.has(e.id));
-      }
+    // Patch B.2 — Filter out events the user explicitly passed on (X button).
+    // No more "_seen" filter — every other event stays in the feed across sessions.
+    if (passedEventIds.size > 0) {
+      filtered = filtered.filter(e => !passedEventIds.has(e.id));
     }
 
     // Patch B — Free-text search
@@ -12959,9 +13022,9 @@ const loadSquads = async (userId) => {
       return (a.date || '').localeCompare(b.date || '');
     });
 
-    // Patch B — Daily cap is now a CEILING, not a target.
-    // If we have 4 events, show 4 (not "11 of 15 remaining"). If we have 50, cap at 15.
-    return filtered.slice(0, DAILY_FEED_CAP);
+    // Patch B.2 — No more daily cap. Show every event that passes all filters.
+    // Engagement is now the constraint (passed/RSVP'd events drop out), not an arbitrary count.
+    return filtered;
   };
 
   // Patch 3 + Patch A — Coming Up lane: all events 7–30 days out.
@@ -13299,6 +13362,21 @@ const loadSquads = async (userId) => {
         <div className={`flex-1 overflow-y-auto overflow-x-hidden pb-20 sm:pb-24 -webkit-overflow-scrolling-touch ${currentTab === 'discover' ? 'discover-feed-snap scrollbar-hide' : ''}`}>
           {currentTab === 'discover' && (
             <div className="px-3 py-3 sm:px-4 sm:py-6 max-w-2xl mx-auto">
+              {/* Patch B.2 — Undo Pass affordance (3-second window) */}
+              {recentPass && (
+                <div className={`mb-3 p-3 rounded-xl flex items-center justify-between gap-3 ${darkMode ? 'bg-zinc-900 border border-zinc-700' : 'bg-white border border-amber-300'}`}>
+                  <span className={`text-sm ${darkMode ? 'text-zinc-300' : 'text-zinc-700'}`}>
+                    <span className="font-semibold">Passed</span> on "{recentPass.event?.name}"
+                  </span>
+                  <button
+                    onClick={handleUndoPass}
+                    className={`text-sm font-bold underline ${darkMode ? 'text-violet-400 hover:text-violet-300' : 'text-orange-600 hover:text-orange-700'}`}
+                  >
+                    Undo
+                  </button>
+                </div>
+              )}
+              
               {/* Patch B — Search bar */}
               <div className="relative mb-3">
                 <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`} />
@@ -13419,24 +13497,24 @@ const loadSquads = async (userId) => {
                         </>
                       ) : (
                         <>
-                          <h2 className="text-xl font-bold mb-2">You're caught up</h2>
+                          <h2 className="text-xl font-bold mb-2">You've engaged with everything</h2>
                           <p className={`${darkMode ? 'text-zinc-400' : 'text-zinc-600'} mb-6 px-4 text-sm`}>
-                            You've seen all events for the next 7 days. Check the Events tab for what's coming up later, or reset to browse again.
+                            You've RSVP'd to or passed on every event in the next 7 days. Bring back passed events below, or check the Events tab for what's coming up later.
                           </p>
                           <div className="flex flex-col gap-3 max-w-xs mx-auto">
                             <button
                               onClick={() => {
                                 if (userProfile?.id) {
                                   const userKey = `crewq_${userProfile.id}`;
-                                  localStorage.removeItem(`${userKey}_seen`);
-                                  localStorage.removeItem(`${userKey}_swipes_${getTodayKey()}`);
+                                  localStorage.removeItem(`${userKey}_passed`);
+                                  setPassedEventIds(new Set());
                                   loadEvents(userProfile.id);
-                                  showToast('Feed reset 🎉', 'success');
+                                  showToast('Passed events restored 🎉', 'success');
                                 }
                               }}
                               className={`bg-gradient-to-r ${darkMode ? 'from-violet-500 to-purple-600' : 'from-orange-500 to-amber-500'} text-white px-6 py-3 rounded-xl font-semibold hover:shadow-lg transition`}
                             >
-                              Reset feed
+                              Bring back passed events
                             </button>
                             <button
                               onClick={() => setCurrentTab('events')}
@@ -13762,9 +13840,10 @@ const loadSquads = async (userId) => {
             }}
             onResetEvents={() => {
               const userKey = `crewq_${userProfile?.id}`;
-              localStorage.removeItem(`${userKey}_seen`);
+              localStorage.removeItem(`${userKey}_passed`);
+              setPassedEventIds(new Set());
               loadEvents(userProfile?.id);
-              showToast('Events reset! Swipe away 🎉', 'success');
+              showToast('Passed events restored! Browse again 🎉', 'success');
             }}
           />
         )}
