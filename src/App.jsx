@@ -5118,8 +5118,7 @@ function EventFeedCard({
   return (
     <article
       ref={cardRef}
-      className="relative w-full snap-start mb-4"
-      style={{ scrollSnapAlign: 'start', scrollSnapStop: 'always' }}
+      className="discover-feed-card relative w-full mb-4"
     >
       <div className={`rounded-3xl overflow-hidden ${darkMode ? 'bg-zinc-900 border border-zinc-800' : 'bg-white border border-amber-200'} shadow-xl`}>
         {/* Hero image — full bleed, no UI overlay */}
@@ -13205,6 +13204,32 @@ const loadSquads = async (userId) => {
 
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-black text-white' : 'bg-amber-50 text-zinc-900'}`}>
+      {/* Patch B.1 — Global CSS for hybrid snap behavior + cross-browser scrollbar hiding */}
+      <style>{`
+        /* Cross-browser scrollbar hide */
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* Discover feed: hybrid scroll-snap.
+           Default (desktop / mouse): proximity snap — soft, doesn't fight free scrolling.
+           Touch devices: mandatory snap — TikTok/Reels-style strict card-by-card. */
+        .discover-feed-snap {
+          scroll-snap-type: y proximity;
+          scroll-behavior: smooth;
+        }
+        .discover-feed-card {
+          scroll-snap-align: start;
+          scroll-snap-stop: normal;
+        }
+        @media (hover: none) and (pointer: coarse) {
+          .discover-feed-snap {
+            scroll-snap-type: y mandatory;
+          }
+          .discover-feed-card {
+            scroll-snap-stop: always;
+          }
+        }
+      `}</style>
       <div className={`w-full max-w-md mx-auto ${darkMode ? 'bg-black' : 'bg-amber-50'} min-h-screen relative flex flex-col`}>
         {/* Fixed Header */}
         <div className={`sticky top-0 z-40 ${darkMode ? 'bg-zinc-900/95 backdrop-blur-sm border-zinc-800' : 'bg-amber-100 border-amber-200'} border-b px-4 py-4`}>
@@ -13271,7 +13296,7 @@ const loadSquads = async (userId) => {
         </div>
 
         {/* Scrollable Content Area */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden pb-20 sm:pb-24 -webkit-overflow-scrolling-touch">
+        <div className={`flex-1 overflow-y-auto overflow-x-hidden pb-20 sm:pb-24 -webkit-overflow-scrolling-touch ${currentTab === 'discover' ? 'discover-feed-snap scrollbar-hide' : ''}`}>
           {currentTab === 'discover' && (
             <div className="px-3 py-3 sm:px-4 sm:py-6 max-w-2xl mx-auto">
               {/* Patch B — Search bar */}
@@ -13295,7 +13320,7 @@ const loadSquads = async (userId) => {
               </div>
 
               {/* Patch B — Category browse chips (horizontal scroll) */}
-              <div className="overflow-x-auto -mx-3 px-3 sm:-mx-4 sm:px-4 mb-3 pb-1">
+              <div className="overflow-x-auto scrollbar-hide -mx-3 px-3 sm:-mx-4 sm:px-4 mb-3 pb-1">
                 <div className="flex gap-2" style={{ minWidth: 'min-content' }}>
                   {BROWSE_CATEGORIES.map(cat => (
                     <button
@@ -13434,11 +13459,8 @@ const loadSquads = async (userId) => {
                       <span>{feedEvents.length} event{feedEvents.length !== 1 ? 's' : ''} happening soon</span>
                     </div>
 
-                    {/* Vertical-scroll feed with native CSS snap */}
-                    <div
-                      className="space-y-4"
-                      style={{ scrollSnapType: 'y mandatory' }}
-                    >
+                    {/* Vertical-scroll feed — snap behavior lives on the parent .discover-feed-snap */}
+                    <div className="space-y-4">
                       {feedEvents.map(event => (
                         <EventFeedCard
                           key={event.id}
