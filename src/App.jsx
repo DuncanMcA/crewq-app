@@ -8755,7 +8755,7 @@ function AdminPortal({ onClose, userEmail }) {
       setSpecials(src.drink_specials || '');
       setDesc(src.description || '');
       setImageUrl(src.image_url || '');
-      setEventVibes(Array.isArray(src.vibes) ? src.vibes : (Array.isArray(src.tags) ? src.tags : []));
+      setEventVibes(Array.isArray(src.tags) ? src.tags : (Array.isArray(src.vibes) ? src.vibes : []));
       setAgeTag(src.age_tag || (src.age_restriction === '18+' ? '18+' : src.age_restriction === 'all' ? 'all-ages' : '21+'));
       setKidFriendly(!!src.kid_friendly);
       setDateNight(!!src.date_night);
@@ -8847,7 +8847,7 @@ function AdminPortal({ onClose, userEmail }) {
           drink_specials: specials, 
           description: desc, 
           image_url: imageUrl || quickImages[0].url,
-          vibes: eventVibes,
+          tags: eventVibes, // Patch A.2 — schema uses `tags` column for event vibes (not `vibes`)
           status: 'live',
           recurring: isRecurring,
           // Patch 1 — new fields
@@ -12493,10 +12493,12 @@ const loadSquads = async (userId) => {
   };
 
   // Patch 3 — Soft ranking by vibe match score (returns score 0..N)
+  // Patch A.2 — Read from event.tags (schema column name), with event.vibes fallback for legacy in-memory data
   const getVibeMatchScore = (event) => {
-    if (!userProfile?.vibes || !event.vibes) return 0;
-    const eventVibes = Array.isArray(event.vibes) ? event.vibes : [];
+    if (!userProfile?.vibes) return 0;
+    const eventVibes = Array.isArray(event.tags) ? event.tags : (Array.isArray(event.vibes) ? event.vibes : []);
     const userVibes = Array.isArray(userProfile.vibes) ? userProfile.vibes : [];
+    if (eventVibes.length === 0) return 0;
     return eventVibes.filter(v => userVibes.includes(v)).length;
   };
 
@@ -12510,7 +12512,8 @@ const loadSquads = async (userId) => {
     // Optional vibe hard-filter (when toggle on AND user has vibes set)
     if (vibeFilterEnabled && userProfile?.vibes && userProfile.vibes.length > 0) {
       filtered = filtered.filter(event => {
-        const eventVibes = event.vibes || event.tags || [];
+        // Patch A.2 — Read from event.tags first (actual schema column); fall back to event.vibes for legacy in-memory data
+        const eventVibes = event.tags || event.vibes || [];
         const eventCategory = event.category || '';
         if (Array.isArray(eventVibes) && eventVibes.some(v => userProfile.vibes.includes(v))) return true;
         const categoryVibeMap = {
