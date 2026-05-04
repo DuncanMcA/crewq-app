@@ -436,6 +436,151 @@ const BROWSE_CATEGORIES = [
   { id: 'community',   label: '👥 Community' },
 ];
 
+// Patch C2b — Standard event templates for the admin Quick-Create form. Pre-fills sensible defaults
+// so common recurring events (trivia, happy hour, etc) take ~10 seconds to list.
+const EVENT_TEMPLATES = [
+  {
+    id: 'trivia',
+    label: '🧠 Trivia Night',
+    defaults: {
+      type: 'Trivia',
+      category: 'trivia',
+      time: '19:00',
+      end_time: '21:00',
+      ageTag: '21+',
+      tags: ['trivia', 'games'],
+      description: 'Weekly trivia night. Free to play, prizes for the winners.',
+      image_url: 'https://images.unsplash.com/photo-1606761568499-6d2451b23c66?w=800',
+    }
+  },
+  {
+    id: 'happy-hour',
+    label: '🍻 Happy Hour',
+    defaults: {
+      type: 'Happy Hour',
+      category: 'happy-hour',
+      time: '16:00',
+      end_time: '19:00',
+      ageTag: '21+',
+      tags: ['happy-hour', 'chill-drinks'],
+      description: 'Discounted drinks and bites.',
+      image_url: 'https://images.unsplash.com/photo-1575037614876-c38a4d44f5b8?w=800',
+    }
+  },
+  {
+    id: 'live-music',
+    label: '🎵 Live Music',
+    defaults: {
+      type: 'Live Music',
+      category: 'live-music',
+      time: '20:00',
+      end_time: '23:00',
+      ageTag: '21+',
+      tags: ['live-music', 'concerts'],
+      description: 'Live music tonight.',
+      image_url: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800',
+    }
+  },
+  {
+    id: 'karaoke',
+    label: '🎤 Karaoke',
+    defaults: {
+      type: 'Karaoke',
+      category: 'karaoke',
+      time: '21:00',
+      end_time: '01:00',
+      ageTag: '21+',
+      tags: ['karaoke'],
+      description: 'Karaoke night. Sing your heart out.',
+      image_url: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=800',
+    }
+  },
+  {
+    id: 'brunch',
+    label: '🥂 Brunch',
+    defaults: {
+      type: 'Brunch',
+      category: 'food',
+      time: '10:00',
+      end_time: '14:00',
+      ageTag: 'all-ages',
+      tags: ['foodie', 'brunch'],
+      description: 'Weekend brunch service.',
+      image_url: 'https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?w=800',
+    }
+  },
+  {
+    id: 'comedy',
+    label: '😂 Comedy Night',
+    defaults: {
+      type: 'Comedy',
+      category: 'comedy',
+      time: '20:00',
+      end_time: '22:00',
+      ageTag: '21+',
+      tags: ['comedy'],
+      description: 'Stand-up comedy lineup.',
+      image_url: 'https://images.unsplash.com/photo-1527224857830-43a7acc85260?w=800',
+    }
+  },
+  {
+    id: 'dj',
+    label: '🪩 DJ Night',
+    defaults: {
+      type: 'DJ',
+      category: 'nightlife',
+      time: '22:00',
+      end_time: '02:00',
+      ageTag: '21+',
+      tags: ['dancing', 'dj'],
+      description: 'Late-night DJ set.',
+      image_url: 'https://images.unsplash.com/photo-1571266028243-e4733b0f0bb0?w=800',
+    }
+  },
+  {
+    id: 'paint-sip',
+    label: '🎨 Paint & Sip',
+    defaults: {
+      type: 'Paint & Sip',
+      category: 'creative',
+      time: '19:00',
+      end_time: '21:00',
+      ageTag: '21+',
+      tags: ['creative', 'date-night'],
+      description: 'Painting class with drinks. All skill levels welcome.',
+      image_url: 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=800',
+    }
+  },
+  {
+    id: 'bingo',
+    label: '🎲 Bingo',
+    defaults: {
+      type: 'Bingo',
+      category: 'trivia',
+      time: '19:00',
+      end_time: '21:00',
+      ageTag: '21+',
+      tags: ['games', 'bingo'],
+      description: 'Bingo night. Prizes every round.',
+      image_url: 'https://images.unsplash.com/photo-1610890716171-6b1bb98ffd09?w=800',
+    }
+  },
+  {
+    id: 'run-club',
+    label: '🏃 Run Club',
+    defaults: {
+      type: 'Run Club',
+      category: 'community',
+      time: '07:00',
+      end_time: '08:30',
+      ageTag: 'all-ages',
+      tags: ['fitness', 'community'],
+      description: 'Weekly group run. All paces welcome.',
+      image_url: 'https://images.unsplash.com/photo-1571008887538-b36bb32f4571?w=800',
+    }
+  },
+];
+
 
 // Patch A — Stock image library, ~120 curated images organized by category.
 // Diverse along: people (race/age/body type/gender), event types (nightlife + daytime + niche),
@@ -1165,233 +1310,8 @@ function BioBuilderModal({ onClose, onSaveBio, userName, currentAnswers, current
   );
 }
 
-function EventCard({ event, onSwipe, style, isTrending, vibeMatch, countdown, goingCount, rsvpUsers }) {
-  const [dragStart, setDragStart] = useState(0);
-  const [dragOffset, setDragOffset] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const [swiping, setSwiping] = useState(false);
-  const cardRef = useRef(null);
+// Patch C2b — Removed dead `EventCard` swipe component (replaced by EventFeedCard in Patch B+).
 
-  const handleDragStart = (e) => {
-    if (swiping) return;
-    e.preventDefault();
-    const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
-    setDragStart(clientX);
-    setIsDragging(true);
-  };
-
-  const handleDragMove = (e) => {
-    if (!isDragging || swiping) return;
-    e.preventDefault();
-    const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
-    setDragOffset(clientX - dragStart);
-  };
-
-  const handleDragEnd = (e) => {
-    if (!isDragging || swiping) return;
-    e.preventDefault();
-    
-    if (Math.abs(dragOffset) > 80) {
-      setSwiping(true);
-      const direction = dragOffset > 0 ? 'right' : 'left';
-      
-      // Animate card off screen
-      setDragOffset(direction === 'right' ? 500 : -500);
-      
-      // Trigger swipe after animation
-      setTimeout(() => {
-        onSwipe(direction);
-        setDragOffset(0);
-        setIsDragging(false);
-        setSwiping(false);
-      }, 200);
-    } else {
-      setDragOffset(0);
-      setIsDragging(false);
-    }
-  };
-
-  // Reset if touch is lost
-  useEffect(() => {
-    const handleTouchCancel = () => {
-      if (!swiping) {
-        setDragOffset(0);
-        setIsDragging(false);
-      }
-    };
-    
-    window.addEventListener('touchcancel', handleTouchCancel);
-    return () => window.removeEventListener('touchcancel', handleTouchCancel);
-  }, [swiping]);
-
-  const rotation = dragOffset / 25;
-  const opacity = Math.max(0.5, 1 - Math.abs(dragOffset) / 500);
-
-  return (
-    <div
-      ref={cardRef}
-      style={{
-        ...style,
-        transform: `translateX(${dragOffset}px) rotate(${rotation}deg)`,
-        opacity,
-        transition: isDragging ? 'none' : 'all 0.3s ease-out',
-        touchAction: 'none',
-        userSelect: 'none'
-      }}
-      onMouseDown={handleDragStart}
-      onMouseMove={handleDragMove}
-      onMouseUp={handleDragEnd}
-      onMouseLeave={() => !swiping && isDragging && handleDragEnd({ preventDefault: () => {} })}
-      onTouchStart={handleDragStart}
-      onTouchMove={handleDragMove}
-      onTouchEnd={handleDragEnd}
-      className="absolute w-full cursor-grab active:cursor-grabbing select-none"
-    >
-      <div className="relative bg-zinc-900 rounded-3xl overflow-hidden shadow-2xl">
-        {/* Mobile: h-48, Desktop: h-72 */}
-        <div className="relative h-48 sm:h-64 md:h-72">
-          <img 
-            src={event.image_url} 
-            alt={event.name} 
-            className="w-full h-full object-cover pointer-events-none" 
-            draggable="false"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-transparent" />
-          
-          <div className="absolute top-3 left-3 sm:top-4 sm:left-4 flex gap-2">
-            <div className="bg-orange-500 text-white px-2 py-1 sm:px-3 rounded-full text-xs font-bold uppercase">
-              {event.category?.replace('-', ' ') || 'Event'}
-            </div>
-            {event.ambience && (() => {
-              const amb = AMBIENCE_OPTIONS.find(a => a.id === event.ambience);
-              return amb ? (
-                <div className={`${amb.color} text-white px-2 py-1 sm:px-3 rounded-full text-xs font-bold flex items-center gap-1`}>
-                  <span>{amb.icon}</span>
-                  <span className="hidden sm:inline">{amb.label}</span>
-                </div>
-              ) : null;
-            })()}
-          </div>
-
-          {(event.age_tag === '21+' || event.age_restriction === '21+') && (
-            <div className="absolute top-3 right-3 sm:top-4 sm:right-4 bg-red-500 text-white px-2 py-1 sm:px-3 rounded-full text-xs font-bold">
-              21+
-            </div>
-          )}
-          {(event.age_tag === '18+' || event.age_restriction === '18+') && (
-            <div className="absolute top-3 right-3 sm:top-4 sm:right-4 bg-amber-500 text-white px-2 py-1 sm:px-3 rounded-full text-xs font-bold">
-              18+
-            </div>
-          )}
-          {/* Patch 5 — Tag for user-submitted events */}
-          {event.submitted_by_user_id && (
-            <div className="absolute top-3 left-3 sm:top-4 sm:left-4 bg-violet-500/90 backdrop-blur text-white px-2 py-1 rounded-full text-[10px] font-semibold flex items-center gap-1">
-              <span>👥</span> Submitted by a CrewQ user
-            </div>
-          )}
-
-          {dragOffset < -40 && (
-            <div className="absolute inset-0 flex items-center justify-center bg-red-500 bg-opacity-30 transition-opacity">
-              <div className="bg-red-500 rounded-full p-3 sm:p-4 shadow-lg">
-                <X className="w-8 h-8 sm:w-12 sm:h-12 text-white" />
-              </div>
-            </div>
-          )}
-          {dragOffset > 40 && (
-            <div className="absolute inset-0 flex items-center justify-center bg-emerald-500 bg-opacity-30 transition-opacity">
-              <div className="bg-emerald-500 rounded-full p-3 sm:p-4 shadow-lg">
-                <Heart className="w-8 h-8 sm:w-12 sm:h-12 text-white" />
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Mobile: smaller padding, Desktop: normal padding */}
-        <div className="p-4 pb-16 sm:p-6 sm:pb-20">
-          <h2 className="text-xl sm:text-2xl font-bold text-white mb-1 sm:mb-2">{event.name}</h2>
-          <p className="text-zinc-400 text-xs sm:text-sm mb-2 sm:mb-4 line-clamp-2">{event.description}</p>
-          
-          <div className="flex items-center gap-2 text-zinc-400 text-xs sm:text-sm mb-2">
-            <MapPin className="w-3 h-3 sm:w-4 sm:h-4" />
-            <span className="truncate">{event.venue} • {event.neighborhood}</span>
-            {event.distance && (
-              <>
-                <span className="text-zinc-600">•</span>
-                <span>{event.distance}</span>
-              </>
-            )}
-          </div>
-
-          <div className="flex items-center gap-4 text-xs sm:text-sm mb-2 sm:mb-4">
-            <div className="flex items-center gap-1">
-              <Calendar className="w-3 h-3 sm:w-4 sm:h-4 text-zinc-400" />
-              <span className="text-zinc-300">{event.time}</span>
-            </div>
-            {countdown && (
-              <div className="flex items-center gap-1 text-orange-400">
-                <Clock className="w-3 h-3 sm:w-4 sm:h-4" />
-                <span className="font-semibold">{countdown}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Social Proof Row */}
-          <div className="flex flex-wrap items-center gap-2 mb-2">
-            {isTrending && (
-              <div className="flex items-center gap-1 bg-red-500 bg-opacity-20 text-red-400 px-2 py-1 rounded-full text-xs font-semibold">
-                <Flame className="w-3 h-3" />
-                <span>Trending</span>
-              </div>
-            )}
-            {vibeMatch && vibeMatch >= 70 && (
-              <div className="flex items-center gap-1 bg-violet-500 bg-opacity-20 text-violet-400 px-2 py-1 rounded-full text-xs font-semibold">
-                <Sparkles className="w-3 h-3" />
-                <span>{vibeMatch}% match</span>
-              </div>
-            )}
-            {goingCount > 0 && (
-              <div className="flex items-center gap-1 bg-emerald-500 bg-opacity-20 text-emerald-400 px-2 py-1 rounded-full text-xs font-semibold">
-                <Users className="w-3 h-3" />
-                <span>{goingCount} going</span>
-              </div>
-            )}
-          </div>
-
-          {/* People Going - Show faces */}
-          {rsvpUsers && rsvpUsers.length > 0 && (
-            <div className="flex items-center gap-2 mb-2">
-              <div className="flex -space-x-2">
-                {rsvpUsers.slice(0, 4).map((user, idx) => (
-                  <div key={idx} className="w-6 h-6 rounded-full bg-zinc-700 border-2 border-zinc-900 overflow-hidden">
-                    {user.profile_picture ? (
-                      <img src={user.profile_picture} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-xs text-white">
-                        {user.name?.charAt(0) || '?'}
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {rsvpUsers.length > 4 && (
-                  <div className="w-6 h-6 rounded-full bg-zinc-700 border-2 border-zinc-900 flex items-center justify-center text-xs text-zinc-400">
-                    +{rsvpUsers.length - 4}
-                  </div>
-                )}
-              </div>
-              <span className="text-zinc-400 text-xs">
-                {rsvpUsers[0]?.name?.split(' ')[0]}{rsvpUsers.length > 1 ? ` & ${rsvpUsers.length - 1} more` : ''} going
-              </span>
-            </div>
-          )}
-
-          <div className="inline-block bg-emerald-500 bg-opacity-20 text-emerald-400 px-2 py-1 sm:px-3 rounded-full text-xs sm:text-sm font-semibold">
-            Free Entry
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function CreateSquadModal({ onClose, onCreate, userProfile, events }) {
   const [step, setStep] = useState(1);
@@ -8370,6 +8290,11 @@ function AdminPortal({ onClose, userEmail }) {
   const [selectedVenue, setSelectedVenue] = useState(null);
   const [editingVenue, setEditingVenue] = useState(null);
   const [editingEvent, setEditingEvent] = useState(null);
+  // Patch C2b — Bulk-paste tool
+  const [showBulkPaste, setShowBulkPaste] = useState(false);
+  const [bulkPasteText, setBulkPasteText] = useState('');
+  const [bulkParsedEvents, setBulkParsedEvents] = useState([]);
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
 
   useEffect(() => { loadData(); }, []);
 
@@ -8476,6 +8401,272 @@ function AdminPortal({ onClose, userEmail }) {
       setSelectedEvent(null);
       setCurrentView('events');
     } catch { showToastMsg('Error deleting event', 'error'); }
+  };
+
+  // Patch C2b — Bulk-paste parser. Pipe-separated format preferred:
+  //   Event Name @ Venue | Date | Time | Category(optional) | Description(optional)
+  // Falls back to "smart parse" when pipes are missing.
+  const parseBulkPaste = (text) => {
+    if (!text || !text.trim()) return [];
+
+    // Helpers
+    const monthMap = {
+      jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2, apr: 3, april: 3,
+      may: 4, jun: 5, june: 5, jul: 6, july: 6, aug: 7, august: 7,
+      sep: 8, sept: 8, september: 8, oct: 9, october: 9, nov: 10, november: 10, dec: 11, december: 11
+    };
+    const weekdayMap = {
+      sun: 0, sunday: 0, mon: 1, monday: 1, tue: 2, tues: 2, tuesday: 2,
+      wed: 3, wednesday: 3, thu: 4, thur: 4, thurs: 4, thursday: 4,
+      fri: 5, friday: 5, sat: 6, saturday: 6
+    };
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const toIsoDate = (d) => {
+      if (!d) return '';
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+
+    // Parse a date token. Accepts: "Mon May 7", "May 7", "5/7", "5/7/2026", "Tuesday", "next Tuesday", "tomorrow", "today"
+    const parseDate = (raw) => {
+      if (!raw) return null;
+      const s = raw.trim().toLowerCase();
+      if (s === 'today') return toIsoDate(today);
+      if (s === 'tomorrow') {
+        const d = new Date(today); d.setDate(d.getDate() + 1); return toIsoDate(d);
+      }
+      // Numeric: 5/7 or 5/7/2026 or 5-7
+      const numericMatch = s.match(/^(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?$/);
+      if (numericMatch) {
+        const m = parseInt(numericMatch[1], 10) - 1;
+        const day = parseInt(numericMatch[2], 10);
+        let year = numericMatch[3] ? parseInt(numericMatch[3], 10) : today.getFullYear();
+        if (year < 100) year += 2000;
+        const d = new Date(year, m, day);
+        // If the date is in the past (and no year given), bump to next year
+        if (!numericMatch[3] && d < today) d.setFullYear(d.getFullYear() + 1);
+        return isNaN(d.getTime()) ? null : toIsoDate(d);
+      }
+      // "May 7" / "May 7 2026" / "Mon May 7"
+      const monthMatch = s.match(/(?:(?:sun|mon|tue|tues|wed|thu|thur|thurs|fri|sat)[a-z]*\s+)?(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+(\d{1,2})(?:[, ]+(\d{2,4}))?/);
+      if (monthMatch) {
+        const m = monthMap[monthMatch[1]];
+        const day = parseInt(monthMatch[2], 10);
+        let year = monthMatch[3] ? parseInt(monthMatch[3], 10) : today.getFullYear();
+        if (year < 100) year += 2000;
+        const d = new Date(year, m, day);
+        if (!monthMatch[3] && d < today) d.setFullYear(d.getFullYear() + 1);
+        return isNaN(d.getTime()) ? null : toIsoDate(d);
+      }
+      // Just a weekday — assume the next occurrence
+      const wdayMatch = s.match(/^(?:next\s+)?(sun|mon|tue|tues|wed|thu|thur|thurs|fri|sat)[a-z]*$/);
+      if (wdayMatch) {
+        const target = weekdayMap[wdayMatch[1]];
+        const d = new Date(today);
+        const diff = (target - d.getDay() + 7) % 7 || 7; // never today
+        d.setDate(d.getDate() + diff);
+        return toIsoDate(d);
+      }
+      return null;
+    };
+
+    // Parse a time token. Accepts: "8pm", "8:30pm", "20:00", "8 PM"
+    const parseTime = (raw) => {
+      if (!raw) return null;
+      const s = raw.trim().toLowerCase().replace(/\s+/g, '');
+      // 24-hour: "20:00" or "20"
+      const mil = s.match(/^([0-2]?\d):?([0-5]\d)?$/);
+      if (mil && !s.match(/[ap]m/)) {
+        const h = parseInt(mil[1], 10);
+        const m = mil[2] ? parseInt(mil[2], 10) : 0;
+        if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+          return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        }
+      }
+      // 12-hour with am/pm: "8pm", "8:30pm", "12:00am"
+      const ampm = s.match(/^(\d{1,2})(?::([0-5]\d))?(am|pm)$/);
+      if (ampm) {
+        let h = parseInt(ampm[1], 10);
+        const m = ampm[2] ? parseInt(ampm[2], 10) : 0;
+        if (ampm[3] === 'pm' && h !== 12) h += 12;
+        if (ampm[3] === 'am' && h === 12) h = 0;
+        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      }
+      return null;
+    };
+
+    // Heuristic category from keywords
+    const guessCategory = (txt) => {
+      const t = (txt || '').toLowerCase();
+      if (t.includes('trivia')) return 'trivia';
+      if (t.includes('bingo')) return 'trivia';
+      if (t.includes('happy hour')) return 'happy-hour';
+      if (t.includes('live music') || t.includes('concert') || t.includes('band ')) return 'live-music';
+      if (t.includes('karaoke')) return 'karaoke';
+      if (t.includes('comedy') || t.includes('open mic') || t.includes('stand-up') || t.includes('standup')) return 'comedy';
+      if (t.includes('brunch') || t.includes('breakfast')) return 'food';
+      if (t.includes('dj') || t.includes('club night') || t.includes('dance')) return 'nightlife';
+      if (t.includes('paint') || t.includes('craft') || t.includes('pottery')) return 'creative';
+      if (t.includes('run club') || t.includes('yoga') || t.includes('book club')) return 'community';
+      if (t.includes('watch party') || t.includes('game day')) return 'sports';
+      return '';
+    };
+
+    const out = [];
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    for (const line of lines) {
+      // Skip likely comments
+      if (line.startsWith('#') || line.startsWith('//')) continue;
+
+      // Try pipe-separated first: name@venue | date | time | category | description
+      const parts = line.split('|').map(p => p.trim());
+      let name = '', venue = '', date = '', time = '', category = '', description = '';
+
+      if (parts.length >= 3) {
+        // Pipe-separated
+        const namePart = parts[0];
+        const atIdx = namePart.lastIndexOf(' @ ');
+        if (atIdx > 0) {
+          name = namePart.slice(0, atIdx).trim();
+          venue = namePart.slice(atIdx + 3).trim();
+        } else {
+          name = namePart;
+        }
+        date = parseDate(parts[1]) || '';
+        time = parseTime(parts[2]) || '';
+        category = parts[3] ? parts[3].toLowerCase() : guessCategory(name);
+        description = parts[4] || '';
+      } else {
+        // No pipes: smart parse from a single line
+        // Format expected: "Event Name @ Venue, Date, Time"
+        const atIdx = line.indexOf(' @ ');
+        if (atIdx > 0) {
+          name = line.slice(0, atIdx).trim();
+          const rest = line.slice(atIdx + 3);
+          // Split by comma — venue is first segment, then date, then time
+          const restParts = rest.split(',').map(p => p.trim());
+          venue = restParts[0] || '';
+          // Remaining segments: try date then time
+          for (let i = 1; i < restParts.length; i++) {
+            const d = parseDate(restParts[i]);
+            const t = parseTime(restParts[i]);
+            if (d && !date) date = d;
+            else if (t && !time) time = t;
+          }
+        } else {
+          // Last resort: just an event name
+          name = line;
+        }
+        category = guessCategory(name);
+      }
+
+      // Only include if we got at least a name + venue + date
+      const valid = !!(name && venue && date);
+
+      out.push({
+        _localId: Math.random().toString(36).slice(2, 10),
+        valid,
+        rawLine: line,
+        name,
+        venue,
+        date,
+        time: time || '19:00',
+        category: category || 'community',
+        description,
+        include: valid, // only check by default if valid
+      });
+    }
+    return out;
+  };
+
+  const handleParseBulkPaste = () => {
+    const parsed = parseBulkPaste(bulkPasteText);
+    setBulkParsedEvents(parsed);
+    if (parsed.length === 0) {
+      showToastMsg('No lines parsed. Check the format.', 'error');
+    } else {
+      const validCount = parsed.filter(p => p.valid).length;
+      showToastMsg(`Parsed ${parsed.length} line${parsed.length !== 1 ? 's' : ''} (${validCount} valid)`, 'success');
+    }
+  };
+
+  const handleSubmitBulkParsed = async () => {
+    if (!supabaseClient || bulkSubmitting) return;
+    const toSubmit = bulkParsedEvents.filter(p => p.include && p.name && p.venue && p.date && p.time);
+    if (toSubmit.length === 0) {
+      showToastMsg('Nothing to submit. Check the boxes for valid rows.', 'error');
+      return;
+    }
+    setBulkSubmitting(true);
+    let successCount = 0;
+    const created = [];
+    for (const p of toSubmit) {
+      try {
+        // Match venue against existing establishments by name (case-insensitive)
+        const matched = establishments.find(e =>
+          (e.name || '').toLowerCase().trim() === p.venue.toLowerCase().trim()
+        );
+        // Geocode if no matched venue with coords
+        let lat = matched?.latitude ?? null;
+        let lng = matched?.longitude ?? null;
+        if ((lat == null || lng == null) && (matched?.address || matched?.neighborhood)) {
+          try {
+            const geo = await geocodeAddress(buildAddressString({
+              address: matched.address,
+              neighborhood: matched.neighborhood,
+              city: matched.city || 'Dallas'
+            }));
+            if (geo) { lat = geo.latitude; lng = geo.longitude; }
+          } catch { /* fail silent */ }
+        }
+        const payload = {
+          name: p.name,
+          venue: matched?.name || p.venue,
+          establishment_id: matched?.id || null,
+          neighborhood: matched?.neighborhood || null,
+          address: matched?.address || null,
+          category: p.category || 'community',
+          type: 'Event',
+          date: p.date,
+          time: p.time,
+          description: p.description || '',
+          status: 'live',
+          age_tag: '21+',
+          age_restriction: '21+',
+          kid_friendly: false,
+          date_night: false,
+          tags: [],
+          views: 0,
+          rsvps: 0,
+          checkins: 0,
+          latitude: lat,
+          longitude: lng,
+          image_url: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800',
+        };
+        const { data, error } = await supabaseClient.from('events').insert([payload]).select().single();
+        if (error) throw error;
+        created.push(data);
+        successCount++;
+      } catch (err) {
+        console.error('Bulk insert failed for line:', p.rawLine, err);
+      }
+    }
+    setBulkSubmitting(false);
+    if (created.length > 0) {
+      setEvents([...created, ...events]);
+    }
+    showToastMsg(`${successCount} of ${toSubmit.length} created`, successCount === toSubmit.length ? 'success' : 'error');
+    if (successCount === toSubmit.length) {
+      // Clean exit
+      setShowBulkPaste(false);
+      setBulkPasteText('');
+      setBulkParsedEvents([]);
+    } else {
+      // Keep modal open; remove successfully-created from the list
+      const createdNames = new Set(created.map(c => c.name));
+      setBulkParsedEvents(prev => prev.filter(p => !createdNames.has(p.name)));
+    }
   };
 
   // Patch A — Backfill helper: geocode every event missing lat/long
@@ -9133,6 +9324,28 @@ function AdminPortal({ onClose, userEmail }) {
       setMenuUrl(src.menu_url || '');
       showToastMsg(`Duplicated "${src.name}" — pick a new date`, 'success');
     };
+
+    // Patch C2b — Standard event templates: pre-fill the form with sensible defaults for common event types
+    const [templateId, setTemplateId] = useState('');
+    const applyTemplate = (id) => {
+      setTemplateId(id);
+      if (!id) return;
+      const t = EVENT_TEMPLATES.find(x => x.id === id);
+      if (!t) return;
+      const d = t.defaults;
+      // Set the name to the template label minus emoji (admin can rename to specific event)
+      const cleanLabel = t.label.replace(/[^\w\s-]/g, '').trim();
+      if (!name) setName(cleanLabel);
+      if (d.type) setEvtType(d.type);
+      if (d.category) setCat(d.category);
+      if (d.time) setTime(d.time);
+      if (d.end_time) setEndTime(d.end_time);
+      if (d.ageTag) setAgeTag(d.ageTag);
+      if (d.tags) setEventVibes(d.tags);
+      if (d.description) setDesc(d.description);
+      if (d.image_url) setImageUrl(d.image_url);
+      showToastMsg(`Template applied: ${t.label}`, 'success');
+    };
     
     // Common image URLs for quick selection - 40 options
     // Patch A — Use shared STOCK_IMAGE_CATEGORIES via ImagePicker; keep `quickImages` alias for legacy refs in this scope
@@ -9293,6 +9506,22 @@ function AdminPortal({ onClose, userEmail }) {
               <p className="text-violet-300/60 text-xs mt-1">Copies all fields except date. Pick a new date below.</p>
             </div>
           )}
+
+          {/* Patch C2b — Standard event templates */}
+          <div className="p-3 bg-orange-500/10 border border-orange-500/30 rounded-xl">
+            <label className="block text-xs text-orange-300 mb-2 font-semibold uppercase tracking-wide">📋 Use a standard template</label>
+            <select
+              value={templateId}
+              onChange={e => applyTemplate(e.target.value)}
+              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm"
+            >
+              <option value="">— No template —</option>
+              {EVENT_TEMPLATES.map(t => (
+                <option key={t.id} value={t.id}>{t.label}</option>
+              ))}
+            </select>
+            <p className="text-orange-300/60 text-xs mt-1">Pre-fills time, category, vibes, and a stock image. You can still edit any field.</p>
+          </div>
 
           {/* Event Name - Always Required */}
           <div>
@@ -9690,6 +9919,154 @@ function AdminPortal({ onClose, userEmail }) {
       </div>
       {editingVenue && <EditVenueModal />}
       {editingEvent && <EditEventModal />}
+      {/* Patch C2b — Bulk-paste modal */}
+      {showBulkPaste && (
+        <div className="fixed inset-0 bg-black bg-opacity-80 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 rounded-2xl border border-slate-700 max-w-3xl w-full max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b border-slate-700">
+              <div>
+                <h2 className="text-xl font-bold text-white">Bulk paste events</h2>
+                <p className="text-sm text-slate-400">Paste a list. One event per line.</p>
+              </div>
+              <button
+                onClick={() => { setShowBulkPaste(false); setBulkPasteText(''); setBulkParsedEvents([]); }}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto p-5 space-y-4">
+              {/* Format hints */}
+              <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-slate-400">
+                <p className="font-semibold text-slate-300 mb-1">Format (one event per line):</p>
+                <code className="block text-violet-300 mb-2">Event Name @ Venue | Date | Time | Category(optional)</code>
+                <p className="font-semibold text-slate-300 mb-1">Examples:</p>
+                <code className="block text-slate-400">Trivia Night @ The Rustic | Wed May 7 | 8pm | trivia</code>
+                <code className="block text-slate-400">Bingo @ Citizens Tavern | 5/8 | 19:00</code>
+                <code className="block text-slate-400">Comedy Open Mic @ Hyena's | Friday | 8:30pm | comedy</code>
+                <p className="mt-2 text-slate-500">Dates: "today", "tomorrow", "Tuesday", "May 7", "5/7", or "5/7/2026". Times: "8pm", "8:30pm", "20:00".</p>
+              </div>
+
+              {/* Input textarea */}
+              <div>
+                <label className="block text-sm text-slate-400 mb-2">Paste your events</label>
+                <textarea
+                  value={bulkPasteText}
+                  onChange={e => setBulkPasteText(e.target.value)}
+                  rows={8}
+                  placeholder="Trivia Night @ The Rustic | Wed May 7 | 8pm | trivia&#10;Bingo @ Citizens Tavern | 5/8 | 7pm&#10;..."
+                  className="w-full px-3 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white text-sm font-mono"
+                />
+                <button
+                  onClick={handleParseBulkPaste}
+                  disabled={!bulkPasteText.trim()}
+                  className="mt-2 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition disabled:opacity-50 text-sm"
+                >
+                  Parse {bulkPasteText.split('\n').filter(l => l.trim()).length} line{bulkPasteText.split('\n').filter(l => l.trim()).length !== 1 ? 's' : ''}
+                </button>
+              </div>
+
+              {/* Review parsed events */}
+              {bulkParsedEvents.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-semibold text-white">
+                      Review ({bulkParsedEvents.filter(p => p.include).length} selected of {bulkParsedEvents.length})
+                    </h3>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setBulkParsedEvents(prev => prev.map(p => ({ ...p, include: p.valid })))}
+                        className="text-xs text-violet-400 hover:text-violet-300"
+                      >
+                        Select all valid
+                      </button>
+                      <button
+                        onClick={() => setBulkParsedEvents(prev => prev.map(p => ({ ...p, include: false })))}
+                        className="text-xs text-slate-400 hover:text-slate-300"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    {bulkParsedEvents.map((p, idx) => (
+                      <div
+                        key={p._localId}
+                        className={`p-3 rounded-lg border ${p.valid ? 'bg-slate-900 border-slate-700' : 'bg-red-500/10 border-red-500/40'}`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <input
+                            type="checkbox"
+                            checked={p.include}
+                            onChange={e => setBulkParsedEvents(prev => prev.map((x, i) => i === idx ? { ...x, include: e.target.checked } : x))}
+                            disabled={!p.name || !p.venue || !p.date || !p.time}
+                            className="mt-1.5 w-4 h-4 accent-violet-500"
+                          />
+                          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <input
+                              value={p.name}
+                              onChange={e => setBulkParsedEvents(prev => prev.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))}
+                              placeholder="Event name"
+                              className="px-2 py-1.5 bg-slate-800 border border-slate-700 rounded text-white text-sm"
+                            />
+                            <input
+                              value={p.venue}
+                              onChange={e => setBulkParsedEvents(prev => prev.map((x, i) => i === idx ? { ...x, venue: e.target.value } : x))}
+                              placeholder="Venue"
+                              className="px-2 py-1.5 bg-slate-800 border border-slate-700 rounded text-white text-sm"
+                            />
+                            <input
+                              type="date"
+                              value={p.date}
+                              onChange={e => setBulkParsedEvents(prev => prev.map((x, i) => i === idx ? { ...x, date: e.target.value, include: !!(x.name && x.venue && e.target.value && x.time) } : x))}
+                              className="px-2 py-1.5 bg-slate-800 border border-slate-700 rounded text-white text-sm"
+                            />
+                            <input
+                              type="time"
+                              value={p.time}
+                              onChange={e => setBulkParsedEvents(prev => prev.map((x, i) => i === idx ? { ...x, time: e.target.value } : x))}
+                              className="px-2 py-1.5 bg-slate-800 border border-slate-700 rounded text-white text-sm"
+                            />
+                            <input
+                              value={p.category}
+                              onChange={e => setBulkParsedEvents(prev => prev.map((x, i) => i === idx ? { ...x, category: e.target.value } : x))}
+                              placeholder="Category"
+                              className="px-2 py-1.5 bg-slate-800 border border-slate-700 rounded text-white text-sm sm:col-span-2"
+                            />
+                          </div>
+                        </div>
+                        {!p.valid && (
+                          <p className="mt-2 text-xs text-red-300 ml-7">Missing required field — fix above to enable submit.</p>
+                        )}
+                        <p className="mt-1 text-[10px] text-slate-500 ml-7 truncate">From: <code>{p.rawLine}</code></p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {bulkParsedEvents.length > 0 && (
+              <div className="p-4 border-t border-slate-700 flex gap-2">
+                <button
+                  onClick={() => { setShowBulkPaste(false); setBulkPasteText(''); setBulkParsedEvents([]); }}
+                  className="flex-1 py-3 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSubmitBulkParsed}
+                  disabled={bulkSubmitting || bulkParsedEvents.filter(p => p.include).length === 0}
+                  className="flex-1 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition disabled:opacity-50 font-semibold"
+                >
+                  {bulkSubmitting ? 'Submitting…' : `Submit ${bulkParsedEvents.filter(p => p.include).length}`}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {toast && <div className={`fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg text-white text-sm ${toast.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`}>{toast.message}</div>}
     </div>
   );
@@ -10466,6 +10843,14 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
                 <div className="flex items-center justify-between flex-wrap gap-3">
                   <div><h1 className="text-2xl font-bold text-white">Events</h1><p className="text-slate-400">{events.length} total · {events.filter(e => e.latitude == null || e.longitude == null).length} missing coordinates</p></div>
                   <div className="flex items-center gap-2">
+                    {/* Patch C2b — Bulk-paste tool */}
+                    <button
+                      onClick={() => { setShowBulkPaste(true); setBulkPasteText(''); setBulkParsedEvents([]); }}
+                      className="flex items-center gap-2 px-3 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition text-sm"
+                      title="Paste many events at once"
+                    >
+                      <Plus className="w-4 h-4" />Bulk paste
+                    </button>
                     {/* Patch A — Geocode backfill */}
                     <button
                       onClick={handleBackfillGeocoding}
@@ -11504,10 +11889,13 @@ export default function App() {
 
       // Get local engagement stats - user specific
       const userKey = `crewq_${userId}`;
-      // Use seen events count for swipes (ensures uniqueness)
-      const seenEvents = JSON.parse(localStorage.getItem(`${userKey}_seen`) || '[]');
-      const totalSwipes = seenEvents.length;
-      const totalLikes = JSON.parse(localStorage.getItem(`${userKey}_liked`) || '[]').length;
+      // Patch C2b — _seen is dead. Engagement now = saved + passed + RSVPed.
+      // totalSwipes = legacy field name; semantics now "total interactions" until badge refactor.
+      const liked = JSON.parse(localStorage.getItem(`${userKey}_liked`) || '[]');
+      const passed = JSON.parse(localStorage.getItem(`${userKey}_passed`) || '[]');
+      const rsvped = JSON.parse(localStorage.getItem(`${userKey}_rsvped`) || '[]');
+      const totalSwipes = liked.length + passed.length + rsvped.length;
+      const totalLikes = liked.length;
       const daysActive = parseInt(localStorage.getItem(`${userKey}_days_active`) || '0');
       const currentStreak = parseInt(localStorage.getItem(`${userKey}_streak`) || '0');
       
@@ -12656,77 +13044,7 @@ const loadSquads = async (userId) => {
     }
   };
 
-  const handleSwipe = async (direction) => {
-    if (!userProfile?.id) return;
-    
-    const userKey = `crewq_${userProfile.id}`;
-    // Use the filtered displayEvents for proper indexing
-    const vibeFilteredEvents = getVibeFilteredEvents();
-    const currentEvent = vibeFilteredEvents[currentIndex];
-    
-    // Track this event as seen - user specific
-    const seenEvents = JSON.parse(localStorage.getItem(`${userKey}_seen`) || '[]');
-    const isNewSwipe = currentEvent && !seenEvents.includes(currentEvent.id);
-    
-    if (isNewSwipe && currentEvent) {
-      seenEvents.push(currentEvent.id);
-      localStorage.setItem(`${userKey}_seen`, JSON.stringify(seenEvents));
-      
-      // Only count UNIQUE swipes for badges
-      const currentSwipes = parseInt(localStorage.getItem(`${userKey}_swipes`) || '0');
-      localStorage.setItem(`${userKey}_swipes`, (currentSwipes + 1).toString());
-      
-      // INCREMENT VIEW COUNT in database (only for unique views)
-      if (supabaseClient) {
-        try {
-          await supabaseClient.rpc('increment_event_views', { event_uuid: currentEvent.id });
-        } catch (err) {
-          // Fallback: direct update if RPC doesn't exist
-          try {
-            await supabaseClient
-              .from('events')
-              .update({ views: (currentEvent.views || 0) + 1 })
-              .eq('id', currentEvent.id);
-          } catch (e) {
-            console.log('View tracking:', e.message);
-          }
-        }
-      }
-    }
-    
-    if (direction === 'right' && currentEvent) {
-      const liked = JSON.parse(localStorage.getItem(`${userKey}_liked`) || '[]');
-      // Prevent duplicates
-      if (!liked.find(e => e.id === currentEvent.id)) {
-        liked.push(currentEvent);
-        localStorage.setItem(`${userKey}_liked`, JSON.stringify(liked));
-        
-        // Trigger refresh so Events tab updates
-        setLikedEventsRefresh(prev => prev + 1);
-
-        // Save to liked_events table (this is "interested", not RSVP)
-        if (supabaseClient) {
-          try {
-            await supabaseClient
-              .from('liked_events')
-              .insert([{
-                user_id: userProfile.id,
-                event_id: currentEvent.id
-              }]);
-          } catch (error) {
-            console.error('Error saving liked event:', error);
-          }
-        }
-      }
-    }
-    // Always move to next card
-    setCurrentIndex(prev => prev + 1);
-    
-    // Refresh stats to check for new badges
-    if (userProfile?.id) {
-      setTimeout(() => loadUserStats(userProfile.id), 100);
-    }
-  };
+  // Patch C2b — Removed dead `handleSwipe` (replaced by handleFeedCardSave/Pass/Viewed in Patch B).
 
   // Patch B.2 — Fire-and-forget analytics logger. Writes to event_interactions table.
   // SQL migration required:
