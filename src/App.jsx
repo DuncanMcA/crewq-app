@@ -4817,21 +4817,38 @@ function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount
             </div>
           )}
 
-          {isCheckedIn ? (
-            <div className="bg-emerald-500 bg-opacity-20 border-2 border-emerald-500 text-emerald-400 py-4 rounded-xl font-bold flex items-center justify-center gap-2">
-              <CheckCircle className="w-5 h-5" />
-              You're Checked In!
-            </div>
-          ) : (
-            <button
-              onClick={handleCheckIn}
-              disabled={checking}
-              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold hover:shadow-lg transition disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              <CheckCircle className="w-5 h-5" />
-              {checking ? 'Checking In...' : "I'm Here! Check In"}
-            </button>
-          )}
+          {/* Patch C2a — Check-In only renders when the event is actually happening
+             (between -30min before start and end_time, or 4h after start if no end_time).
+             Future events: no Check-In button (you can't check in to next week's trivia).
+             Past events: also hidden. */}
+          {(() => {
+            if (!event?.date || !event?.time) return null;
+            const now = new Date();
+            const start = new Date(`${event.date}T${event.time}`);
+            const end = event.end_time
+              ? new Date(`${event.date}T${event.end_time}`)
+              : new Date(start.getTime() + 4 * 60 * 60 * 1000);
+            // Allow check-in 30 minutes before start
+            const checkInOpen = new Date(start.getTime() - 30 * 60 * 1000);
+            const isActive = now >= checkInOpen && now <= end;
+            if (!isActive && !isCheckedIn) return null; // hide button entirely for non-active events
+            // Already checked-in users always see the confirmation
+            return isCheckedIn ? (
+              <div className="bg-emerald-500 bg-opacity-20 border-2 border-emerald-500 text-emerald-400 py-4 rounded-xl font-bold flex items-center justify-center gap-2">
+                <CheckCircle className="w-5 h-5" />
+                You're Checked In!
+              </div>
+            ) : (
+              <button
+                onClick={handleCheckIn}
+                disabled={checking}
+                className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold hover:shadow-lg transition disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                <CheckCircle className="w-5 h-5" />
+                {checking ? 'Checking In...' : "I'm Here! Check In"}
+              </button>
+            );
+          })()}
         </div>
       </div>
     </div>
@@ -5116,6 +5133,7 @@ function EventFeedCard({
   onSave,
   onPass,
   onView,      // (event, durationMs) — fires on scroll-out
+  cardHeight,  // Patch C2a — exact pixel height matching scroll container
 }) {
   const cardRef = useRef(null);
   // Track total ms this card has been ≥50% visible
@@ -5209,7 +5227,7 @@ function EventFeedCard({
       ref={cardRef}
       onClick={() => onCardTap && onCardTap(event)}
       className="discover-feed-card relative w-full overflow-hidden bg-black cursor-pointer"
-      style={{ height: 'calc(100dvh - var(--feed-chrome, 124px))' }}
+      style={cardHeight ? { height: `${cardHeight}px` } : { height: '100vh' }}
     >
       {/* Hero image — fills entire card */}
       {event.image_url && (
@@ -10917,6 +10935,32 @@ export default function App() {
   const [showDiscoverFilters, setShowDiscoverFilters] = useState(false);
   // Patch C — Post-RSVP follow-up sheet (calendar export + bring-a-friend) shown inline in EventDetailModal
   const [postRsvpEvent, setPostRsvpEvent] = useState(null);
+  // Patch C2a — JS-measured scroll container height. iOS Safari requires an explicit (not flex-1) height
+  // for `scroll-snap-type: y mandatory` to reliably engage. We measure window height minus the top
+  // utility bar minus the bottom nav, and set the scroll container + each card to that exact height.
+  const [feedScrollHeight, setFeedScrollHeight] = useState(null);
+  const topBarRef = useRef(null);
+  const bottomNavRef = useRef(null);
+
+  useEffect(() => {
+    const measure = () => {
+      const top = topBarRef.current?.getBoundingClientRect().height || 0;
+      const bottom = bottomNavRef.current?.getBoundingClientRect().height || 0;
+      // window.innerHeight reflects the actual usable viewport (post-iOS-address-bar collapse)
+      const h = Math.max(0, window.innerHeight - top - bottom);
+      setFeedScrollHeight(h);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    window.addEventListener('orientationchange', measure);
+    // iOS Safari: re-measure after the address bar has settled (~200ms)
+    const t = setTimeout(measure, 250);
+    return () => {
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('orientationchange', measure);
+      clearTimeout(t);
+    };
+  }, []);
   
   // New feature modals
   const [showNotificationPrefs, setShowNotificationPrefs] = useState(false);
@@ -11382,11 +11426,12 @@ export default function App() {
     if (!supabaseClient) return;
     try {
       // First get check-in event IDs
+      // Patch C2a — Removed `created_at` from select + order. Some event_checkins tables don't have
+      // that column, causing a 400. We don't need ordering here (only IDs are used downstream).
       const { data: checkins, error: checkinsError } = await supabaseClient
         .from('event_checkins')
-        .select('event_id, created_at')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
+        .select('event_id')
+        .eq('user_id', userId);
       
       if (checkinsError || !checkins?.length) {
         setAttendedEvents([]);
@@ -13303,33 +13348,29 @@ const loadSquads = async (userId) => {
 
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-black text-white' : 'bg-amber-50 text-zinc-900'}`}>
-      {/* Patch B.1 + Patch C — Global CSS: cross-browser scrollbar hide + TikTok-style mandatory snap */}
+      {/* Patch B.1 + Patch C + Patch C2a — Global CSS for snap + scrollbar hide */}
       <style>{`
         /* Cross-browser scrollbar hide */
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
-        /* Discover feed: TikTok/Reels mandatory snap on every device.
-           Each card fills (viewport - sticky chrome). Snap-stop always = no skipping cards. */
+        /* Discover feed: TikTok/Reels mandatory snap, every device.
+           Scroll container has an explicit JS-set height (--feed-scroll-height) so iOS Safari
+           reliably engages snap. Cards fill that container exactly. */
         .discover-feed-snap {
           scroll-snap-type: y mandatory;
-          scroll-behavior: smooth;
-          /* Container height calc lets the card fill exactly the viewport minus our top utility bar
-             (~56px) and bottom nav (~64px). Cards read this via --feed-chrome. */
-          --feed-chrome: 124px;
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior-y: contain;
         }
         .discover-feed-card {
           scroll-snap-align: start;
           scroll-snap-stop: always;
-        }
-        /* Safari iOS adjustment: dvh is more accurate than vh for mobile chrome behavior */
-        @supports (height: 100dvh) {
-          .discover-feed-card { height: calc(100dvh - var(--feed-chrome, 124px)); }
+          /* height set via inline style to match scroll container exactly */
         }
       `}</style>
       <div className={`w-full max-w-md mx-auto ${darkMode ? 'bg-black' : 'bg-amber-50'} min-h-screen relative flex flex-col`}>
         {/* Patch C — Top utility bar: sticky, minimal. CrewQ + Beta + Filters + Bell + Settings */}
-        <div className={`sticky top-0 z-40 ${darkMode ? 'bg-zinc-900/95 backdrop-blur-sm border-zinc-800' : 'bg-amber-100 border-amber-200'} border-b px-4 py-3`}>
+        <div ref={topBarRef} className={`sticky top-0 z-40 ${darkMode ? 'bg-zinc-900/95 backdrop-blur-sm border-zinc-800' : 'bg-amber-100 border-amber-200'} border-b px-4 py-3`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold">
@@ -13411,7 +13452,10 @@ const loadSquads = async (userId) => {
         )}
 
         {/* Scrollable Content Area */}
-        <div className={`flex-1 overflow-y-auto overflow-x-hidden pb-20 sm:pb-24 -webkit-overflow-scrolling-touch ${currentTab === 'discover' ? 'discover-feed-snap scrollbar-hide' : ''}`}>
+        <div
+          className={`overflow-y-auto overflow-x-hidden -webkit-overflow-scrolling-touch ${currentTab === 'discover' ? 'discover-feed-snap scrollbar-hide' : 'flex-1 pb-20 sm:pb-24'}`}
+          style={currentTab === 'discover' && feedScrollHeight ? { height: `${feedScrollHeight}px` } : undefined}
+        >
           {currentTab === 'discover' && (() => {
             const feedEvents = getVibeFilteredEvents();
             const totalAvailable = applyHardFilters(events).length;
@@ -13519,6 +13563,7 @@ const loadSquads = async (userId) => {
                     vibeMatch={getVibeMatchScore(event)}
                     goingCount={(event.rsvps || 0) + (event.checkins || 0)}
                     darkMode={darkMode}
+                    cardHeight={feedScrollHeight}
                     onCardTap={(ev) => { handleEventClick(ev); }}
                     onSave={handleFeedCardSave}
                     onPass={handleFeedCardPass}
@@ -13529,6 +13574,7 @@ const loadSquads = async (userId) => {
                 {/* End-of-feed footer — also a snapping card so it doesn't feel abrupt */}
                 <div
                   className="discover-feed-card flex flex-col items-center justify-center text-center px-6"
+                  style={feedScrollHeight ? { height: `${feedScrollHeight}px` } : { height: '100vh' }}
                 >
                   <div className={`w-16 h-16 ${darkMode ? 'bg-zinc-800' : 'bg-amber-100'} rounded-full flex items-center justify-center mb-4`}>
                     <Sparkles className={`w-8 h-8 ${darkMode ? 'text-violet-400' : 'text-orange-500'}`} />
@@ -13606,7 +13652,7 @@ const loadSquads = async (userId) => {
         </div>
 
         {/* Fixed Bottom Navigation */}
-        <div className={`fixed bottom-0 left-0 right-0 z-50 ${darkMode ? 'bg-zinc-900/95 backdrop-blur-sm border-zinc-800' : 'bg-white border-amber-200'} border-t px-4 py-2 pb-safe`}>
+        <div ref={bottomNavRef} className={`fixed bottom-0 left-0 right-0 z-50 ${darkMode ? 'bg-zinc-900/95 backdrop-blur-sm border-zinc-800' : 'bg-white border-amber-200'} border-t px-4 py-2 pb-safe`}>
           <div className="flex justify-around items-center max-w-md mx-auto">
             {[
               { id: 'discover', icon: Home, label: 'Discover' },
