@@ -10953,12 +10953,20 @@ export default function App() {
     measure();
     window.addEventListener('resize', measure);
     window.addEventListener('orientationchange', measure);
-    // iOS Safari: re-measure after the address bar has settled (~200ms)
-    const t = setTimeout(measure, 250);
+    // Patch C2a fix — re-measure aggressively in the first ~1.5s to catch:
+    //   - iOS Safari address-bar collapse (~200ms after first paint)
+    //   - Safe-area inset reapplication (`pb-safe`) after layout settles
+    //   - Late-mounting refs from conditional content
+    const timers = [
+      setTimeout(measure, 100),
+      setTimeout(measure, 300),
+      setTimeout(measure, 750),
+      setTimeout(measure, 1500),
+    ];
     return () => {
       window.removeEventListener('resize', measure);
       window.removeEventListener('orientationchange', measure);
-      clearTimeout(t);
+      timers.forEach(clearTimeout);
     };
   }, []);
   
@@ -13370,7 +13378,8 @@ const loadSquads = async (userId) => {
       `}</style>
       <div className={`w-full max-w-md mx-auto ${darkMode ? 'bg-black' : 'bg-amber-50'} min-h-screen relative flex flex-col`}>
         {/* Patch C — Top utility bar: sticky, minimal. CrewQ + Beta + Filters + Bell + Settings */}
-        <div ref={topBarRef} className={`sticky top-0 z-40 ${darkMode ? 'bg-zinc-900/95 backdrop-blur-sm border-zinc-800' : 'bg-amber-100 border-amber-200'} border-b px-4 py-3`}>
+        {/* Patch C2a fix — fully opaque so feed images don't appear to bleed through */}
+        <div ref={topBarRef} className={`sticky top-0 z-40 ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-amber-100 border-amber-200'} border-b px-4 py-3`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold">
@@ -13652,7 +13661,8 @@ const loadSquads = async (userId) => {
         </div>
 
         {/* Fixed Bottom Navigation */}
-        <div ref={bottomNavRef} className={`fixed bottom-0 left-0 right-0 z-50 ${darkMode ? 'bg-zinc-900/95 backdrop-blur-sm border-zinc-800' : 'bg-white border-amber-200'} border-t px-4 py-2 pb-safe`}>
+        {/* Patch C2a fix — fully opaque (no /95 transparency or backdrop blur) so feed images don't appear to bleed through it */}
+        <div ref={bottomNavRef} className={`fixed bottom-0 left-0 right-0 z-50 ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-amber-200'} border-t px-4 py-2 pb-safe`}>
           <div className="flex justify-around items-center max-w-md mx-auto">
             {[
               { id: 'discover', icon: Home, label: 'Discover' },
