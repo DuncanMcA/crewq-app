@@ -4544,10 +4544,40 @@ function SoloFriendlySquadsView({ squads, onSquadClick, userProfile }) {
   );
 }
 
-function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount, userProfile, historicalCount = 0, onRSVP, onUndoRSVP, hasRSVPed }) {
+function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount, userProfile, historicalCount = 0, onRSVP, onUndoRSVP, hasRSVPed, showPostRsvp = false, onClearPostRsvp }) {
   const [checking, setChecking] = useState(false);
   const [rsvping, setRsvping] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  // Patch C — Post-RSVP follow-up: show calendar + bring-a-friend prompts inline after a successful RSVP
+  // showPostRsvp comes from parent (set when handleRSVP succeeds for THIS event)
+  // Calendar export: build a Google Calendar URL with the event details
+  const buildCalendarUrl = () => {
+    if (!event?.date || !event?.time) return null;
+    try {
+      const start = new Date(`${event.date}T${event.time}`);
+      const end = event.end_time ? new Date(`${event.date}T${event.end_time}`) : new Date(start.getTime() + 2 * 60 * 60 * 1000);
+      const fmt = (d) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+      const params = new URLSearchParams({
+        action: 'TEMPLATE',
+        text: event.name || 'CrewQ Event',
+        dates: `${fmt(start)}/${fmt(end)}`,
+        details: `${event.description || ''}\n\nFound on CrewQ: https://crewq-app.vercel.app`,
+        location: [event.venue, event.address, event.neighborhood].filter(Boolean).join(', ')
+      });
+      return `https://calendar.google.com/calendar/render?${params.toString()}`;
+    } catch {
+      return null;
+    }
+  };
+
+  // Bring-a-friend SMS — opens native SMS with pre-filled message
+  const buildFriendSmsHref = () => {
+    if (!event) return '#';
+    const dateStr = event.date && event.time ? new Date(`${event.date}T${event.time}`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+    const body = `Hey, want to come to ${event.name}${event.venue ? ` at ${event.venue}` : ''}${dateStr ? ` on ${dateStr}` : ''}? I just RSVP'd on CrewQ — https://crewq-app.vercel.app`;
+    return `sms:&body=${encodeURIComponent(body)}`;
+  };
 
   // Get all images - support both single image_url and image_urls array
   const getAllImages = () => {
@@ -4729,6 +4759,40 @@ function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount
                     <CheckCircle className="w-5 h-5" />
                     RSVP Confirmed!
                   </div>
+                  {/* Patch C — Post-RSVP follow-up sheet (calendar + bring a friend) */}
+                  {showPostRsvp && (
+                    <div className="bg-violet-500/10 border border-violet-500/30 rounded-xl p-4 space-y-3">
+                      <p className="text-sm font-semibold text-white">🎉 Locked in! What's next?</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {buildCalendarUrl() && (
+                          <a
+                            href={buildCalendarUrl()}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() => onClearPostRsvp && onClearPostRsvp()}
+                            className="flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 transition text-center"
+                          >
+                            <Calendar className="w-5 h-5 text-violet-400" />
+                            <span className="text-xs text-white font-semibold">Add to Calendar</span>
+                          </a>
+                        )}
+                        <a
+                          href={buildFriendSmsHref()}
+                          onClick={() => onClearPostRsvp && onClearPostRsvp()}
+                          className="flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 transition text-center"
+                        >
+                          <UserPlus className="w-5 h-5 text-violet-400" />
+                          <span className="text-xs text-white font-semibold">Bring a Friend</span>
+                        </a>
+                      </div>
+                      <button
+                        onClick={() => onClearPostRsvp && onClearPostRsvp()}
+                        className="w-full text-xs text-zinc-500 hover:text-zinc-300 transition py-1"
+                      >
+                        Skip for now
+                      </button>
+                    </div>
+                  )}
                   {onUndoRSVP && (
                     <button
                       onClick={handleUndoRSVPClick}
@@ -5039,50 +5103,42 @@ function EventSuggestionModal({ onClose, userProfile, supabaseClient, userBadges
   );
 }
 
-// Patch B — Vertical-scroll editorial-style card for the Discover feed.
-// Full-bleed image, info below image, single-tap RSVP, no UI overlapping the photo.
-// Replaces the swipe-card pattern in the Discover view only.
+// Patch B — Vertical-scroll TikTok-style card for the Discover feed.
+// Patch C — Full-viewport: image fills the entire card, content overlays bottom with gradient.
+// Card itself is tappable (opens detail). Save + Pass are corner icons. RSVP lives in detail view.
 function EventFeedCard({
   event,
-  hasRSVPed,
-  onRSVP,
-  onPass,
-  onSave,
-  onShare,
   isSaved,
   vibeMatch,
-  countdown,
   goingCount,
   darkMode = true,
-  onView, // called with (event, durationMs) — when card scrolls out of view (or unmounts)
+  onCardTap,   // tap anywhere on the card opens detail
+  onSave,
+  onPass,
+  onView,      // (event, durationMs) — fires on scroll-out
 }) {
   const cardRef = useRef(null);
   // Track total ms this card has been ≥50% visible
   const viewStateRef = useRef({
-    visibleSince: null,         // timestamp when card most recently became visible, or null
-    accumulatedMs: 0,           // total visible time across all visibility changes
-    hasBeenLogged: false,       // log once per mount (avoid double-counts)
+    visibleSince: null,
+    accumulatedMs: 0,
+    hasBeenLogged: false,
   });
 
   // Patch B.2 — IntersectionObserver tracks accumulated view-duration.
-  // Card becomes ≥50% visible → start timer. Drops below → pause timer + add elapsed to total.
-  // On unmount or when accumulated total clears the floor → log once.
   useEffect(() => {
     if (!cardRef.current) return;
 
     const flush = (final = false) => {
       const s = viewStateRef.current;
-      // Close any open visible window
       if (s.visibleSince != null) {
         s.accumulatedMs += Date.now() - s.visibleSince;
         s.visibleSince = null;
       }
-      // Log once when we have enough total view time, OR on final flush regardless (with min floor)
       if (!s.hasBeenLogged && s.accumulatedMs >= FEED_CARD_VIEW_MS_MIN) {
         s.hasBeenLogged = true;
         if (onView) onView(event, s.accumulatedMs);
       } else if (final && !s.hasBeenLogged && s.accumulatedMs > 0) {
-        // Final flush: log even short views, but only if non-zero
         s.hasBeenLogged = true;
         if (onView) onView(event, s.accumulatedMs);
       }
@@ -5095,7 +5151,6 @@ function EventFeedCard({
         if (isVisible && s.visibleSince == null) {
           s.visibleSince = Date.now();
         } else if (!isVisible && s.visibleSince != null) {
-          // Card just left view — accumulate duration and maybe log
           flush(false);
         }
       });
@@ -5105,12 +5160,12 @@ function EventFeedCard({
 
     return () => {
       obs.disconnect();
-      flush(true); // final flush on unmount
+      flush(true);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [event?.id]); // re-init only when the event changes
+  }, [event?.id]);
 
-  // Format date as "Mon, May 5" or "Today" / "Tomorrow"
+  // Format date as "Today" / "Tomorrow" / weekday / "Mon, May 5"
   const formatEventDate = (dateStr) => {
     if (!dateStr) return '';
     const evt = new Date(dateStr + 'T00:00:00');
@@ -5127,7 +5182,6 @@ function EventFeedCard({
     return evt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   };
 
-  // Format time as "7:00 PM"
   const formatEventTime = (timeStr) => {
     if (!timeStr) return '';
     const [h, m] = timeStr.split(':');
@@ -5142,156 +5196,131 @@ function EventFeedCard({
   const showAgeBadge = ageTag === '21+' || ageTag === '18+';
   const isFree = !event.cover_charge || parseFloat(event.cover_charge) === 0;
 
+  // Truncate description aggressively — single line max in overlay
+  const shortDesc = event.description
+    ? (event.description.length > 90 ? event.description.slice(0, 90).trim() + '…' : event.description)
+    : null;
+
+  // Stop propagation on icon taps so they don't trigger the card-level open
+  const stop = (fn) => (e) => { e.stopPropagation(); if (fn) fn(); };
+
   return (
     <article
       ref={cardRef}
-      className="discover-feed-card relative w-full mb-4"
+      onClick={() => onCardTap && onCardTap(event)}
+      className="discover-feed-card relative w-full overflow-hidden bg-black cursor-pointer"
+      style={{ height: 'calc(100dvh - var(--feed-chrome, 124px))' }}
     >
-      <div className={`rounded-3xl overflow-hidden ${darkMode ? 'bg-zinc-900 border border-zinc-800' : 'bg-white border border-amber-200'} shadow-xl`}>
-        {/* Hero image — full bleed, no UI overlay */}
-        <div className="relative aspect-[4/5] sm:aspect-[16/10] bg-zinc-800">
-          {event.image_url && (
-            <img
-              src={event.image_url}
-              alt={event.name}
-              className="w-full h-full object-cover"
-              loading="lazy"
-            />
-          )}
-          {/* Subtle gradient at top so date pill is legible */}
-          <div className="absolute top-0 inset-x-0 h-20 bg-gradient-to-b from-black/50 to-transparent pointer-events-none" />
-          
-          {/* Top row: date pill (left) + submitted-by-user pill (if applicable) */}
-          <div className="absolute top-3 left-3 right-3 flex items-start justify-between gap-2">
-            <span className={`px-3 py-1 rounded-full text-xs font-bold ${darkMode ? 'bg-violet-500 text-white' : 'bg-orange-500 text-white'} shadow-lg`}>
-              {formatEventDate(event.date)} · {formatEventTime(event.time)}
-            </span>
-            {event.submitted_by_user_id && (
-              <span className="px-2 py-1 rounded-full text-[10px] font-semibold bg-violet-500/90 backdrop-blur text-white whitespace-nowrap">
-                👥 Community
-              </span>
-            )}
-          </div>
-          
-          {/* Bottom right: countdown if event is soon */}
-          {countdown && (
-            <span className="absolute bottom-3 right-3 px-3 py-1 rounded-full text-xs font-bold bg-red-500 text-white shadow-lg">
-              {countdown}
-            </span>
-          )}
-        </div>
+      {/* Hero image — fills entire card */}
+      {event.image_url && (
+        <img
+          src={event.image_url}
+          alt={event.name}
+          className="absolute inset-0 w-full h-full object-cover"
+          loading="lazy"
+          draggable={false}
+        />
+      )}
 
-        {/* Info section — below the image, no overlap */}
-        <div className="p-4 sm:p-5 space-y-3">
-          {/* Title + venue */}
-          <div>
-            <h2 className={`text-xl sm:text-2xl font-bold leading-tight ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
-              {event.name}
-            </h2>
-            <p className={`text-sm mt-1 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
-              <MapPin className="w-3.5 h-3.5 inline mr-1" />
-              {event.venue}{event.neighborhood ? ` · ${event.neighborhood}` : ''}
-            </p>
-          </div>
+      {/* Top gradient — readable date pill / community badge */}
+      <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-black/70 via-black/30 to-transparent pointer-events-none" />
 
-          {/* Info pills row */}
-          <div className="flex flex-wrap items-center gap-2">
+      {/* Top row: date pill + community pill */}
+      <div className="absolute top-3 left-3 right-3 flex items-start justify-between gap-2 z-10">
+        <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-violet-500 text-white shadow-lg" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.4)' }}>
+          {formatEventDate(event.date)} · {formatEventTime(event.time)}
+        </span>
+        {event.submitted_by_user_id && (
+          <span className="px-2 py-1 rounded-full text-[10px] font-semibold bg-violet-500/80 backdrop-blur text-white">
+            👥 Community
+          </span>
+        )}
+      </div>
+
+      {/* Right-edge action stack — TikTok-style vertical icons */}
+      <div className="absolute right-3 bottom-44 flex flex-col items-center gap-3 z-20">
+        <button
+          onClick={stop(() => onSave && onSave(event))}
+          className="flex flex-col items-center gap-1"
+          aria-label={isSaved ? 'Saved' : 'Save'}
+        >
+          <span className={`w-12 h-12 rounded-full flex items-center justify-center transition shadow-lg ${
+            isSaved ? 'bg-violet-500 text-white' : 'bg-black/40 backdrop-blur-md text-white border border-white/20'
+          }`}>
+            <Heart className={`w-6 h-6 ${isSaved ? 'fill-current' : ''}`} />
+          </span>
+          <span className="text-[10px] text-white font-semibold" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.6)' }}>
+            {isSaved ? 'Saved' : 'Save'}
+          </span>
+        </button>
+        <button
+          onClick={stop(() => onPass && onPass(event))}
+          className="flex flex-col items-center gap-1"
+          aria-label="Not for me"
+        >
+          <span className="w-12 h-12 rounded-full bg-black/40 backdrop-blur-md text-white border border-white/20 flex items-center justify-center transition shadow-lg">
+            <X className="w-6 h-6" />
+          </span>
+          <span className="text-[10px] text-white font-semibold" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.6)' }}>
+            Pass
+          </span>
+        </button>
+      </div>
+
+      {/* Bottom gradient + content overlay */}
+      <div className="absolute bottom-0 inset-x-0 pt-32 pb-6 px-5 bg-gradient-to-t from-black via-black/80 to-transparent">
+        <div className="space-y-2.5 max-w-[calc(100%-72px)]" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
+          <h2 className="text-2xl sm:text-3xl font-bold leading-tight text-white">
+            {event.name}
+          </h2>
+          <p className="text-sm text-white/90 flex items-center gap-1.5">
+            <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="truncate">{event.venue}{event.neighborhood ? ` · ${event.neighborhood}` : ''}</span>
+          </p>
+          {/* Pills row */}
+          <div className="flex flex-wrap items-center gap-1.5">
             {isFree ? (
-              <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-500">
-                Free Entry
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/30 text-emerald-200 border border-emerald-400/40 backdrop-blur">
+                Free
               </span>
             ) : (
-              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${darkMode ? 'bg-zinc-800 text-zinc-300' : 'bg-amber-100 text-zinc-700'}`}>
-                ${parseFloat(event.cover_charge).toFixed(0)} cover
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-white/15 text-white border border-white/20 backdrop-blur">
+                ${parseFloat(event.cover_charge).toFixed(0)}
               </span>
             )}
             {showAgeBadge && (
-              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${ageTag === '21+' ? 'bg-red-500/15 text-red-400' : 'bg-amber-500/15 text-amber-500'}`}>
+              <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold backdrop-blur ${ageTag === '21+' ? 'bg-red-500/30 text-red-200 border border-red-400/40' : 'bg-amber-500/30 text-amber-200 border border-amber-400/40'}`}>
                 {ageTag}
               </span>
             )}
             {event.category && (
-              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${darkMode ? 'bg-zinc-800 text-zinc-300' : 'bg-amber-100 text-zinc-700'}`}>
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-white/15 text-white border border-white/20 backdrop-blur capitalize">
                 {event.category.replace(/-/g, ' ')}
               </span>
             )}
             {vibeMatch > 0 && (
-              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${darkMode ? 'bg-violet-500/15 text-violet-400' : 'bg-orange-500/15 text-orange-600'}`}>
-                ✨ {vibeMatch} vibe match{vibeMatch > 1 ? 'es' : ''}
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-violet-500/30 text-violet-200 border border-violet-400/40 backdrop-blur">
+                ✨ {vibeMatch} match{vibeMatch > 1 ? 'es' : ''}
               </span>
             )}
             {goingCount > 0 && (
-              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${darkMode ? 'bg-zinc-800 text-zinc-300' : 'bg-amber-100 text-zinc-700'}`}>
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-white/15 text-white border border-white/20 backdrop-blur">
                 {goingCount} going
               </span>
             )}
           </div>
-
-          {/* Description preview (if present) */}
-          {event.description && (
-            <p className={`text-sm leading-relaxed ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
-              {event.description.length > 140 ? event.description.slice(0, 140).trim() + '…' : event.description}
+          {/* Single-line description preview */}
+          {shortDesc && (
+            <p className="text-sm text-white/85 leading-relaxed">
+              {shortDesc}
             </p>
           )}
-
-          {/* Drink specials line (if present) */}
-          {event.drink_specials && (
-            <p className={`text-xs ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>
-              🍹 {event.drink_specials}
-            </p>
-          )}
-
-          {/* Action row — RSVP primary, secondary actions on the right */}
-          <div className="flex items-center gap-2 pt-2">
-            <button
-              onClick={() => onRSVP && onRSVP(event)}
-              disabled={hasRSVPed}
-              className={`flex-1 py-3 rounded-xl font-bold text-base transition ${
-                hasRSVPed
-                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 cursor-default'
-                  : (darkMode ? 'bg-violet-500 hover:bg-violet-600 text-white' : 'bg-orange-500 hover:bg-orange-600 text-white')
-              }`}
-            >
-              {hasRSVPed ? '✓ You\'re going' : 'RSVP'}
-            </button>
-            <button
-              onClick={() => onSave && onSave(event)}
-              className={`p-3 rounded-xl transition ${
-                isSaved
-                  ? (darkMode ? 'bg-violet-500/20 text-violet-400 border border-violet-500/40' : 'bg-orange-500/20 text-orange-600 border border-orange-500/40')
-                  : (darkMode ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700' : 'bg-amber-100 text-zinc-600 hover:bg-amber-200')
-              }`}
-              title={isSaved ? 'Saved' : 'Save for later'}
-            >
-              <Heart className={`w-5 h-5 ${isSaved ? 'fill-current' : ''}`} />
-            </button>
-            <button
-              onClick={() => onShare && onShare(event)}
-              className={`p-3 rounded-xl transition ${darkMode ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700' : 'bg-amber-100 text-zinc-600 hover:bg-amber-200'}`}
-              title="Share"
-            >
-              <Share2 className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => onPass && onPass(event)}
-              className={`p-3 rounded-xl transition ${darkMode ? 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300' : 'bg-amber-100 text-zinc-500 hover:bg-amber-200'}`}
-              title="Not for me"
-            >
-              <X className="w-5 h-5" />
-            </button>
+          {/* Tap-to-open hint */}
+          <div className="pt-1">
+            <span className="text-[11px] font-semibold text-white/70 uppercase tracking-wider">
+              Tap card for details →
+            </span>
           </div>
-
-          {/* Menu link if present */}
-          {event.menu_url && (
-            <a
-              href={event.menu_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`block text-center text-xs underline ${darkMode ? 'text-zinc-500 hover:text-zinc-400' : 'text-zinc-500 hover:text-zinc-700'}`}
-            >
-              View menu →
-            </a>
-          )}
         </div>
       </div>
     </article>
@@ -10884,6 +10913,10 @@ export default function App() {
   const [passedEventIds, setPassedEventIds] = useState(new Set());
   // Patch B.2 — Most recent pass, for the 3-second Undo affordance. { event, timeoutId } | null
   const [recentPass, setRecentPass] = useState(null);
+  // Patch C — Filters modal (Discover only)
+  const [showDiscoverFilters, setShowDiscoverFilters] = useState(false);
+  // Patch C — Post-RSVP follow-up sheet (calendar export + bring-a-friend) shown inline in EventDetailModal
+  const [postRsvpEvent, setPostRsvpEvent] = useState(null);
   
   // New feature modals
   const [showNotificationPrefs, setShowNotificationPrefs] = useState(false);
@@ -12823,6 +12856,9 @@ const loadSquads = async (userId) => {
       // Patch B.2 — Log to analytics
       logInteraction(event.id, 'rsvped');
       
+      // Patch C — Trigger post-RSVP follow-up (calendar export + bring-a-friend prompts in detail view)
+      setPostRsvpEvent(event);
+      
       // Update local events arrays
       setEvents(events.map(e => e.id === event.id ? {...e, rsvps: (e.rsvps || 0) + 1} : e));
       setAllEvents(allEvents.map(e => e.id === event.id ? {...e, rsvps: (e.rsvps || 0) + 1} : e));
@@ -13267,36 +13303,34 @@ const loadSquads = async (userId) => {
 
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-black text-white' : 'bg-amber-50 text-zinc-900'}`}>
-      {/* Patch B.1 — Global CSS for hybrid snap behavior + cross-browser scrollbar hiding */}
+      {/* Patch B.1 + Patch C — Global CSS: cross-browser scrollbar hide + TikTok-style mandatory snap */}
       <style>{`
         /* Cross-browser scrollbar hide */
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
-        /* Discover feed: hybrid scroll-snap.
-           Default (desktop / mouse): proximity snap — soft, doesn't fight free scrolling.
-           Touch devices: mandatory snap — TikTok/Reels-style strict card-by-card. */
+        /* Discover feed: TikTok/Reels mandatory snap on every device.
+           Each card fills (viewport - sticky chrome). Snap-stop always = no skipping cards. */
         .discover-feed-snap {
-          scroll-snap-type: y proximity;
+          scroll-snap-type: y mandatory;
           scroll-behavior: smooth;
+          /* Container height calc lets the card fill exactly the viewport minus our top utility bar
+             (~56px) and bottom nav (~64px). Cards read this via --feed-chrome. */
+          --feed-chrome: 124px;
         }
         .discover-feed-card {
           scroll-snap-align: start;
-          scroll-snap-stop: normal;
+          scroll-snap-stop: always;
         }
-        @media (hover: none) and (pointer: coarse) {
-          .discover-feed-snap {
-            scroll-snap-type: y mandatory;
-          }
-          .discover-feed-card {
-            scroll-snap-stop: always;
-          }
+        /* Safari iOS adjustment: dvh is more accurate than vh for mobile chrome behavior */
+        @supports (height: 100dvh) {
+          .discover-feed-card { height: calc(100dvh - var(--feed-chrome, 124px)); }
         }
       `}</style>
       <div className={`w-full max-w-md mx-auto ${darkMode ? 'bg-black' : 'bg-amber-50'} min-h-screen relative flex flex-col`}>
-        {/* Fixed Header */}
-        <div className={`sticky top-0 z-40 ${darkMode ? 'bg-zinc-900/95 backdrop-blur-sm border-zinc-800' : 'bg-amber-100 border-amber-200'} border-b px-4 py-4`}>
-          <div className="flex items-center justify-between mb-4">
+        {/* Patch C — Top utility bar: sticky, minimal. CrewQ + Beta + Filters + Bell + Settings */}
+        <div className={`sticky top-0 z-40 ${darkMode ? 'bg-zinc-900/95 backdrop-blur-sm border-zinc-800' : 'bg-amber-100 border-amber-200'} border-b px-4 py-3`}>
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold">
                 Crew<span className={darkMode ? 'text-violet-400' : 'text-orange-500'}>Q</span>
@@ -13307,6 +13341,20 @@ const loadSquads = async (userId) => {
               </span>
             </div>
             <div className="flex items-center gap-3">
+              {/* Patch C — Filters button (Discover only). Opens modal with search/categories/Tonight/Vibes/Solo */}
+              {currentTab === 'discover' && (
+                <button
+                  onClick={() => setShowDiscoverFilters(true)}
+                  className="relative"
+                  aria-label="Filters"
+                >
+                  <Filter className={`w-6 h-6 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`} />
+                  {/* Active-filter dot */}
+                  {(discoverSearchQuery || discoverCategoryFilter !== 'all' || soloModeEnabled || vibeFilterEnabled || tonightMode) && (
+                    <span className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ${darkMode ? 'bg-violet-500' : 'bg-orange-500'} border-2 ${darkMode ? 'border-zinc-900' : 'border-amber-100'}`} />
+                  )}
+                </button>
+              )}
               <button 
                 onClick={() => setShowNotifications(true)}
                 className="relative"
@@ -13323,256 +13371,184 @@ const loadSquads = async (userId) => {
               </button>
             </div>
           </div>
+        </div>
 
-          <div className="flex flex-col items-center gap-3">
-            <div className={`flex gap-2 rounded-full p-1.5 transition-all duration-300 ${
-              mode === 'crew' 
-                ? (darkMode ? 'bg-zinc-800' : 'bg-amber-200') 
-                : (darkMode ? 'bg-violet-500' : 'bg-orange-500')
-            }`}>
-              <button
-                onClick={() => setMode('crew')}
-                className={`px-8 py-2.5 rounded-full text-base font-bold transition-all duration-300 ${
-                  mode === 'crew' 
-                    ? (darkMode ? 'bg-violet-500 text-white' : 'bg-orange-500 text-white')
-                    : (darkMode ? 'bg-transparent text-zinc-900' : 'bg-transparent text-white')
-                }`}
-              >
-                Crew
-              </button>
-              <button
-                onClick={() => setMode('solo')}
-                className={`px-8 py-2.5 rounded-full text-base font-bold transition-all duration-300 ${
-                  mode === 'solo' 
-                    ? (darkMode ? 'bg-zinc-900 text-white' : 'bg-amber-50 text-zinc-900')
-                    : 'bg-transparent text-white'
-                }`}
-              >
-                Solo
-              </button>
-            </div>
-            
-            <div className={`flex items-center justify-center ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>
-              <span className="text-sm">{DISPLAY_CITY}</span>
+        {/* Patch C — Context bar: Crew/Solo toggle + city. Hidden on Discover (full-viewport TikTok feed). */}
+        {currentTab !== 'discover' && (
+          <div className={`${darkMode ? 'bg-zinc-900/95 backdrop-blur-sm border-zinc-800' : 'bg-amber-100 border-amber-200'} border-b px-4 py-3`}>
+            <div className="flex flex-col items-center gap-3">
+              <div className={`flex gap-2 rounded-full p-1.5 transition-all duration-300 ${
+                mode === 'crew' 
+                  ? (darkMode ? 'bg-zinc-800' : 'bg-amber-200') 
+                  : (darkMode ? 'bg-violet-500' : 'bg-orange-500')
+              }`}>
+                <button
+                  onClick={() => setMode('crew')}
+                  className={`px-8 py-2.5 rounded-full text-base font-bold transition-all duration-300 ${
+                    mode === 'crew' 
+                      ? (darkMode ? 'bg-violet-500 text-white' : 'bg-orange-500 text-white')
+                      : (darkMode ? 'bg-transparent text-zinc-900' : 'bg-transparent text-white')
+                  }`}
+                >
+                  Crew
+                </button>
+                <button
+                  onClick={() => setMode('solo')}
+                  className={`px-8 py-2.5 rounded-full text-base font-bold transition-all duration-300 ${
+                    mode === 'solo' 
+                      ? (darkMode ? 'bg-zinc-900 text-white' : 'bg-amber-50 text-zinc-900')
+                      : 'bg-transparent text-white'
+                  }`}
+                >
+                  Solo
+                </button>
+              </div>
+              <div className={`flex items-center justify-center ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>
+                <span className="text-sm">{DISPLAY_CITY}</span>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Scrollable Content Area */}
         <div className={`flex-1 overflow-y-auto overflow-x-hidden pb-20 sm:pb-24 -webkit-overflow-scrolling-touch ${currentTab === 'discover' ? 'discover-feed-snap scrollbar-hide' : ''}`}>
-          {currentTab === 'discover' && (
-            <div className="px-3 py-3 sm:px-4 sm:py-6 max-w-2xl mx-auto">
-              {/* Patch B.2 — Undo Pass affordance (3-second window) */}
-              {recentPass && (
-                <div className={`mb-3 p-3 rounded-xl flex items-center justify-between gap-3 ${darkMode ? 'bg-zinc-900 border border-zinc-700' : 'bg-white border border-amber-300'}`}>
-                  <span className={`text-sm ${darkMode ? 'text-zinc-300' : 'text-zinc-700'}`}>
-                    <span className="font-semibold">Passed</span> on "{recentPass.event?.name}"
-                  </span>
-                  <button
-                    onClick={handleUndoPass}
-                    className={`text-sm font-bold underline ${darkMode ? 'text-violet-400 hover:text-violet-300' : 'text-orange-600 hover:text-orange-700'}`}
-                  >
-                    Undo
-                  </button>
-                </div>
-              )}
-              
-              {/* Patch B — Search bar */}
-              <div className="relative mb-3">
-                <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`} />
-                <input
-                  type="text"
-                  value={discoverSearchQuery}
-                  onChange={(e) => setDiscoverSearchQuery(e.target.value)}
-                  placeholder="Search events, venues, or vibes…"
-                  className={`w-full pl-10 pr-10 py-3 rounded-2xl text-sm transition outline-none ${darkMode ? 'bg-zinc-900 border border-zinc-800 text-white placeholder:text-zinc-500 focus:border-violet-500' : 'bg-white border border-amber-200 text-zinc-900 placeholder:text-zinc-400 focus:border-orange-500'}`}
-                />
-                {discoverSearchQuery && (
-                  <button
-                    onClick={() => setDiscoverSearchQuery('')}
-                    className={`absolute right-3 top-1/2 -translate-y-1/2 ${darkMode ? 'text-zinc-500 hover:text-zinc-300' : 'text-zinc-400 hover:text-zinc-700'}`}
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                )}
-              </div>
+          {currentTab === 'discover' && (() => {
+            const feedEvents = getVibeFilteredEvents();
+            const totalAvailable = applyHardFilters(events).length;
+            const hasActiveFilters = discoverSearchQuery || discoverCategoryFilter !== 'all' || soloModeEnabled || vibeFilterEnabled || tonightMode;
 
-              {/* Patch B — Category browse chips (horizontal scroll) */}
-              <div className="overflow-x-auto scrollbar-hide -mx-3 px-3 sm:-mx-4 sm:px-4 mb-3 pb-1">
-                <div className="flex gap-2" style={{ minWidth: 'min-content' }}>
-                  {BROWSE_CATEGORIES.map(cat => (
-                    <button
-                      key={cat.id}
-                      onClick={() => setDiscoverCategoryFilter(cat.id)}
-                      className={`flex-shrink-0 px-3 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
-                        discoverCategoryFilter === cat.id
-                          ? (darkMode ? 'bg-violet-500 text-white' : 'bg-orange-500 text-white')
-                          : (darkMode ? 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:border-zinc-700' : 'bg-white text-zinc-600 border border-amber-200 hover:border-amber-300')
-                      }`}
-                    >
-                      {cat.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Patch B — Filter row: Tonight + Vibes + Solo */}
-              <div className="flex flex-wrap items-center gap-2 mb-4">
-                <button
-                  onClick={() => setTonightMode(!tonightMode)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition ${
-                    tonightMode
-                      ? 'bg-gradient-to-r from-red-500 to-orange-500 text-white shadow shadow-red-500/30'
-                      : (darkMode ? 'bg-zinc-900 text-zinc-400 border border-zinc-800' : 'bg-white text-zinc-600 border border-amber-200')
-                  }`}
-                >
-                  🌙 Tonight
-                  {tonightMode && <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full">{getTonightEvents().length}</span>}
-                </button>
-                <button
-                  onClick={() => setVibeFilterEnabled(!vibeFilterEnabled)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition ${
-                    vibeFilterEnabled
-                      ? (darkMode ? 'bg-violet-500/20 text-violet-300 border border-violet-500/40' : 'bg-orange-500/20 text-orange-700 border border-orange-500/40')
-                      : (darkMode ? 'bg-zinc-900 text-zinc-400 border border-zinc-800' : 'bg-white text-zinc-600 border border-amber-200')
-                  }`}
-                >
-                  ✨ My Vibes
-                </button>
-                <button
-                  onClick={() => setSoloModeEnabled(!soloModeEnabled)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition ${
-                    soloModeEnabled
-                      ? (darkMode ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-emerald-500/20 text-emerald-700 border border-emerald-500/40')
-                      : (darkMode ? 'bg-zinc-900 text-zinc-400 border border-zinc-800' : 'bg-white text-zinc-600 border border-amber-200')
-                  }`}
-                  title="Show events that work well to attend solo"
-                >
-                  🎒 Solo-friendly
-                </button>
-              </div>
-
-              {/* Patch B — Vertical feed */}
-              {(() => {
-                const feedEvents = getVibeFilteredEvents();
-                const totalAvailable = applyHardFilters(events).length;
-                
-                if (feedEvents.length === 0) {
-                  return (
-                    <div className="text-center py-16">
-                      <div className={`w-20 h-20 ${darkMode ? 'bg-zinc-800' : 'bg-amber-100'} rounded-full flex items-center justify-center mx-auto mb-6`}>
-                        <Calendar className={`w-10 h-10 ${darkMode ? 'text-violet-400' : 'text-orange-500'}`} />
-                      </div>
-                      {discoverSearchQuery || discoverCategoryFilter !== 'all' || soloModeEnabled || vibeFilterEnabled || tonightMode ? (
-                        <>
-                          <h2 className="text-xl font-bold mb-2">No matches</h2>
-                          <p className={`${darkMode ? 'text-zinc-400' : 'text-zinc-600'} mb-6 px-4 text-sm`}>
-                            Try clearing some filters to see more events.
-                          </p>
-                          <button
-                            onClick={() => {
-                              setDiscoverSearchQuery('');
-                              setDiscoverCategoryFilter('all');
-                              setSoloModeEnabled(false);
-                              setVibeFilterEnabled(false);
-                              setTonightMode(false);
-                            }}
-                            className={`px-6 py-3 rounded-xl font-semibold ${darkMode ? 'bg-violet-500 text-white' : 'bg-orange-500 text-white'} hover:shadow-lg transition`}
-                          >
-                            Clear all filters
-                          </button>
-                        </>
-                      ) : totalAvailable === 0 ? (
-                        <>
-                          <h2 className="text-xl font-bold mb-2">No events yet</h2>
-                          <p className={`${darkMode ? 'text-zinc-400' : 'text-zinc-600'} mb-6 px-4 text-sm`}>
-                            Check back soon — new events get added regularly.
-                          </p>
-                          <button
-                            onClick={() => setShowSuggestionModal(true)}
-                            className={`${darkMode ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-amber-100 hover:bg-amber-200 text-zinc-900'} px-6 py-3 rounded-xl font-semibold transition`}
-                          >
-                            Suggest an Event
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <h2 className="text-xl font-bold mb-2">You've engaged with everything</h2>
-                          <p className={`${darkMode ? 'text-zinc-400' : 'text-zinc-600'} mb-6 px-4 text-sm`}>
-                            You've RSVP'd to or passed on every event in the next 7 days. Bring back passed events below, or check the Events tab for what's coming up later.
-                          </p>
-                          <div className="flex flex-col gap-3 max-w-xs mx-auto">
-                            <button
-                              onClick={() => {
-                                if (userProfile?.id) {
-                                  const userKey = `crewq_${userProfile.id}`;
-                                  localStorage.removeItem(`${userKey}_passed`);
-                                  setPassedEventIds(new Set());
-                                  loadEvents(userProfile.id);
-                                  showToast('Passed events restored 🎉', 'success');
-                                }
-                              }}
-                              className={`bg-gradient-to-r ${darkMode ? 'from-violet-500 to-purple-600' : 'from-orange-500 to-amber-500'} text-white px-6 py-3 rounded-xl font-semibold hover:shadow-lg transition`}
-                            >
-                              Bring back passed events
-                            </button>
-                            <button
-                              onClick={() => setCurrentTab('events')}
-                              className={`${darkMode ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-amber-100 hover:bg-amber-200 text-zinc-900'} px-6 py-3 rounded-xl font-semibold transition`}
-                            >
-                              See what's coming up →
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  );
-                }
-                
-                return (
-                  <>
-                    {/* Inventory indicator — honest about how much is available */}
-                    <div className={`mb-3 flex items-center justify-center gap-1.5 text-xs font-medium ${darkMode ? 'text-zinc-500' : 'text-zinc-600'}`}>
-                      <span className={`inline-block w-1.5 h-1.5 rounded-full ${darkMode ? 'bg-violet-400' : 'bg-orange-500'}`} />
-                      <span>{feedEvents.length} event{feedEvents.length !== 1 ? 's' : ''} happening soon</span>
-                    </div>
-
-                    {/* Vertical-scroll feed — snap behavior lives on the parent .discover-feed-snap */}
-                    <div className="space-y-4">
-                      {feedEvents.map(event => (
-                        <EventFeedCard
-                          key={event.id}
-                          event={event}
-                          hasRSVPed={hasRSVPed(event.id)}
-                          isSaved={savedEventIds.has(event.id)}
-                          vibeMatch={getVibeMatchScore(event)}
-                          countdown={getCountdown(event)}
-                          goingCount={(event.rsvps || 0) + (event.checkins || 0)}
-                          darkMode={darkMode}
-                          onRSVP={handleRSVP}
-                          onSave={handleFeedCardSave}
-                          onPass={handleFeedCardPass}
-                          onShare={handleFeedCardShare}
-                          onView={handleFeedCardViewed}
-                        />
-                      ))}
-                    </div>
-
-                    {/* End-of-feed footer */}
-                    <div className={`text-center py-8 ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>
-                      <p className="text-sm">That's everything for now.</p>
+            // Patch C — Empty states render as a single non-snapping screen
+            if (feedEvents.length === 0) {
+              return (
+                <div className="px-6 py-12 text-center max-w-md mx-auto">
+                  <div className={`w-20 h-20 ${darkMode ? 'bg-zinc-800' : 'bg-amber-100'} rounded-full flex items-center justify-center mx-auto mb-6`}>
+                    <Calendar className={`w-10 h-10 ${darkMode ? 'text-violet-400' : 'text-orange-500'}`} />
+                  </div>
+                  {hasActiveFilters ? (
+                    <>
+                      <h2 className="text-xl font-bold mb-2">No matches</h2>
+                      <p className={`${darkMode ? 'text-zinc-400' : 'text-zinc-600'} mb-6 text-sm`}>
+                        Try clearing some filters to see more events.
+                      </p>
                       <button
-                        onClick={() => setCurrentTab('events')}
-                        className={`mt-3 text-sm font-semibold underline ${darkMode ? 'text-violet-400 hover:text-violet-300' : 'text-orange-600 hover:text-orange-700'}`}
+                        onClick={() => {
+                          setDiscoverSearchQuery('');
+                          setDiscoverCategoryFilter('all');
+                          setSoloModeEnabled(false);
+                          setVibeFilterEnabled(false);
+                          setTonightMode(false);
+                        }}
+                        className={`px-6 py-3 rounded-xl font-semibold ${darkMode ? 'bg-violet-500 text-white' : 'bg-orange-500 text-white'} hover:shadow-lg transition`}
                       >
-                        See what's coming up →
+                        Clear all filters
+                      </button>
+                    </>
+                  ) : totalAvailable === 0 ? (
+                    <>
+                      <h2 className="text-xl font-bold mb-2">No events yet</h2>
+                      <p className={`${darkMode ? 'text-zinc-400' : 'text-zinc-600'} mb-6 text-sm`}>
+                        Check back soon — new events get added regularly.
+                      </p>
+                      <button
+                        onClick={() => setShowSuggestionModal(true)}
+                        className={`${darkMode ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-amber-100 hover:bg-amber-200 text-zinc-900'} px-6 py-3 rounded-xl font-semibold transition`}
+                      >
+                        Suggest an Event
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <h2 className="text-xl font-bold mb-2">You've engaged with everything</h2>
+                      <p className={`${darkMode ? 'text-zinc-400' : 'text-zinc-600'} mb-6 text-sm`}>
+                        You've RSVP'd to or passed on every event in the next 7 days. Bring back passed events below, or check the Events tab for what's coming up later.
+                      </p>
+                      <div className="flex flex-col gap-3 max-w-xs mx-auto">
+                        <button
+                          onClick={() => {
+                            if (userProfile?.id) {
+                              const userKey = `crewq_${userProfile.id}`;
+                              localStorage.removeItem(`${userKey}_passed`);
+                              setPassedEventIds(new Set());
+                              loadEvents(userProfile.id);
+                              showToast('Passed events restored 🎉', 'success');
+                            }
+                          }}
+                          className={`bg-gradient-to-r ${darkMode ? 'from-violet-500 to-purple-600' : 'from-orange-500 to-amber-500'} text-white px-6 py-3 rounded-xl font-semibold hover:shadow-lg transition`}
+                        >
+                          Bring back passed events
+                        </button>
+                        <button
+                          onClick={() => setCurrentTab('events')}
+                          className={`${darkMode ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-amber-100 hover:bg-amber-200 text-zinc-900'} px-6 py-3 rounded-xl font-semibold transition`}
+                        >
+                          See what's coming up →
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            }
+
+            // Patch C — Active feed: full-viewport TikTok-style cards
+            return (
+              <>
+                {/* Pass-undo floating bar — overlays bottom of viewport (above nav) */}
+                {recentPass && (
+                  <div className="fixed bottom-20 sm:bottom-24 left-3 right-3 z-30 max-w-md mx-auto">
+                    <div className={`p-3 rounded-xl flex items-center justify-between gap-3 shadow-2xl ${darkMode ? 'bg-zinc-900 border border-zinc-700' : 'bg-white border border-amber-300'}`}>
+                      <span className={`text-sm ${darkMode ? 'text-zinc-300' : 'text-zinc-700'}`}>
+                        <span className="font-semibold">Passed</span> on "{recentPass.event?.name}"
+                      </span>
+                      <button
+                        onClick={handleUndoPass}
+                        className={`text-sm font-bold underline ${darkMode ? 'text-violet-400 hover:text-violet-300' : 'text-orange-600 hover:text-orange-700'}`}
+                      >
+                        Undo
                       </button>
                     </div>
-                  </>
-                );
-              })()}
-            </div>
-          )}
+                  </div>
+                )}
+
+                {/* Vertical-scroll feed — snap behavior on parent .discover-feed-snap */}
+                {feedEvents.map(event => (
+                  <EventFeedCard
+                    key={event.id}
+                    event={event}
+                    isSaved={savedEventIds.has(event.id)}
+                    vibeMatch={getVibeMatchScore(event)}
+                    goingCount={(event.rsvps || 0) + (event.checkins || 0)}
+                    darkMode={darkMode}
+                    onCardTap={(ev) => { handleEventClick(ev); }}
+                    onSave={handleFeedCardSave}
+                    onPass={handleFeedCardPass}
+                    onView={handleFeedCardViewed}
+                  />
+                ))}
+
+                {/* End-of-feed footer — also a snapping card so it doesn't feel abrupt */}
+                <div
+                  className="discover-feed-card flex flex-col items-center justify-center text-center px-6"
+                >
+                  <div className={`w-16 h-16 ${darkMode ? 'bg-zinc-800' : 'bg-amber-100'} rounded-full flex items-center justify-center mb-4`}>
+                    <Sparkles className={`w-8 h-8 ${darkMode ? 'text-violet-400' : 'text-orange-500'}`} />
+                  </div>
+                  <p className={`text-lg font-semibold mb-1 ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
+                    That's everything for now
+                  </p>
+                  <p className={`text-sm mb-6 ${darkMode ? 'text-zinc-500' : 'text-zinc-600'}`}>
+                    Check the Events tab for what's coming up later.
+                  </p>
+                  <button
+                    onClick={() => setCurrentTab('events')}
+                    className={`px-6 py-3 rounded-xl font-semibold ${darkMode ? 'bg-violet-500 text-white' : 'bg-orange-500 text-white'} hover:shadow-lg transition`}
+                  >
+                    See what's coming up →
+                  </button>
+                </div>
+              </>
+            );
+          })()}
 
           {currentTab === 'search' && <AIChat userProfile={userProfile} />}
           {currentTab === 'events' && (
@@ -13675,6 +13651,7 @@ const loadSquads = async (userId) => {
             onClose={() => {
               setShowEventDetail(false);
               setSelectedEventHistoricalCount(0);
+              setPostRsvpEvent(null);
             }}
             onCheckIn={handleCheckIn}
             isCheckedIn={checkedInEvents.includes(selectedEvent.id)}
@@ -13684,6 +13661,8 @@ const loadSquads = async (userId) => {
             onRSVP={handleRSVP}
             onUndoRSVP={handleUndoRSVP}
             hasRSVPed={hasRSVPed}
+            showPostRsvp={postRsvpEvent?.id === selectedEvent.id}
+            onClearPostRsvp={() => setPostRsvpEvent(null)}
           />
         )}
 
@@ -13735,6 +13714,117 @@ const loadSquads = async (userId) => {
             userBadges={userBadges}
             showToast={showToast}
           />
+        )}
+
+        {/* Patch C — Discover Filters Modal: search, category, Tonight/Vibes/Solo all in one place */}
+        {showDiscoverFilters && (
+          <div className="fixed inset-0 bg-black bg-opacity-90 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+            <div className={`${darkMode ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-900'} rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[90vh] flex flex-col`}>
+              <div className={`flex items-center justify-between p-5 border-b ${darkMode ? 'border-zinc-800' : 'border-zinc-200'}`}>
+                <h2 className="text-xl font-bold">Filter feed</h2>
+                <button onClick={() => setShowDiscoverFilters(false)} className={darkMode ? 'text-zinc-400 hover:text-white' : 'text-zinc-500 hover:text-zinc-900'}>
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="overflow-y-auto p-5 space-y-5">
+                {/* Search */}
+                <div>
+                  <label className={`block text-xs font-semibold uppercase tracking-wide mb-2 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>Search</label>
+                  <div className="relative">
+                    <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`} />
+                    <input
+                      type="text"
+                      value={discoverSearchQuery}
+                      onChange={(e) => setDiscoverSearchQuery(e.target.value)}
+                      placeholder="Events, venues, vibes…"
+                      className={`w-full pl-10 pr-10 py-3 rounded-xl text-sm outline-none ${darkMode ? 'bg-zinc-800 border border-zinc-700 text-white placeholder:text-zinc-500 focus:border-violet-500' : 'bg-amber-50 border border-amber-200 text-zinc-900 placeholder:text-zinc-400 focus:border-orange-500'}`}
+                    />
+                    {discoverSearchQuery && (
+                      <button onClick={() => setDiscoverSearchQuery('')} className={`absolute right-3 top-1/2 -translate-y-1/2 ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Category */}
+                <div>
+                  <label className={`block text-xs font-semibold uppercase tracking-wide mb-2 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>Category</label>
+                  <div className="flex flex-wrap gap-2">
+                    {BROWSE_CATEGORIES.map(cat => (
+                      <button
+                        key={cat.id}
+                        onClick={() => setDiscoverCategoryFilter(cat.id)}
+                        className={`px-3 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition ${
+                          discoverCategoryFilter === cat.id
+                            ? (darkMode ? 'bg-violet-500 text-white' : 'bg-orange-500 text-white')
+                            : (darkMode ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700' : 'bg-amber-50 text-zinc-700 hover:bg-amber-100 border border-amber-200')
+                        }`}
+                      >
+                        {cat.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Mood toggles */}
+                <div>
+                  <label className={`block text-xs font-semibold uppercase tracking-wide mb-2 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>Mood</label>
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => setTonightMode(!tonightMode)}
+                      className={`w-full flex items-center justify-between p-3 rounded-xl border-2 transition ${tonightMode ? 'bg-gradient-to-r from-red-500/10 to-orange-500/10 border-red-500/40' : (darkMode ? 'bg-zinc-800 border-zinc-700' : 'bg-amber-50 border-amber-200')}`}
+                    >
+                      <span className="text-sm font-semibold">🌙 Tonight only</span>
+                      <span className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-xs ${tonightMode ? 'bg-red-500' : (darkMode ? 'bg-zinc-700' : 'bg-amber-200')}`}>
+                        {tonightMode && '✓'}
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => setVibeFilterEnabled(!vibeFilterEnabled)}
+                      className={`w-full flex items-center justify-between p-3 rounded-xl border-2 transition ${vibeFilterEnabled ? (darkMode ? 'bg-violet-500/10 border-violet-500/40' : 'bg-orange-500/10 border-orange-500/40') : (darkMode ? 'bg-zinc-800 border-zinc-700' : 'bg-amber-50 border-amber-200')}`}
+                    >
+                      <span className="text-sm font-semibold">✨ My Vibes only</span>
+                      <span className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-xs ${vibeFilterEnabled ? (darkMode ? 'bg-violet-500' : 'bg-orange-500') : (darkMode ? 'bg-zinc-700' : 'bg-amber-200')}`}>
+                        {vibeFilterEnabled && '✓'}
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => setSoloModeEnabled(!soloModeEnabled)}
+                      className={`w-full flex items-center justify-between p-3 rounded-xl border-2 transition ${soloModeEnabled ? 'bg-emerald-500/10 border-emerald-500/40' : (darkMode ? 'bg-zinc-800 border-zinc-700' : 'bg-amber-50 border-amber-200')}`}
+                    >
+                      <span className="text-sm font-semibold">🎒 Solo-friendly</span>
+                      <span className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-xs ${soloModeEnabled ? 'bg-emerald-500' : (darkMode ? 'bg-zinc-700' : 'bg-amber-200')}`}>
+                        {soloModeEnabled && '✓'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className={`p-4 border-t ${darkMode ? 'border-zinc-800' : 'border-zinc-200'} flex gap-2`}>
+                <button
+                  onClick={() => {
+                    setDiscoverSearchQuery('');
+                    setDiscoverCategoryFilter('all');
+                    setSoloModeEnabled(false);
+                    setVibeFilterEnabled(false);
+                    setTonightMode(false);
+                  }}
+                  className={`flex-1 py-3 rounded-xl font-semibold ${darkMode ? 'bg-zinc-800 text-white hover:bg-zinc-700' : 'bg-amber-100 text-zinc-900 hover:bg-amber-200'} transition`}
+                >
+                  Clear all
+                </button>
+                <button
+                  onClick={() => setShowDiscoverFilters(false)}
+                  className={`flex-1 py-3 rounded-xl font-semibold text-white ${darkMode ? 'bg-violet-500 hover:bg-violet-600' : 'bg-orange-500 hover:bg-orange-600'} transition`}
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Badge Earned Popup */}
