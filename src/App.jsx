@@ -438,6 +438,33 @@ const BROWSE_CATEGORIES = [
 
 // Patch C2b — Standard event templates for the admin Quick-Create form. Pre-fills sensible defaults
 // so common recurring events (trivia, happy hour, etc) take ~10 seconds to list.
+// Patch E — Generate a SEO-friendly slug from a venue name + neighborhood.
+// Used for venue page URLs (eventually /venue/:slug). Stored in establishments.slug.
+const buildVenueSlug = (name, neighborhood) => {
+  if (!name) return '';
+  const base = `${name}${neighborhood ? ` ${neighborhood}` : ''}`;
+  return base
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // strip accents
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+};
+
+// Patch E — Format a `hours` jsonb (e.g. {mon: "11am-10pm", ...}) into a human-readable list.
+// Returns array of [dayLabel, hoursStr] pairs, in week order. Filters out empty days.
+const formatVenueHours = (hours) => {
+  if (!hours || typeof hours !== 'object') return [];
+  const order = [
+    ['mon', 'Monday'], ['tue', 'Tuesday'], ['wed', 'Wednesday'],
+    ['thu', 'Thursday'], ['fri', 'Friday'], ['sat', 'Saturday'], ['sun', 'Sunday']
+  ];
+  return order
+    .map(([key, label]) => [label, hours[key]])
+    .filter(([, v]) => v && String(v).trim().length > 0);
+};
+
 const EVENT_TEMPLATES = [
   {
     id: 'trivia',
@@ -4464,7 +4491,7 @@ function SoloFriendlySquadsView({ squads, onSquadClick, userProfile }) {
   );
 }
 
-function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount, userProfile, historicalCount = 0, onRSVP, onUndoRSVP, hasRSVPed, showPostRsvp = false, onClearPostRsvp }) {
+function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount, userProfile, historicalCount = 0, onRSVP, onUndoRSVP, hasRSVPed, showPostRsvp = false, onClearPostRsvp, onViewVenue }) {
   const [checking, setChecking] = useState(false);
   const [rsvping, setRsvping] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -4618,9 +4645,20 @@ function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount
           <p className="text-zinc-400 text-sm mb-4">{event.description}</p>
           
           <div className="space-y-3 mb-4">
-            <div className="flex items-center gap-2 text-zinc-300 text-sm">
-              <MapPin className="w-4 h-4 text-orange-500" />
-              <span>{event.venue} • {event.neighborhood}</span>
+            <div className="flex items-center justify-between gap-2 text-zinc-300 text-sm">
+              <div className="flex items-center gap-2 min-w-0">
+                <MapPin className="w-4 h-4 text-orange-500 flex-shrink-0" />
+                <span className="truncate">{event.venue} • {event.neighborhood}</span>
+              </div>
+              {/* Patch E — open venue page */}
+              {onViewVenue && (
+                <button
+                  onClick={() => onViewVenue(event)}
+                  className="flex-shrink-0 text-xs font-semibold text-violet-400 hover:text-violet-300 underline"
+                >
+                  View venue →
+                </button>
+              )}
             </div>
             <div className="flex items-center gap-2 text-zinc-300 text-sm">
               <Calendar className="w-4 h-4 text-orange-500" />
@@ -5054,6 +5092,9 @@ function EventFeedCard({
   onPass,
   onView,      // (event, durationMs) — fires on scroll-out
   cardHeight,  // Patch C2a — exact pixel height matching scroll container
+  isRegularHere, // Patch E — true if user has 3+ check-ins at this venue
+  onVenueTap,    // Patch E — tap venue name → open venue page (skips card open)
+  isFreshThisWeek, // Patch E — recurring events updated within last 7 days
 }) {
   const cardRef = useRef(null);
   // Track total ms this card has been ≥50% visible
@@ -5211,10 +5252,14 @@ function EventFeedCard({
           <h2 className="text-2xl sm:text-3xl font-bold leading-tight text-white">
             {event.name}
           </h2>
-          <p className="text-sm text-white/90 flex items-center gap-1.5">
+          {/* Patch E — venue line is tappable separately from the card open */}
+          <button
+            onClick={(e) => { e.stopPropagation(); onVenueTap && onVenueTap(event); }}
+            className="text-sm text-white/90 flex items-center gap-1.5 hover:underline text-left"
+          >
             <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
             <span className="truncate">{event.venue}{event.neighborhood ? ` · ${event.neighborhood}` : ''}</span>
-          </p>
+          </button>
           {/* Pills row */}
           <div className="flex flex-wrap items-center gap-1.5">
             {isFree ? (
@@ -5246,6 +5291,19 @@ function EventFeedCard({
                 {goingCount} going
               </span>
             )}
+            {/* Patch E — Regular at this venue */}
+            {isRegularHere && (
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/30 text-amber-200 border border-amber-400/40 backdrop-blur flex items-center gap-1">
+                <Star className="w-3 h-3 fill-current" />
+                Regular here
+              </span>
+            )}
+            {/* Patch E — Fresh this week (recurring event with recent updates) */}
+            {isFreshThisWeek && (
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/30 text-emerald-200 border border-emerald-400/40 backdrop-blur">
+                ✨ Fresh this week
+              </span>
+            )}
           </div>
           {/* Single-line description preview */}
           {shortDesc && (
@@ -5262,6 +5320,912 @@ function EventFeedCard({
         </div>
       </div>
     </article>
+  );
+}
+
+// Patch E — Instagram-style story carousel viewer. Full-screen modal.
+// Auto-advance, progress bars, tap-and-hold to pause, swipe-down or X to close.
+function StoryCarousel({ stories, venueName, onClose, supabaseClient }) {
+  const [index, setIndex] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const STORY_DURATION_MS = 5000; // 5 seconds per story
+  const startRef = useRef(Date.now());
+  const elapsedRef = useRef(0);
+
+  // Auto-advance + progress bar
+  useEffect(() => {
+    if (paused) {
+      // Save elapsed when pausing
+      elapsedRef.current = elapsedRef.current + (Date.now() - startRef.current);
+      return;
+    }
+    startRef.current = Date.now();
+    let raf;
+    const tick = () => {
+      const elapsed = elapsedRef.current + (Date.now() - startRef.current);
+      const p = Math.min(100, (elapsed / STORY_DURATION_MS) * 100);
+      setProgress(p);
+      if (p >= 100) {
+        // Advance
+        if (index < stories.length - 1) {
+          setIndex(i => i + 1);
+          elapsedRef.current = 0;
+          setProgress(0);
+        } else {
+          onClose();
+        }
+        return;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => raf && cancelAnimationFrame(raf);
+  }, [index, paused, stories.length, onClose]);
+
+  // Reset progress when index changes
+  useEffect(() => {
+    elapsedRef.current = 0;
+    startRef.current = Date.now();
+    setProgress(0);
+  }, [index]);
+
+  if (!stories || stories.length === 0) return null;
+  const story = stories[index];
+
+  const goPrev = (e) => {
+    e?.stopPropagation();
+    if (index > 0) setIndex(i => i - 1);
+  };
+  const goNext = (e) => {
+    e?.stopPropagation();
+    if (index < stories.length - 1) setIndex(i => i + 1);
+    else onClose();
+  };
+
+  const promptMeta = STORY_PROMPTS.find(p => p.id === story.prompt_category) || STORY_PROMPTS[5];
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black flex flex-col" onMouseDown={() => setPaused(true)} onMouseUp={() => setPaused(false)} onTouchStart={() => setPaused(true)} onTouchEnd={() => setPaused(false)}>
+      {/* Progress bars */}
+      <div className="absolute top-0 inset-x-0 z-30 px-2 pt-2 flex gap-1">
+        {stories.map((_, i) => (
+          <div key={i} className="flex-1 h-1 rounded-full bg-white/30 overflow-hidden">
+            <div
+              className="h-full bg-white transition-none"
+              style={{ width: i < index ? '100%' : i === index ? `${progress}%` : '0%' }}
+            />
+          </div>
+        ))}
+      </div>
+
+      {/* Header — venue + close */}
+      <div className="absolute top-6 inset-x-0 z-30 flex items-center justify-between px-4 pt-3">
+        <div className="flex items-center gap-2 text-white">
+          <span className="text-base font-bold" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>{venueName}</span>
+          <span className="text-xs opacity-80" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
+            {(() => {
+              const created = new Date(story.created_at);
+              const minsAgo = Math.floor((Date.now() - created.getTime()) / 60000);
+              if (minsAgo < 60) return `${minsAgo}m`;
+              const hoursAgo = Math.floor(minsAgo / 60);
+              return `${hoursAgo}h`;
+            })()}
+          </span>
+        </div>
+        <button onClick={onClose} className="text-white p-2" aria-label="Close">
+          <X className="w-6 h-6" />
+        </button>
+      </div>
+
+      {/* Image */}
+      <div className="flex-1 flex items-center justify-center relative">
+        {story.image_url ? (
+          <img src={story.image_url} alt="" className="w-full h-full object-cover" draggable={false} />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-violet-600 to-purple-900" />
+        )}
+
+        {/* Tap zones for prev/next */}
+        <button className="absolute top-0 bottom-0 left-0 w-1/3 z-10" onClick={goPrev} aria-label="Previous" />
+        <button className="absolute top-0 bottom-0 right-0 w-2/3 z-10" onClick={goNext} aria-label="Next" />
+      </div>
+
+      {/* Body overlay at bottom */}
+      <div className="absolute bottom-0 inset-x-0 pb-8 pt-16 px-5 bg-gradient-to-t from-black via-black/80 to-transparent z-20 pointer-events-none">
+        <div className="flex items-start gap-2 mb-2">
+          <span className="text-2xl">{promptMeta.emoji}</span>
+          <span className="text-xs uppercase tracking-wider font-bold text-white/70">{promptMeta.label}</span>
+        </div>
+        <p className="text-white text-base leading-relaxed" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
+          {story.body}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// Patch E — Venue page. Public, additive. Sections only render when their data exists.
+function VenuePage({ venue, onClose, allEvents, userProfile, attendedEventIds, supabaseClient, onEventClick, hasRSVPed, darkMode = true }) {
+  const [stories, setStories] = useState([]);
+  const [loadingStories, setLoadingStories] = useState(true);
+  const [showStoryCarousel, setShowStoryCarousel] = useState(false);
+
+  // Load active (non-expired) stories for this venue
+  useEffect(() => {
+    let cancelled = false;
+    const loadStories = async () => {
+      if (!supabaseClient || !venue?.id) {
+        setLoadingStories(false);
+        return;
+      }
+      try {
+        const { data, error } = await supabaseClient
+          .from('venue_stories')
+          .select('*')
+          .eq('venue_id', venue.id)
+          .gt('expires_at', new Date().toISOString())
+          .order('created_at', { ascending: false });
+        if (!cancelled) {
+          if (error) throw error;
+          setStories(data || []);
+        }
+      } catch (err) {
+        if (!cancelled && err?.code !== 'PGRST205' && err?.code !== 'PGRST204') {
+          console.warn('Stories load failed:', err?.message);
+        }
+      } finally {
+        if (!cancelled) setLoadingStories(false);
+      }
+    };
+    loadStories();
+    return () => { cancelled = true; };
+  }, [venue?.id, supabaseClient]);
+
+  if (!venue) return null;
+
+  // Filter events for this venue (upcoming only)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const venueEvents = (allEvents || [])
+    .filter(e =>
+      String(e.establishment_id) === String(venue.id) ||
+      (e.venue && venue.name && e.venue.toLowerCase().trim() === venue.name.toLowerCase().trim())
+    )
+    .filter(e => {
+      if (!e.date) return true;
+      try { return new Date(e.date + 'T00:00:00') >= today; } catch { return true; }
+    })
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+  // Is the user a regular here? (3+ check-ins at this venue)
+  const userVenueCheckins = (attendedEventIds || []).filter(eId => {
+    const ev = (allEvents || []).find(x => x.id === eId);
+    return ev && (
+      String(ev.establishment_id) === String(venue.id) ||
+      (ev.venue && venue.name && ev.venue.toLowerCase().trim() === venue.name.toLowerCase().trim())
+    );
+  }).length;
+  const isRegular = userVenueCheckins >= 3;
+
+  const formattedHours = formatVenueHours(venue.hours);
+  const heroImage = venue.cover_image_url || venue.image_url || null;
+  const hasSocials = venue.instagram || venue.facebook || venue.twitter || venue.website || venue.phone;
+
+  return (
+    <>
+      <div className="fixed inset-0 z-50 bg-black overflow-y-auto">
+        {/* Hero */}
+        <div className="relative w-full h-64 sm:h-80 bg-zinc-900">
+          {heroImage ? (
+            <img src={heroImage} alt={venue.name} className="absolute inset-0 w-full h-full object-cover" />
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-violet-600/40 to-purple-900/40" />
+          )}
+          {/* Top gradient for legibility */}
+          <div className="absolute top-0 inset-x-0 h-24 bg-gradient-to-b from-black/80 via-black/40 to-transparent pointer-events-none" />
+          {/* Bottom gradient */}
+          <div className="absolute bottom-0 inset-x-0 h-32 bg-gradient-to-t from-black via-black/60 to-transparent pointer-events-none" />
+
+          {/* Top bar — back + share */}
+          <div className="absolute top-3 inset-x-3 flex items-center justify-between z-10">
+            <button onClick={onClose} className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center text-white border border-white/20" aria-label="Back">
+              <ChevronLeft className="w-6 h-6" />
+            </button>
+            <button
+              onClick={() => {
+                const url = `${window.location.origin}/venue/${venue.slug || venue.id}`;
+                if (navigator.share) {
+                  navigator.share({ title: venue.name, url }).catch(() => {});
+                } else if (navigator.clipboard) {
+                  navigator.clipboard.writeText(url);
+                }
+              }}
+              className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center text-white border border-white/20"
+              aria-label="Share"
+            >
+              <Share2 className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Hero content overlay */}
+          <div className="absolute bottom-0 inset-x-0 p-5 z-10">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              {venue.verified && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-500 text-white inline-flex items-center gap-1">
+                  <CheckCircle className="w-3 h-3" />
+                  CrewQ Venue
+                </span>
+              )}
+              {isRegular && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/90 text-white inline-flex items-center gap-1">
+                  <Star className="w-3 h-3 fill-current" />
+                  You're a regular here
+                </span>
+              )}
+              {venue.venue_type && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-white/20 backdrop-blur text-white border border-white/30 capitalize">
+                  {venue.venue_type.replace(/[-_]/g, ' ')}
+                </span>
+              )}
+            </div>
+            <h1 className="text-3xl sm:text-4xl font-bold text-white leading-tight" style={{ textShadow: '0 2px 6px rgba(0,0,0,0.9)' }}>
+              {venue.name}
+            </h1>
+            {venue.neighborhood && (
+              <p className="text-white/80 text-sm mt-1 flex items-center gap-1.5" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
+                <MapPin className="w-4 h-4" />
+                {venue.neighborhood}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Body — additive sections */}
+        <div className="bg-black text-white">
+          {/* Stories row — only if active stories exist */}
+          {!loadingStories && stories.length > 0 && (
+            <div className="px-5 pt-5 border-b border-zinc-900">
+              <button
+                onClick={() => setShowStoryCarousel(true)}
+                className="flex items-center gap-3 w-full text-left"
+              >
+                <div className="relative w-16 h-16 rounded-full p-[2px] bg-gradient-to-br from-violet-500 to-orange-500 flex-shrink-0">
+                  <div className="w-full h-full rounded-full bg-zinc-900 overflow-hidden">
+                    {stories[0]?.image_url ? (
+                      <img src={stories[0].image_url} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-violet-500 to-purple-700" />
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-white">Today at {venue.name}</p>
+                  <p className="text-xs text-zinc-400">
+                    {stories.length} update{stories.length !== 1 ? 's' : ''} · tap to view
+                  </p>
+                </div>
+              </button>
+              <div className="h-5" />
+            </div>
+          )}
+
+          {/* Description */}
+          {venue.description && (
+            <div className="px-5 py-5 border-b border-zinc-900">
+              <p className="text-zinc-200 leading-relaxed">{venue.description}</p>
+            </div>
+          )}
+
+          {/* Address */}
+          {venue.address && (
+            <div className="px-5 py-4 border-b border-zinc-900">
+              <h3 className="text-xs uppercase tracking-wider font-bold text-zinc-500 mb-2">Address</h3>
+              <p className="text-zinc-200 flex items-start gap-2">
+                <MapPin className="w-4 h-4 text-violet-400 flex-shrink-0 mt-0.5" />
+                <span>
+                  {venue.address}
+                  {venue.neighborhood ? `, ${venue.neighborhood}` : ''}
+                </span>
+              </p>
+              {venue.latitude && venue.longitude && (
+                <a
+                  href={`https://maps.google.com/?q=${venue.latitude},${venue.longitude}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-violet-400 hover:text-violet-300 mt-2 inline-block"
+                >
+                  Open in Maps →
+                </a>
+              )}
+            </div>
+          )}
+
+          {/* Hours */}
+          {formattedHours.some(h => h.value) && (
+            <div className="px-5 py-4 border-b border-zinc-900">
+              <h3 className="text-xs uppercase tracking-wider font-bold text-zinc-500 mb-2">Hours</h3>
+              <div className="space-y-1">
+                {formattedHours.map(h => (
+                  <div key={h.day} className="flex justify-between text-sm">
+                    <span className="text-zinc-400">{h.day}</span>
+                    <span className="text-zinc-200">{h.value || '—'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Social / contact */}
+          {hasSocials && (
+            <div className="px-5 py-4 border-b border-zinc-900">
+              <h3 className="text-xs uppercase tracking-wider font-bold text-zinc-500 mb-3">Connect</h3>
+              <div className="flex flex-wrap gap-2">
+                {venue.website && (
+                  <a href={venue.website.startsWith('http') ? venue.website : `https://${venue.website}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-3 py-2 bg-zinc-900 rounded-xl text-sm text-zinc-200 hover:bg-zinc-800 border border-zinc-800">
+                    <Globe className="w-4 h-4 text-violet-400" />
+                    Website
+                  </a>
+                )}
+                {venue.instagram && (
+                  <a href={`https://instagram.com/${String(venue.instagram).replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-3 py-2 bg-zinc-900 rounded-xl text-sm text-zinc-200 hover:bg-zinc-800 border border-zinc-800">
+                    <Camera className="w-4 h-4 text-violet-400" />
+                    Instagram
+                  </a>
+                )}
+                {venue.facebook && (
+                  <a href={String(venue.facebook).startsWith('http') ? venue.facebook : `https://facebook.com/${venue.facebook}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-3 py-2 bg-zinc-900 rounded-xl text-sm text-zinc-200 hover:bg-zinc-800 border border-zinc-800">
+                    <Globe className="w-4 h-4 text-violet-400" />
+                    Facebook
+                  </a>
+                )}
+                {venue.twitter && (
+                  <a href={`https://twitter.com/${String(venue.twitter).replace(/^@/, '')}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-3 py-2 bg-zinc-900 rounded-xl text-sm text-zinc-200 hover:bg-zinc-800 border border-zinc-800">
+                    <Globe className="w-4 h-4 text-violet-400" />
+                    Twitter
+                  </a>
+                )}
+                {venue.phone && (
+                  <a href={`tel:${venue.phone}`} className="flex items-center gap-2 px-3 py-2 bg-zinc-900 rounded-xl text-sm text-zinc-200 hover:bg-zinc-800 border border-zinc-800">
+                    <Phone className="w-4 h-4 text-violet-400" />
+                    Call
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Photo carousel — only if photos array exists */}
+          {Array.isArray(venue.photos) && venue.photos.length > 0 && (
+            <div className="py-5 border-b border-zinc-900">
+              <h3 className="px-5 text-xs uppercase tracking-wider font-bold text-zinc-500 mb-3">Photos</h3>
+              <div className="overflow-x-auto scrollbar-hide px-5 pb-1">
+                <div className="flex gap-2" style={{ minWidth: 'min-content' }}>
+                  {venue.photos.map((url, i) => (
+                    <img key={i} src={url} alt="" className="w-40 h-40 object-cover rounded-xl flex-shrink-0" />
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Upcoming events */}
+          <div className="px-5 py-5">
+            <h3 className="text-xs uppercase tracking-wider font-bold text-zinc-500 mb-3">
+              Upcoming events ({venueEvents.length})
+            </h3>
+            {venueEvents.length === 0 ? (
+              <p className="text-zinc-500 text-sm">No upcoming events at this venue right now.</p>
+            ) : (
+              <div className="space-y-2">
+                {venueEvents.slice(0, 20).map(ev => (
+                  <button
+                    key={ev.id}
+                    onClick={() => { onEventClick && onEventClick(ev); }}
+                    className="w-full flex items-center gap-3 p-3 bg-zinc-900 hover:bg-zinc-800 rounded-xl border border-zinc-800 text-left"
+                  >
+                    {ev.image_url && (
+                      <img src={ev.image_url} alt="" className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white font-semibold truncate">{ev.name}</p>
+                      <p className="text-xs text-zinc-400">
+                        {ev.date}{ev.time ? ` · ${ev.time}` : ''}
+                        {hasRSVPed && hasRSVPed(ev.id) ? ' · ✓ Going' : ''}
+                      </p>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-zinc-600 flex-shrink-0" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="h-12" />
+        </div>
+      </div>
+
+      {showStoryCarousel && stories.length > 0 && (
+        <StoryCarousel
+          stories={stories}
+          venueName={venue.name}
+          onClose={() => setShowStoryCarousel(false)}
+          supabaseClient={supabaseClient}
+        />
+      )}
+    </>
+  );
+}
+
+// Patch E — Story composer. Used by both admin (for any venue) and business portal (own venue only).
+// Six prompt cards → text starter pre-fills → photo upload → submit. 3-active cap with counter.
+function StoryComposer({ venue, supabaseClient, userProfile, onClose, onCreated, showToast }) {
+  const [activeStoriesCount, setActiveStoriesCount] = useState(null);
+  const [promptId, setPromptId] = useState('');
+  const [body, setBody] = useState('');
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Load active story count to enforce cap
+  useEffect(() => {
+    let cancelled = false;
+    const loadCount = async () => {
+      if (!supabaseClient || !venue?.id) return;
+      try {
+        const { data, error } = await supabaseClient
+          .from('venue_stories')
+          .select('id')
+          .eq('venue_id', venue.id)
+          .gt('expires_at', new Date().toISOString());
+        if (!cancelled && !error) setActiveStoriesCount((data || []).length);
+        if (!cancelled && error) setActiveStoriesCount(0);
+      } catch {
+        if (!cancelled) setActiveStoriesCount(0);
+      }
+    };
+    loadCount();
+    return () => { cancelled = true; };
+  }, [venue?.id, supabaseClient]);
+
+  const promptMeta = STORY_PROMPTS.find(p => p.id === promptId);
+  const atCap = activeStoriesCount != null && activeStoriesCount >= STORY_MAX_ACTIVE;
+
+  const pickPrompt = (p) => {
+    setPromptId(p.id);
+    if (p.starter && !body) setBody(p.starter);
+  };
+
+  const handleFile = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setImageFile(f);
+    // Preview
+    const reader = new FileReader();
+    reader.onload = (ev) => setImagePreview(ev.target?.result || null);
+    reader.readAsDataURL(f);
+  };
+
+  const handleSubmit = async () => {
+    if (!supabaseClient || !venue?.id || !promptId || !body.trim() || !imageFile || submitting || atCap) return;
+    setSubmitting(true);
+    try {
+      // 1. Upload image to Supabase Storage
+      const imageUrl = await uploadImageToStorage(supabaseClient, imageFile, 'venue-stories', venue.id);
+      if (!imageUrl) {
+        showToast && showToast('Image upload failed. Make sure the venue-stories bucket exists.', 'error');
+        setSubmitting(false);
+        return;
+      }
+      // 2. Insert story row
+      const expiresAt = new Date(Date.now() + STORY_DEFAULT_HOURS * 60 * 60 * 1000).toISOString();
+      const payload = {
+        venue_id: venue.id,
+        prompt_category: promptId,
+        body: body.trim(),
+        image_url: imageUrl,
+        created_by: userProfile?.id || null,
+        expires_at: expiresAt,
+      };
+      const { data, error } = await supabaseClient.from('venue_stories').insert([payload]).select().single();
+      if (error) throw error;
+      showToast && showToast('Story posted', 'success');
+      onCreated && onCreated(data);
+      onClose && onClose();
+    } catch (err) {
+      console.error('Story create failed:', err);
+      const msg = err?.message || 'Could not create story';
+      showToast && showToast(`Story failed: ${msg}`, 'error');
+      setSubmitting(false);
+    }
+  };
+
+  const canSubmit = !atCap && promptId && body.trim().length > 0 && !!imageFile && !submitting;
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black bg-opacity-90 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="bg-zinc-900 text-white rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[95vh] flex flex-col border border-zinc-800">
+        <div className="flex items-center justify-between p-5 border-b border-zinc-800">
+          <div>
+            <h2 className="text-xl font-bold">Post a story</h2>
+            <p className="text-sm text-zinc-400">{venue?.name}</p>
+          </div>
+          <button onClick={onClose} className="text-zinc-400 hover:text-white">
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        {/* Cap counter */}
+        <div className="px-5 pt-3">
+          <div className={`text-xs ${atCap ? 'text-amber-400' : 'text-zinc-500'} mb-3`}>
+            {activeStoriesCount == null ? 'Loading…' : `${activeStoriesCount} of ${STORY_MAX_ACTIVE} stories active today`}
+            {atCap && ' — wait for one to expire before posting another.'}
+          </div>
+        </div>
+
+        <div className="overflow-y-auto px-5 pb-3 space-y-4">
+          {/* Prompt picker */}
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wide mb-2 text-zinc-400">What's this about?</label>
+            <div className="grid grid-cols-2 gap-2">
+              {STORY_PROMPTS.map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => pickPrompt(p)}
+                  disabled={atCap}
+                  className={`p-3 rounded-xl border-2 text-left transition disabled:opacity-50 ${promptId === p.id ? 'bg-violet-500/20 border-violet-500/50' : 'bg-zinc-800 border-zinc-700 hover:border-zinc-600'}`}
+                >
+                  <div className="text-2xl mb-1">{p.emoji}</div>
+                  <div className="text-sm font-semibold text-white">{p.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Helper text */}
+          {promptMeta && (
+            <p className="text-xs text-zinc-500 italic">{promptMeta.helper}</p>
+          )}
+
+          {/* Body */}
+          {promptId && (
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wide mb-2 text-zinc-400">Your message</label>
+              <textarea
+                value={body}
+                onChange={e => setBody(e.target.value.slice(0, 280))}
+                rows={3}
+                placeholder="Type your story…"
+                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-xl text-white text-sm outline-none focus:border-violet-500"
+              />
+              <p className="text-[10px] text-zinc-500 mt-1 text-right">{body.length}/280</p>
+            </div>
+          )}
+
+          {/* Image upload */}
+          {promptId && (
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wide mb-2 text-zinc-400">Photo (required)</label>
+              {imagePreview ? (
+                <div className="relative">
+                  <img src={imagePreview} alt="" className="w-full h-48 object-cover rounded-xl" />
+                  <button
+                    onClick={() => { setImageFile(null); setImagePreview(null); }}
+                    className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center text-white"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <label className="flex flex-col items-center justify-center w-full h-48 bg-zinc-800 border-2 border-dashed border-zinc-700 rounded-xl cursor-pointer hover:border-zinc-600">
+                  <Camera className="w-8 h-8 text-zinc-500 mb-2" />
+                  <span className="text-sm text-zinc-400">Tap to add a photo</span>
+                  <span className="text-xs text-zinc-600 mt-1">Up to 5MB</span>
+                  <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleFile} className="hidden" />
+                </label>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="p-4 border-t border-zinc-800 flex gap-2">
+          <button onClick={onClose} className="flex-1 py-3 bg-zinc-800 text-white rounded-xl hover:bg-zinc-700 transition">
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            className="flex-1 py-3 bg-violet-500 text-white rounded-xl hover:bg-violet-600 transition disabled:opacity-40 font-semibold"
+          >
+            {submitting ? 'Posting…' : 'Post story'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Patch E — Public venue page. Full-screen modal-style profile.
+// Additive design: every section renders only when its data exists. Empty venue =
+// just hero + name + upcoming events. Filled venue = rich profile.
+function VenuePage({
+  venue,
+  upcomingEvents = [],
+  userCheckinCount = 0,
+  onClose,
+  onEventClick,
+  onSave,
+  onPass,
+  isSaved,
+  hasRSVPed,
+  darkMode = true,
+}) {
+  if (!venue) return null;
+
+  const heroImage = venue.cover_image_url || venue.image_url || null;
+  const isRegular = userCheckinCount >= 3;
+  const hoursList = formatVenueHours(venue.hours);
+  const hasSocial = venue.instagram || venue.facebook || venue.twitter;
+  const hasContact = venue.phone || venue.email || venue.website;
+  const photos = Array.isArray(venue.photos) ? venue.photos.filter(Boolean) : [];
+
+  // Format an Instagram handle (strip @ if present, build profile URL)
+  const igUrl = venue.instagram
+    ? `https://instagram.com/${venue.instagram.replace(/^@/, '').trim()}`
+    : null;
+  const fbUrl = venue.facebook && !venue.facebook.startsWith('http')
+    ? `https://facebook.com/${venue.facebook.replace(/^@/, '').trim()}`
+    : venue.facebook;
+  const twUrl = venue.twitter && !venue.twitter.startsWith('http')
+    ? `https://twitter.com/${venue.twitter.replace(/^@/, '').trim()}`
+    : venue.twitter;
+  const websiteUrl = venue.website && !venue.website.startsWith('http')
+    ? `https://${venue.website}`
+    : venue.website;
+
+  // Format date as Today/Tomorrow/weekday
+  const formatEventDate = (dateStr) => {
+    if (!dateStr) return '';
+    const evt = new Date(dateStr + 'T00:00:00');
+    if (isNaN(evt.getTime())) return dateStr;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const inAWeek = new Date(today);
+    inAWeek.setDate(inAWeek.getDate() + 7);
+    if (evt.getTime() === today.getTime()) return 'Today';
+    if (evt.getTime() === tomorrow.getTime()) return 'Tomorrow';
+    if (evt < inAWeek) return evt.toLocaleDateString('en-US', { weekday: 'long' });
+    return evt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  };
+  const formatEventTime = (timeStr) => {
+    if (!timeStr) return '';
+    const [h, m] = timeStr.split(':');
+    const hour = parseInt(h, 10);
+    if (isNaN(hour)) return timeStr;
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${m || '00'} ${ampm}`;
+  };
+
+  return (
+    <div className={`fixed inset-0 z-50 ${darkMode ? 'bg-black' : 'bg-amber-50'} overflow-y-auto`}>
+      {/* Sticky close button */}
+      <button
+        onClick={onClose}
+        className={`fixed top-3 left-3 z-50 w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-md ${darkMode ? 'bg-black/60 text-white border border-white/20' : 'bg-white/90 text-zinc-900 border border-zinc-200'} shadow-lg`}
+        aria-label="Close venue page"
+      >
+        <ChevronLeft className="w-6 h-6" />
+      </button>
+
+      {/* Hero image */}
+      <div className={`relative w-full ${darkMode ? 'bg-zinc-900' : 'bg-amber-100'}`} style={{ aspectRatio: '16 / 9' }}>
+        {heroImage ? (
+          <img src={heroImage} alt={venue.name} className="w-full h-full object-cover" />
+        ) : (
+          <div className={`w-full h-full flex items-center justify-center ${darkMode ? 'text-zinc-600' : 'text-zinc-400'}`}>
+            <Building2 className="w-16 h-16" />
+          </div>
+        )}
+        {/* Bottom gradient for legibility */}
+        <div className="absolute bottom-0 inset-x-0 h-24 bg-gradient-to-t from-black/70 to-transparent pointer-events-none" />
+      </div>
+
+      <div className={`max-w-2xl mx-auto px-4 sm:px-6 pb-24`}>
+        {/* Name + verified badge + regular badge */}
+        <div className="-mt-10 relative z-10 flex items-end gap-3 mb-3">
+          {venue.logo_url && (
+            <img
+              src={venue.logo_url}
+              alt=""
+              className={`w-20 h-20 rounded-2xl object-cover border-4 ${darkMode ? 'border-black bg-zinc-900' : 'border-amber-50 bg-white'} shadow-xl flex-shrink-0`}
+            />
+          )}
+          <div className="flex-1 min-w-0 pb-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-zinc-900'}`} style={{ textShadow: heroImage ? '0 1px 3px rgba(0,0,0,0.5)' : 'none' }}>
+                {venue.name}
+              </h1>
+              {venue.verified && (
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${darkMode ? 'bg-violet-500 text-white' : 'bg-orange-500 text-white'}`} title="CrewQ verified venue">
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  CrewQ Venue
+                </span>
+              )}
+            </div>
+            <p className={`text-sm mt-1 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+              {[venue.venue_type, venue.neighborhood].filter(Boolean).join(' · ')}
+            </p>
+          </div>
+        </div>
+
+        {/* "You're a regular here" — only when applicable */}
+        {isRegular && (
+          <div className={`mb-4 p-3 rounded-xl flex items-center gap-2 ${darkMode ? 'bg-violet-500/15 border border-violet-500/40 text-violet-200' : 'bg-orange-500/10 border border-orange-500/40 text-orange-700'}`}>
+            <Star className="w-5 h-5 fill-current" />
+            <span className="text-sm font-semibold">You're a regular here · {userCheckinCount} check-in{userCheckinCount !== 1 ? 's' : ''}</span>
+          </div>
+        )}
+
+        {/* Description — only if exists */}
+        {venue.description && (
+          <p className={`text-sm leading-relaxed mb-5 ${darkMode ? 'text-zinc-300' : 'text-zinc-700'}`}>
+            {venue.description}
+          </p>
+        )}
+
+        {/* Photos carousel — only if photos exist (Patch E.1+ will let venues add these) */}
+        {photos.length > 0 && (
+          <div className="mb-5 -mx-4 sm:-mx-6 px-4 sm:px-6 overflow-x-auto scrollbar-hide">
+            <div className="flex gap-2" style={{ minWidth: 'min-content' }}>
+              {photos.map((url, idx) => (
+                <img
+                  key={idx}
+                  src={url}
+                  alt=""
+                  className="h-40 w-60 object-cover rounded-xl flex-shrink-0"
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Location & Hours — only if data exists */}
+        {(venue.address || hoursList.length > 0) && (
+          <div className={`mb-5 rounded-2xl p-4 ${darkMode ? 'bg-zinc-900 border border-zinc-800' : 'bg-white border border-amber-200'}`}>
+            {venue.address && (
+              <div className="flex items-start gap-2 mb-2">
+                <MapPin className={`w-4 h-4 mt-0.5 flex-shrink-0 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`} />
+                <a
+                  href={`https://maps.google.com/?q=${encodeURIComponent([venue.name, venue.address, venue.neighborhood].filter(Boolean).join(', '))}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`text-sm ${darkMode ? 'text-zinc-300 hover:text-violet-300' : 'text-zinc-700 hover:text-orange-600'} underline-offset-2 hover:underline`}
+                >
+                  {venue.address}
+                </a>
+              </div>
+            )}
+            {hoursList.length > 0 && (
+              <div className="flex items-start gap-2">
+                <Clock className={`w-4 h-4 mt-0.5 flex-shrink-0 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`} />
+                <div className="flex-1 grid grid-cols-2 gap-x-4 gap-y-0.5">
+                  {hoursList.map(([day, hrs]) => (
+                    <div key={day} className={`text-xs flex justify-between ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                      <span>{day.slice(0, 3)}</span>
+                      <span className={darkMode ? 'text-zinc-300' : 'text-zinc-700'}>{hrs}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Contact + Social — only if any exists */}
+        {(hasContact || hasSocial) && (
+          <div className="flex flex-wrap gap-2 mb-5">
+            {websiteUrl && (
+              <a
+                href={websiteUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold ${darkMode ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-white border border-amber-200 hover:bg-amber-50 text-zinc-700'} transition`}
+              >
+                <Globe className="w-3.5 h-3.5" />Website
+              </a>
+            )}
+            {venue.phone && (
+              <a
+                href={`tel:${venue.phone.replace(/[^\d+]/g, '')}`}
+                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold ${darkMode ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-white border border-amber-200 hover:bg-amber-50 text-zinc-700'} transition`}
+              >
+                <Phone className="w-3.5 h-3.5" />Call
+              </a>
+            )}
+            {venue.email && (
+              <a
+                href={`mailto:${venue.email}`}
+                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold ${darkMode ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-white border border-amber-200 hover:bg-amber-50 text-zinc-700'} transition`}
+              >
+                <Mail className="w-3.5 h-3.5" />Email
+              </a>
+            )}
+            {igUrl && (
+              <a
+                href={igUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold ${darkMode ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-white border border-amber-200 hover:bg-amber-50 text-zinc-700'} transition`}
+              >
+                <Camera className="w-3.5 h-3.5" />Instagram
+              </a>
+            )}
+            {fbUrl && (
+              <a
+                href={fbUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold ${darkMode ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-white border border-amber-200 hover:bg-amber-50 text-zinc-700'} transition`}
+              >
+                <ExternalLink className="w-3.5 h-3.5" />Facebook
+              </a>
+            )}
+            {twUrl && (
+              <a
+                href={twUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold ${darkMode ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-white border border-amber-200 hover:bg-amber-50 text-zinc-700'} transition`}
+              >
+                <ExternalLink className="w-3.5 h-3.5" />Twitter
+              </a>
+            )}
+          </div>
+        )}
+
+        {/* Upcoming events — always shown (even if empty) */}
+        <div className="mb-6">
+          <h2 className={`text-lg font-bold mb-3 ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
+            Upcoming events {upcomingEvents.length > 0 && <span className={darkMode ? 'text-zinc-500' : 'text-zinc-500'}>({upcomingEvents.length})</span>}
+          </h2>
+          {upcomingEvents.length === 0 ? (
+            <div className={`p-6 rounded-2xl text-center ${darkMode ? 'bg-zinc-900 border border-zinc-800 text-zinc-500' : 'bg-white border border-amber-200 text-zinc-500'}`}>
+              <Calendar className="w-10 h-10 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">No upcoming events listed yet</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {upcomingEvents.map(ev => (
+                <button
+                  key={ev.id}
+                  onClick={() => onEventClick && onEventClick(ev)}
+                  className={`w-full text-left p-3 rounded-xl flex items-center gap-3 transition ${darkMode ? 'bg-zinc-900 border border-zinc-800 hover:border-zinc-700' : 'bg-white border border-amber-200 hover:border-amber-300'}`}
+                >
+                  {ev.image_url && (
+                    <img src={ev.image_url} alt="" className="w-16 h-16 rounded-lg object-cover flex-shrink-0" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className={`font-semibold truncate ${darkMode ? 'text-white' : 'text-zinc-900'}`}>{ev.name}</p>
+                    <p className={`text-xs ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                      {formatEventDate(ev.date)} · {formatEventTime(ev.time)}
+                    </p>
+                    {ev.category && (
+                      <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize ${darkMode ? 'bg-zinc-800 text-zinc-400' : 'bg-amber-100 text-zinc-600'}`}>
+                        {ev.category.replace(/-/g, ' ')}
+                      </span>
+                    )}
+                  </div>
+                  <ChevronRight className={`w-5 h-5 flex-shrink-0 ${darkMode ? 'text-zinc-600' : 'text-zinc-400'}`} />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -8331,24 +9295,59 @@ function AdminPortal({ onClose, userEmail }) {
   const topEvents = [...events].sort((a, b) => (b.views || 0) - (a.views || 0)).slice(0, 10);
 
   // CRUD
+  // Patch E — Generate a slug guaranteed unique against existing slugs.
+  // Uses the buildVenueSlug helper, then appends -2/-3/etc. on collision.
+  const generateUniqueSlug = (name, existing = []) => {
+    const base = buildVenueSlug(name);
+    if (!base) return '';
+    const taken = new Set(existing.filter(Boolean));
+    if (!taken.has(base)) return base;
+    let i = 2;
+    while (taken.has(`${base}-${i}`)) i++;
+    return `${base}-${i}`;
+  };
+
   const handleCreateVenue = async (venueData) => {
     try {
-      const { data, error } = await supabaseClient.from('establishments').insert([venueData]).select().single();
+      // Patch E — Auto-generate slug from name if not provided
+      const existingSlugs = establishments.map(e => e.slug).filter(Boolean);
+      const finalData = {
+        ...venueData,
+        slug: venueData.slug || generateUniqueSlug(venueData.name, existingSlugs),
+      };
+      const { data, error } = await supabaseClient.from('establishments').insert([finalData]).select().single();
       if (error) throw error;
       setEstablishments([data, ...establishments]);
-      showToastMsg(`Venue "${venueData.name}" created!`);
+      showToastMsg(`Venue "${finalData.name}" created!`);
       setCurrentView('venues');
-    } catch (err) { console.error(err); showToastMsg('Error creating venue', 'error'); }
+    } catch (err) {
+      console.error('Create venue failed:', err, 'Payload:', venueData);
+      const msg = err?.message || err?.hint || 'Error creating venue';
+      showToastMsg(`Create failed: ${msg}`, 'error');
+    }
   };
 
   const handleUpdateVenue = async (id, updates) => {
     try {
-      const { data, error } = await supabaseClient.from('establishments').update(updates).eq('id', id).select().single();
+      // Patch E — Regenerate slug if name changed and slug wasn't provided
+      let finalUpdates = { ...updates };
+      if (updates.name && !updates.slug) {
+        const existing = establishments.find(e => e.id === id);
+        if (!existing?.slug || existing.name !== updates.name) {
+          const existingSlugs = establishments.filter(e => e.id !== id).map(e => e.slug).filter(Boolean);
+          finalUpdates.slug = generateUniqueSlug(updates.name, existingSlugs);
+        }
+      }
+      const { data, error } = await supabaseClient.from('establishments').update(finalUpdates).eq('id', id).select().single();
       if (error) throw error;
       setEstablishments(establishments.map(e => e.id === id ? data : e));
       showToastMsg('Venue updated!');
       setEditingVenue(null);
-    } catch { showToastMsg('Error updating venue', 'error'); }
+    } catch (err) {
+      console.error('Update venue failed:', err);
+      const msg = err?.message || err?.hint || 'Error updating venue';
+      showToastMsg(`Update failed: ${msg}`, 'error');
+    }
   };
 
   const handleDeleteVenue = async (id) => {
@@ -9171,17 +10170,71 @@ function AdminPortal({ onClose, userEmail }) {
   const EditVenueModal = () => {
     const [form, setForm] = useState(editingVenue || {});
     if (!editingVenue) return null;
+    // Patch E — Hours editor: convert form.hours jsonb into individual day fields
+    const hoursVal = form.hours && typeof form.hours === 'object' ? form.hours : {};
+    const setHours = (day, val) => setForm({ ...form, hours: { ...hoursVal, [day]: val } });
+    const days = [['mon','Mon'],['tue','Tue'],['wed','Wed'],['thu','Thu'],['fri','Fri'],['sat','Sat'],['sun','Sun']];
     return (
       <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-        <div className="bg-gray-800 rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="bg-gray-800 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
           <div className="p-4 border-b border-gray-700 flex justify-between"><h2 className="text-lg font-bold text-white">Edit Venue</h2><button onClick={() => setEditingVenue(null)}><X className="w-5 h-5 text-gray-400" /></button></div>
           <div className="p-4 space-y-4">
-            <div><label className="block text-sm text-gray-400 mb-1">Name</label><input value={form.name || ''} onChange={e => setForm({...form, name: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" /></div>
-            <div><label className="block text-sm text-gray-400 mb-1">Neighborhood</label><select value={form.neighborhood || ''} onChange={e => setForm({...form, neighborhood: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"><option value="">Select...</option>{DALLAS_NEIGHBORHOODS.map(n => <option key={n.id} value={n.name}>{n.name}</option>)}</select></div>
-            <div><label className="block text-sm text-gray-400 mb-1">Type</label><select value={form.venue_type || ''} onChange={e => setForm({...form, venue_type: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"><option value="">Select...</option>{BUSINESS_VENUE_TYPES.map(t => <option key={t.id} value={t.id}>{t.icon} {t.label}</option>)}</select></div>
-            <div><label className="block text-sm text-gray-400 mb-1">Address</label><input value={form.address || ''} onChange={e => setForm({...form, address: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" /></div>
-            <div><label className="block text-sm text-gray-400 mb-1">Phone</label><input value={form.phone || ''} onChange={e => setForm({...form, phone: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" /></div>
-            <div><label className="block text-sm text-gray-400 mb-1">Status</label><select value={form.status || 'pending'} onChange={e => setForm({...form, status: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"><option value="pending">Pending</option><option value="approved">Approved</option><option value="suspended">Suspended</option></select></div>
+
+            {/* Basics */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div><label className="block text-sm text-gray-400 mb-1">Name</label><input value={form.name || ''} onChange={e => setForm({...form, name: e.target.value, slug: form.slug || buildVenueSlug(e.target.value, form.neighborhood)})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" /></div>
+              <div><label className="block text-sm text-gray-400 mb-1">Slug (URL)</label><input value={form.slug || ''} onChange={e => setForm({...form, slug: e.target.value})} placeholder="auto-generated from name" className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm font-mono" /></div>
+              <div><label className="block text-sm text-gray-400 mb-1">Neighborhood</label><select value={form.neighborhood || ''} onChange={e => setForm({...form, neighborhood: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"><option value="">Select...</option>{DALLAS_NEIGHBORHOODS.map(n => <option key={n.id} value={n.name}>{n.name}</option>)}</select></div>
+              <div><label className="block text-sm text-gray-400 mb-1">Type</label><select value={form.venue_type || ''} onChange={e => setForm({...form, venue_type: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"><option value="">Select...</option>{BUSINESS_VENUE_TYPES.map(t => <option key={t.id} value={t.id}>{t.icon} {t.label}</option>)}</select></div>
+              <div className="sm:col-span-2"><label className="block text-sm text-gray-400 mb-1">Address</label><input value={form.address || ''} onChange={e => setForm({...form, address: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" /></div>
+              <div className="sm:col-span-2"><label className="block text-sm text-gray-400 mb-1">Description</label><textarea rows={3} value={form.description || ''} onChange={e => setForm({...form, description: e.target.value})} placeholder="Tell users about this venue's vibe, what makes it special…" className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm" /></div>
+            </div>
+
+            {/* Imagery */}
+            <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 space-y-3">
+              <p className="text-xs uppercase tracking-wide text-slate-400 font-semibold">Imagery</p>
+              <div><label className="block text-sm text-gray-400 mb-1">Cover image URL (16:9 hero)</label><input value={form.cover_image_url || ''} onChange={e => setForm({...form, cover_image_url: e.target.value})} placeholder="https://..." className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm" /></div>
+              <div><label className="block text-sm text-gray-400 mb-1">Logo URL (square)</label><input value={form.logo_url || ''} onChange={e => setForm({...form, logo_url: e.target.value})} placeholder="https://..." className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm" /></div>
+            </div>
+
+            {/* Contact + Social */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div><label className="block text-sm text-gray-400 mb-1">Phone</label><input value={form.phone || ''} onChange={e => setForm({...form, phone: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" /></div>
+              <div><label className="block text-sm text-gray-400 mb-1">Email</label><input value={form.email || ''} onChange={e => setForm({...form, email: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" /></div>
+              <div><label className="block text-sm text-gray-400 mb-1">Website</label><input value={form.website || ''} onChange={e => setForm({...form, website: e.target.value})} placeholder="https://..." className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm" /></div>
+              <div><label className="block text-sm text-gray-400 mb-1">Instagram (handle or URL)</label><input value={form.instagram || ''} onChange={e => setForm({...form, instagram: e.target.value})} placeholder="@blackfriarpub" className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm" /></div>
+              <div><label className="block text-sm text-gray-400 mb-1">Facebook</label><input value={form.facebook || ''} onChange={e => setForm({...form, facebook: e.target.value})} placeholder="page name or full URL" className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm" /></div>
+              <div><label className="block text-sm text-gray-400 mb-1">Twitter / X</label><input value={form.twitter || ''} onChange={e => setForm({...form, twitter: e.target.value})} placeholder="@handle or full URL" className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm" /></div>
+            </div>
+
+            {/* Hours */}
+            <div className="bg-slate-900 border border-slate-700 rounded-lg p-3">
+              <p className="text-xs uppercase tracking-wide text-slate-400 font-semibold mb-2">Hours</p>
+              <div className="space-y-2">
+                {days.map(([key, label]) => (
+                  <div key={key} className="flex items-center gap-2">
+                    <span className="w-12 text-sm text-slate-400">{label}</span>
+                    <input
+                      value={hoursVal[key] || ''}
+                      onChange={e => setHours(key, e.target.value)}
+                      placeholder="11am-10pm"
+                      className="flex-1 px-2 py-1.5 bg-gray-700 border border-gray-600 rounded text-white text-sm"
+                    />
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-slate-500 mt-2">Leave a day empty if closed.</p>
+            </div>
+
+            {/* Status + verified */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div><label className="block text-sm text-gray-400 mb-1">Status</label><select value={form.status || 'pending'} onChange={e => setForm({...form, status: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"><option value="pending">Pending</option><option value="approved">Approved</option><option value="suspended">Suspended</option></select></div>
+              <label className="flex items-center gap-2 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg cursor-pointer">
+                <input type="checkbox" checked={!!form.verified} onChange={e => setForm({...form, verified: e.target.checked})} className="w-4 h-4 accent-violet-500" />
+                <span className="text-sm text-white">CrewQ Venue (verified)</span>
+              </label>
+            </div>
+
           </div>
           <div className="p-4 border-t border-gray-700 flex gap-3"><button onClick={() => setEditingVenue(null)} className="flex-1 px-4 py-2 border border-gray-600 text-gray-400 rounded-lg">Cancel</button><button onClick={() => handleUpdateVenue(editingVenue.id, form)} className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg font-semibold">Save</button></div>
         </div>
@@ -11320,6 +12373,10 @@ export default function App() {
   const [showDiscoverFilters, setShowDiscoverFilters] = useState(false);
   // Patch C — Post-RSVP follow-up sheet (calendar export + bring-a-friend) shown inline in EventDetailModal
   const [postRsvpEvent, setPostRsvpEvent] = useState(null);
+  // Patch E — Venue page state. Setting selectedVenuePage opens the public venue profile.
+  const [selectedVenuePage, setSelectedVenuePage] = useState(null);
+  const [allVenues, setAllVenues] = useState([]); // all establishments (loaded once for venue page lookup + regular detection)
+  const [attendedEventIds, setAttendedEventIds] = useState([]); // IDs of events the user has checked in to (for regular detection)
   // Patch C2a — JS-measured scroll container height. iOS Safari requires an explicit (not flex-1) height
   // for `scroll-snap-type: y mandatory` to reliably engage. We measure window height minus the top
   // utility bar minus the bottom nav, and set the scroll container + each card to that exact height.
@@ -11354,6 +12411,33 @@ export default function App() {
       timers.forEach(clearTimeout);
     };
   }, []);
+
+  // Patch E — Handle /venue/:slug deep links + browser back/forward navigation
+  useEffect(() => {
+    const checkAndOpenFromUrl = () => {
+      try {
+        const m = window.location.pathname.match(/^\/venue\/([a-zA-Z0-9-_]+)\/?$/);
+        if (m) {
+          const slug = m[1];
+          // Only open if we have venues loaded AND the venue exists
+          if (allVenues.length > 0) {
+            const venue = allVenues.find(v => v.slug === slug || String(v.id) === slug);
+            if (venue && (!openVenue || openVenue.id !== venue.id)) {
+              setOpenVenue(venue);
+            }
+          }
+        } else if (openVenue) {
+          // URL no longer points to a venue — close any open venue page
+          setOpenVenue(null);
+        }
+      } catch { /* fail silent */ }
+    };
+    // Run on mount + whenever venues finish loading
+    checkAndOpenFromUrl();
+    window.addEventListener('popstate', checkAndOpenFromUrl);
+    return () => window.removeEventListener('popstate', checkAndOpenFromUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allVenues]);
   
   // New feature modals
   const [showNotificationPrefs, setShowNotificationPrefs] = useState(false);
@@ -11799,6 +12883,7 @@ export default function App() {
       loadUserBadges(userProfile.id);
       loadUserStats(userProfile.id);
       loadAttendedEvents(userProfile.id);
+      loadAllVenues(); // Patch E — populate venues for venue-page lookups + regular-tag detection
     }
   }, [userProfile?.id]);
 
@@ -11815,10 +12900,23 @@ export default function App() {
     }
   };
 
-  const loadAttendedEvents = async (userId) => {
+  // Patch E — Load all venues once for venue page lookups + regular-tag detection.
+  // Establishments table is small (hundreds of rows), so loading them all once is fine.
+  const loadAllVenues = async () => {
     if (!supabaseClient) return;
     try {
-      // First get check-in event IDs
+      const { data, error } = await supabaseClient
+        .from('establishments')
+        .select('*');
+      if (!error) setAllVenues(data || []);
+    } catch (err) {
+      console.warn('loadAllVenues failed:', err);
+    }
+  };
+
+  const loadAttendedEvents = async (userId) => {
+    if (!supabaseClient) return;
+    try {      // First get check-in event IDs
       // Patch C2a — Removed `created_at` from select + order. Some event_checkins tables don't have
       // that column, causing a 400. We don't need ordering here (only IDs are used downstream).
       const { data: checkins, error: checkinsError } = await supabaseClient
@@ -11828,8 +12926,12 @@ export default function App() {
       
       if (checkinsError || !checkins?.length) {
         setAttendedEvents([]);
+        setAttendedEventIds([]); // Patch E — for venue-regular detection
         return;
       }
+
+      // Patch E — also expose just the event-id list for venue page regular-tag logic
+      setAttendedEventIds(checkins.map(c => c.event_id));
 
       // Then get event details
       const eventIds = checkins.map(c => c.event_id);
@@ -12143,6 +13245,73 @@ export default function App() {
       }
     }
   };
+
+  // Patch E — Open a venue page from an event. Tries establishment_id first, falls back to name match.
+  // Also pushes /venue/:slug into the URL bar for SEO + shareability without using a router library.
+  const openVenueFromEvent = async (event) => {
+    if (!event) return;
+    let venue = null;
+    if (event.establishment_id) {
+      venue = allVenues.find(v => String(v.id) === String(event.establishment_id));
+    }
+    if (!venue && event.venue) {
+      venue = allVenues.find(v => (v.name || '').toLowerCase().trim() === event.venue.toLowerCase().trim());
+    }
+    if (!venue) {
+      // No match — synthesize a minimal venue object from event fields so the page still works
+      venue = {
+        id: null,
+        name: event.venue,
+        neighborhood: event.neighborhood,
+        address: event.address,
+        cover_image_url: event.image_url, // last resort
+      };
+    }
+    setSelectedVenuePage(venue);
+    // Update URL bar (SEO + shareability)
+    try {
+      if (venue.slug) {
+        window.history.pushState({ venueSlug: venue.slug }, '', `/venue/${venue.slug}`);
+      }
+    } catch { /* environments without history support — fail silent */ }
+  };
+
+  const closeVenuePage = () => {
+    setSelectedVenuePage(null);
+    try {
+      if (window.history.state?.venueSlug) {
+        window.history.back();
+      }
+    } catch { /* fail silent */ }
+  };
+
+  // Patch E — Compute upcoming events for a venue (filtered by date >= today, status live)
+  const getUpcomingEventsForVenue = (venue) => {
+    if (!venue) return [];
+    const todayStr = new Date().toISOString().slice(0, 10);
+    return events
+      .filter(e => {
+        if (e.status && e.status !== 'live' && e.status !== 'approved') return false;
+        if (!e.date || e.date < todayStr) return false;
+        // Match on establishment_id first, fall back to venue name
+        if (venue.id && e.establishment_id) {
+          return String(e.establishment_id) === String(venue.id);
+        }
+        return (e.venue || '').toLowerCase().trim() === (venue.name || '').toLowerCase().trim();
+      })
+      .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || ''));
+  };
+
+  // Patch E — User's check-in count at a specific venue (for "you're a regular here" detection).
+  // attendedEvents holds full event rows from check-ins; count rows whose venue/establishment matches.
+  const getUserCheckinCountAtVenue = (venue) => {
+    if (!venue || !attendedEvents?.length) return 0;
+    return attendedEvents.filter(ev => {
+      if (venue.id && ev.establishment_id) return String(ev.establishment_id) === String(venue.id);
+      return (ev.venue || '').toLowerCase().trim() === (venue.name || '').toLowerCase().trim();
+    }).length;
+  };
+
 
   const handleEventClick = async (event) => {
     setSelectedEvent(event);
@@ -12681,6 +13850,7 @@ export default function App() {
           await loadAllSquads();
           await loadCheckedInEvents(existingProfile.id);
           await loadUserRsvps(existingProfile.id);
+          loadVenues();
         } else {
           // New Google user - store their info and show onboarding
           console.log('checkAuth: New Google user, showing onboarding');
@@ -12722,6 +13892,7 @@ export default function App() {
           await loadAllSquads();
           await loadCheckedInEvents(data.id);
           await loadUserRsvps(data.id);
+          loadVenues();
         } else {
           localStorage.removeItem('crewq_user_id');
         }
@@ -12854,6 +14025,7 @@ export default function App() {
       await loadAllSquads();
       await loadCheckedInEvents(newUser.id);
       await loadUserRsvps(newUser.id);
+      loadVenues();
     } catch (error) {
       console.error('Error creating account:', error);
       alert('Error creating account: ' + error.message);
@@ -12906,6 +14078,20 @@ export default function App() {
     localStorage.removeItem('crewq_user_id');
     setUserProfile(null);
     setCurrentTab('discover');
+  };
+
+  // Patch E — Load all establishments once for venue page lookup + regular detection
+  const loadVenues = async () => {
+    if (!supabaseClient) return;
+    try {
+      const { data, error } = await supabaseClient
+        .from('establishments')
+        .select('*');
+      if (error) throw error;
+      setAllVenues(data || []);
+    } catch (err) {
+      console.warn('loadVenues failed:', err?.message);
+    }
   };
 
   const loadEvents = async (userId = null) => {
@@ -13882,21 +15068,45 @@ const loadSquads = async (userId) => {
                 )}
 
                 {/* Vertical-scroll feed — snap behavior on parent .discover-feed-snap */}
-                {feedEvents.map(event => (
-                  <EventFeedCard
-                    key={event.id}
-                    event={event}
-                    isSaved={savedEventIds.has(event.id)}
-                    vibeMatch={getVibeMatchScore(event)}
-                    goingCount={(event.rsvps || 0) + (event.checkins || 0)}
-                    darkMode={darkMode}
-                    cardHeight={feedScrollHeight}
-                    onCardTap={(ev) => { handleEventClick(ev); }}
-                    onSave={handleFeedCardSave}
-                    onPass={handleFeedCardPass}
-                    onView={handleFeedCardViewed}
-                  />
-                ))}
+                {feedEvents.map(event => {
+                  // Patch E — Compute "Regular here" once per card.
+                  // User has 3+ check-ins at this venue (matched by establishment_id or fallback name).
+                  const venueCheckins = (attendedEventIds || []).filter(eId => {
+                    const ev = events.find(x => x.id === eId);
+                    if (!ev) return false;
+                    if (event.establishment_id && ev.establishment_id) {
+                      return String(ev.establishment_id) === String(event.establishment_id);
+                    }
+                    return ev.venue && event.venue && ev.venue.toLowerCase().trim() === event.venue.toLowerCase().trim();
+                  }).length;
+                  const isRegular = venueCheckins >= 3;
+                  // Patch E — "Fresh this week" — recurring events updated within last 7 days
+                  const isFresh = (() => {
+                    if (!event.recurring) return false;
+                    const updated = event.updated_at ? new Date(event.updated_at) : null;
+                    if (!updated || isNaN(updated.getTime())) return false;
+                    const sevenDays = 7 * 24 * 60 * 60 * 1000;
+                    return Date.now() - updated.getTime() < sevenDays;
+                  })();
+                  return (
+                    <EventFeedCard
+                      key={event.id}
+                      event={event}
+                      isSaved={savedEventIds.has(event.id)}
+                      vibeMatch={getVibeMatchScore(event)}
+                      goingCount={(event.rsvps || 0) + (event.checkins || 0)}
+                      darkMode={darkMode}
+                      cardHeight={feedScrollHeight}
+                      isRegularHere={isRegular}
+                      isFreshThisWeek={isFresh}
+                      onCardTap={(ev) => { handleEventClick(ev); }}
+                      onVenueTap={(ev) => { openVenueFromEvent(ev); }}
+                      onSave={handleFeedCardSave}
+                      onPass={handleFeedCardPass}
+                      onView={handleFeedCardViewed}
+                    />
+                  );
+                })}
 
                 {/* End-of-feed footer — also a snapping card so it doesn't feel abrupt */}
                 <div
@@ -14037,6 +15247,48 @@ const loadSquads = async (userId) => {
             hasRSVPed={hasRSVPed}
             showPostRsvp={postRsvpEvent?.id === selectedEvent.id}
             onClearPostRsvp={() => setPostRsvpEvent(null)}
+            onViewVenue={(ev) => {
+              // Patch E — close detail modal, open venue page
+              setShowEventDetail(false);
+              setSelectedEventHistoricalCount(0);
+              setPostRsvpEvent(null);
+              openVenueFromEvent(ev);
+            }}
+          />
+        )}
+
+        {/* Patch E — Venue page modal */}
+        {selectedVenuePage && (
+          <VenuePage
+            venue={selectedVenuePage}
+            upcomingEvents={getUpcomingEventsForVenue(selectedVenuePage)}
+            userCheckinCount={getUserCheckinCountAtVenue(selectedVenuePage)}
+            onClose={closeVenuePage}
+            onEventClick={(ev) => {
+              // Close venue page, open event detail
+              closeVenuePage();
+              handleEventClick(ev);
+            }}
+            darkMode={darkMode}
+          />
+        )}
+
+        {/* Patch E — Venue page (full-screen overlay) */}
+        {openVenue && (
+          <VenuePage
+            venue={openVenue}
+            onClose={closeVenuePage}
+            allEvents={events}
+            userProfile={userProfile}
+            attendedEventIds={attendedEventIds}
+            supabaseClient={supabaseClient}
+            hasRSVPed={hasRSVPed}
+            darkMode={darkMode}
+            onEventClick={(ev) => {
+              // Closing the venue page cleanly, then opening event detail
+              closeVenuePage();
+              setTimeout(() => handleEventClick(ev), 50);
+            }}
           />
         )}
 
