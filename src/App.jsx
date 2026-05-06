@@ -1961,26 +1961,31 @@ function CrewDetailModal({ crew, onClose, onJoin, onLeave, onVote, userProfile, 
       if (!supabaseClient || !crew?.id) return;
       try {
         // Try to find an existing open token first
-        const { data: existing } = await supabaseClient
+        const { data: existing, error: selectErr } = await supabaseClient
           .from('crew_invitee_tokens')
           .select('token')
           .eq('crew_id', crew.id)
           .is('phone_number', null)
           .limit(1);
+        if (selectErr) {
+          console.warn('[CrewDetail] token select failed:', selectErr?.message);
+        }
         if (cancelled) return;
         if (existing && existing.length > 0) {
           setShareToken(existing[0].token);
           return;
         }
-        // None exists — create one. Only the owner is permitted to insert here per RLS,
-        // so members get null shareToken if they hit this path. UI gates the button accordingly.
+        // None exists — try to create one.
         const newToken = generateInviteToken();
         const { error: insertErr } = await supabaseClient
           .from('crew_invitee_tokens')
           .insert([{ token: newToken, crew_id: crew.id, phone_number: null }]);
+        if (insertErr) {
+          console.warn('[CrewDetail] token insert failed:', insertErr?.message);
+        }
         if (!cancelled && !insertErr) setShareToken(newToken);
-      } catch {
-        // Silent — share button just won't appear
+      } catch (err) {
+        console.warn('[CrewDetail] token load exception:', err?.message);
       }
     })();
     return () => { cancelled = true; };
@@ -1988,7 +1993,11 @@ function CrewDetailModal({ crew, onClose, onJoin, onLeave, onVote, userProfile, 
 
   // Patch D.1 — Share invite handler. Called inside button click → fresh user gesture.
   const handleShareInvite = async () => {
-    if (!shareToken || shareLoading) return;
+    if (shareLoading) return;
+    if (!shareToken) {
+      try { window.alert('Invite link not ready yet — try again in a moment.'); } catch { /* noop */ }
+      return;
+    }
     setShareLoading(true);
     try {
       const shareUrl = `${window.location.origin}/crew/${shareToken}`;
@@ -2214,8 +2223,12 @@ function CrewDetailModal({ crew, onClose, onJoin, onLeave, onVote, userProfile, 
             </button>
           )}
 
-          {/* Patch D.1 — Share invite button. Visible if user is owner OR if member-invites are allowed. */}
-          {crew.visibility !== 'public' && shareToken && isMember && (isOwner || crew.allow_member_invites !== false) && !locked && (
+          {/* Patch D.1 — Share invite button.
+              Visible when: crew is private (or visibility unset = legacy private),
+              user is owner OR member-invites are allowed,
+              and the crew isn't locked. shareToken loads async — handler shows
+              "not ready" alert if user clicks before token loads. */}
+          {(crew.visibility !== 'public') && (isOwner || crew.allow_member_invites !== false) && !locked && (
             <button
               onClick={handleShareInvite}
               disabled={shareLoading}
@@ -14087,8 +14100,9 @@ export default function App() {
       await loadCrews(userProfile.id);
       await loadAllCrews();
 
-      // Patch D.1 — Open the newly-created crew's detail modal so user can share
-      setSelectedCrew(newCrew);
+      // Patch D.1 — Open the newly-created crew's detail modal so user can share.
+      // Attach the event we already have so the modal renders with full data.
+      setSelectedCrew({ ...newCrew, event: crewData.event });
       setShowCrewDetail(true);
     } catch (error) {
       console.error('Error creating crew:', error);
