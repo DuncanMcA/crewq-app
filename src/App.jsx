@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Heart, X, Share2, Bell, BellOff, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle, Trash2, Eye, EyeOff, Shield, Sparkles, ExternalLink, Globe, UtensilsCrossed, Award, Trophy, Star, Flame, Music, Mic, Beer, Coffee, Utensils, Sunrise, Moon, Key, Crown, Zap, Target, Navigation, Map, Filter, Car, Building2, Plus, BarChart3, DollarSign } from 'lucide-react';
+import { Heart, X, Share2, Bell, BellOff, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle, Trash2, Eye, EyeOff, Shield, Sparkles, ExternalLink, Globe, UtensilsCrossed, Award, Trophy, Star, Flame, Music, Mic, Beer, Coffee, Utensils, Sunrise, Moon, Key, Crown, Zap, Target, Navigation, Map as MapIcon, Filter, Car, Building2, Plus, BarChart3, DollarSign } from 'lucide-react';
 
 // Theme color configuration
 // Dark mode: Purple neon nighttime vibe
@@ -7633,7 +7633,7 @@ function EventsTab({ events, likedEvents, onEventClick, onUnlikeEvent, userLocat
                 </div>
               ) : (
                 <div className="text-center py-8">
-                  <Map className="w-12 h-12 text-zinc-700 mx-auto mb-3" />
+                  <MapIcon className="w-12 h-12 text-zinc-700 mx-auto mb-3" />
                   <p className="text-zinc-500 text-sm">
                     {showAllEvents ? 'No events found' : 'No events happening right now'}
                   </p>
