@@ -1495,14 +1495,13 @@ function CreateCrewModal({ onClose, onCreate, userProfile, events, presetEvent =
   // Patch D — single-screen crew creation. Event-first per scope doc.
   // If presetEvent is provided (typical case from feed/detail "Crew up" button), event is locked.
   // Otherwise user can pick from upcoming events.
+  // Patch D.1 — phone-entry removed. Sharing happens after create from CrewDetailModal.
   const [selectedEvent, setSelectedEvent] = useState(presetEvent || null);
   const [crewName, setCrewName] = useState(presetEvent?.name ? `Crew for ${presetEvent.name}` : '');
   const [visibility, setVisibility] = useState('private'); // 'private' | 'public'
   const [twentyOnePlus, setTwentyOnePlus] = useState(false);
+  const [allowMemberInvites, setAllowMemberInvites] = useState(true); // Patch D.1 — owner toggle
   const [isCreating, setIsCreating] = useState(false);
-  // Manual phone-fallback list (for users who'd rather type than share)
-  const [phoneInput, setPhoneInput] = useState('');
-  const [invitePhones, setInvitePhones] = useState([]);
 
   // Filter events to today and upcoming for the picker (only when presetEvent is null)
   const today = new Date(); today.setHours(0,0,0,0);
@@ -1510,15 +1509,6 @@ function CreateCrewModal({ onClose, onCreate, userProfile, events, presetEvent =
     .filter(ev => ev.date && new Date(ev.date) >= today)
     .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
     .slice(0, 30);
-
-  const addPhone = () => {
-    const cleaned = phoneInput.replace(/[^\d+]/g, '');
-    if (cleaned.length < 7) return;
-    if (invitePhones.includes(cleaned)) { setPhoneInput(''); return; }
-    setInvitePhones([...invitePhones, cleaned]);
-    setPhoneInput('');
-  };
-  const removePhone = (p) => setInvitePhones(invitePhones.filter(x => x !== p));
 
   const canSubmit = !!selectedEvent && !isCreating;
 
@@ -1532,9 +1522,10 @@ function CreateCrewModal({ onClose, onCreate, userProfile, events, presetEvent =
         event: selectedEvent,
         visibility,
         twentyone_plus_only: visibility === 'public' && twentyOnePlus,
+        allow_member_invites: allowMemberInvites,
         is_solo_friendly: visibility === 'public', // public crews are by definition solo-discoverable
         created_by: userProfile.id,
-        invited_members: invitePhones,
+        invited_members: [], // Patch D.1 — empty; sharing happens post-create
         // Defaults — restriction logic dropped per scope (C-B)
         gender_restriction: 'all',
         min_age: null,
@@ -1652,35 +1643,34 @@ function CreateCrewModal({ onClose, onCreate, userProfile, events, presetEvent =
             </label>
           )}
 
-          {/* Invite section (private only) */}
+          {/* Invite section (private only) — Patch D.1 reworked */}
           {selectedEvent && visibility === 'private' && (
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-400 mb-2">Invite friends</label>
-              <p className="text-[11px] text-zinc-500 mb-2">After you create the crew, you can share an invite link via your messaging app or a group thread.</p>
-              <div className="space-y-2">
-                {invitePhones.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {invitePhones.map(p => (
-                      <span key={p} className="inline-flex items-center gap-1 px-2 py-1 bg-violet-500/20 border border-violet-500/40 rounded-full text-xs text-white">
-                        {p}
-                        <button onClick={() => removePhone(p)} className="text-zinc-400 hover:text-white">×</button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <div className="flex gap-2">
-                  <input
-                    type="tel"
-                    value={phoneInput}
-                    onChange={e => setPhoneInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addPhone(); } }}
-                    placeholder="Optional: add phone numbers"
-                    className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm"
-                  />
-                  <button onClick={addPhone} className="px-3 py-2 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg text-sm">Add</button>
-                </div>
-              </div>
+            <div className="bg-zinc-800/40 border border-zinc-700 rounded-xl p-3">
+              <p className="text-sm text-white font-semibold mb-1">Inviting friends</p>
+              <p className="text-xs text-zinc-400 leading-snug">
+                After you create the crew, you'll get a Share button to send the invite link via your messaging app or a group thread.
+              </p>
             </div>
+          )}
+
+          {/* Patch D.1 — Allow members to invite others (owner-toggleable). */}
+          {selectedEvent && (
+            <label className="flex items-start gap-2 p-3 bg-zinc-800 border border-zinc-700 rounded-xl cursor-pointer">
+              <input
+                type="checkbox"
+                checked={allowMemberInvites}
+                onChange={e => setAllowMemberInvites(e.target.checked)}
+                className="w-4 h-4 mt-0.5 accent-violet-500"
+              />
+              <div className="flex-1">
+                <p className="text-sm text-white font-semibold">Let crew members invite others</p>
+                <p className="text-[11px] text-zinc-500 leading-snug mt-0.5">
+                  {allowMemberInvites
+                    ? 'Anyone in the crew can share the invite link.'
+                    : 'Only you can share the invite link.'}
+                </p>
+              </div>
+            </label>
           )}
         </div>
 
@@ -1708,6 +1698,8 @@ function EditCrewModal({ crew, onClose, onSave }) {
   const [maxAge, setMaxAge] = useState(crew.max_age ? crew.max_age.toString() : '');
   const [minBadges, setMinBadges] = useState(crew.min_badges || 0);
   const [requiresApproval, setRequiresApproval] = useState(crew.requires_approval !== false);
+  // Patch D.1 — owner-controlled toggle for member-driven sharing
+  const [allowMemberInvites, setAllowMemberInvites] = useState(crew.allow_member_invites !== false);
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSave = async () => {
@@ -1725,7 +1717,8 @@ function EditCrewModal({ crew, onClose, onSave }) {
       min_age: isSoloFriendly && minAge ? parseInt(minAge) : null,
       max_age: isSoloFriendly && maxAge ? parseInt(maxAge) : null,
       min_badges: isSoloFriendly ? minBadges : 0,
-      requires_approval: isSoloFriendly ? requiresApproval : false
+      requires_approval: isSoloFriendly ? requiresApproval : false,
+      allow_member_invites: allowMemberInvites
     });
     setIsSaving(false);
   };
@@ -1818,6 +1811,28 @@ function EditCrewModal({ crew, onClose, onSave }) {
               >
                 <div className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform ${
                   isSoloFriendly ? 'transform translate-x-5' : ''
+                }`} />
+              </button>
+            </div>
+          </div>
+
+          {/* Patch D.1 — Allow members to share invites */}
+          <div className="bg-zinc-800 rounded-xl p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-white font-semibold">Members can invite others</p>
+                <p className="text-xs text-zinc-400">
+                  {allowMemberInvites ? 'Anyone in the crew can share the invite link' : 'Only you can share the invite link'}
+                </p>
+              </div>
+              <button
+                onClick={() => setAllowMemberInvites(!allowMemberInvites)}
+                className={`relative w-12 h-7 rounded-full transition ${
+                  allowMemberInvites ? 'bg-violet-500' : 'bg-zinc-700'
+                }`}
+              >
+                <div className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform ${
+                  allowMemberInvites ? 'transform translate-x-5' : ''
                 }`} />
               </button>
             </div>
@@ -1934,6 +1949,67 @@ function CrewDetailModal({ crew, onClose, onJoin, onLeave, onVote, userProfile, 
   const [loadingMemberBadges, setLoadingMemberBadges] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [crewLeader, setCrewLeader] = useState(null);
+  // Patch D.1 — share token state. Pre-fetch an open token URL so the Share button can fire without awaits.
+  const [shareToken, setShareToken] = useState(null);
+  const [shareLoading, setShareLoading] = useState(false);
+
+  // Patch D.1 — Load (or create) an open invite token for this crew.
+  // Open = phone_number IS NULL — the token used for "share to anyone".
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!supabaseClient || !crew?.id) return;
+      try {
+        // Try to find an existing open token first
+        const { data: existing } = await supabaseClient
+          .from('crew_invitee_tokens')
+          .select('token')
+          .eq('crew_id', crew.id)
+          .is('phone_number', null)
+          .limit(1);
+        if (cancelled) return;
+        if (existing && existing.length > 0) {
+          setShareToken(existing[0].token);
+          return;
+        }
+        // None exists — create one. Only the owner is permitted to insert here per RLS,
+        // so members get null shareToken if they hit this path. UI gates the button accordingly.
+        const newToken = generateInviteToken();
+        const { error: insertErr } = await supabaseClient
+          .from('crew_invitee_tokens')
+          .insert([{ token: newToken, crew_id: crew.id, phone_number: null }]);
+        if (!cancelled && !insertErr) setShareToken(newToken);
+      } catch {
+        // Silent — share button just won't appear
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [crew?.id]);
+
+  // Patch D.1 — Share invite handler. Called inside button click → fresh user gesture.
+  const handleShareInvite = async () => {
+    if (!shareToken || shareLoading) return;
+    setShareLoading(true);
+    try {
+      const shareUrl = `${window.location.origin}/crew/${shareToken}`;
+      const smsBody = buildCrewInviteSmsBody(crew, crew.event, shareToken);
+      if (navigator.share) {
+        await navigator.share({
+          title: `${crew.name}${crew.event?.name ? ` — ${crew.event.name}` : ''}`,
+          text: smsBody,
+          url: shareUrl,
+        });
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(smsBody);
+        // showToast not in scope here; fall back to alert
+        try { window.alert('Invite link copied to clipboard'); } catch { /* noop */ }
+      }
+    } catch {
+      // User cancelled or share failed — non-fatal
+    } finally {
+      setShareLoading(false);
+    }
+  };
 
   // Check if crew is muted
   useEffect(() => {
@@ -2135,6 +2211,18 @@ function CrewDetailModal({ crew, onClose, onJoin, onLeave, onVote, userProfile, 
                 </div>
               </div>
               <p className="text-orange-500 text-xs mt-2">Tap to view event details →</p>
+            </button>
+          )}
+
+          {/* Patch D.1 — Share invite button. Visible if user is owner OR if member-invites are allowed. */}
+          {crew.visibility !== 'public' && shareToken && isMember && (isOwner || crew.allow_member_invites !== false) && !locked && (
+            <button
+              onClick={handleShareInvite}
+              disabled={shareLoading}
+              className="w-full mb-4 py-3 bg-violet-500 hover:bg-violet-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              <Share2 className="w-5 h-5" />
+              {shareLoading ? 'Opening share…' : 'Share invite'}
             </button>
           )}
 
@@ -13943,13 +14031,14 @@ export default function App() {
           is_solo_friendly: crewData.is_solo_friendly,
           event_id: crewData.event.id,
           member_count: 1,
-          invited_members: crewData.invited_members,
+          invited_members: crewData.invited_members || [],
           votes_yes: 0,
           votes_no: 0,
           // Patch D — new columns
           visibility,
           auto_lock_at: autoLockAt,
           twentyone_plus_only: crewData.twentyone_plus_only || false,
+          allow_member_invites: crewData.allow_member_invites !== false, // Patch D.1
           slug,
           // Restriction fields (legacy, defaults preserved)
           gender_restriction: crewData.gender_restriction || 'all',
@@ -13976,54 +14065,31 @@ export default function App() {
           voted_at: new Date().toISOString()
         }]);
 
-      // Patch D — for private crews with phone invites, generate magic-link tokens
-      let inviteTokens = [];
-      if (visibility === 'private' && Array.isArray(crewData.invited_members) && crewData.invited_members.length > 0) {
-        const tokenRows = crewData.invited_members.map(phone => ({
-          token: generateInviteToken(),
-          crew_id: newCrew.id,
-          phone_number: phone,
-        }));
-        const { data: tokensData, error: tokenErr } = await supabaseClient
-          .from('crew_invitee_tokens')
-          .insert(tokenRows)
-          .select();
-        if (tokenErr) {
-          console.warn('Token insert failed (table may not exist):', tokenErr?.message);
-        } else {
-          inviteTokens = tokensData || [];
-        }
-      }
-
-      // Trigger native share for invitations (private crews) — let user actually send the SMS
-      if (visibility === 'private' && inviteTokens.length > 0) {
-        const event = crewData.event;
-        const firstToken = inviteTokens[0].token;
-        const smsBody = buildCrewInviteSmsBody(newCrew, event, firstToken);
-        const shareUrl = `${window.location.origin}/crew/${firstToken}`;
+      // Patch D.1 — Pre-generate ONE open invite token (no phone_number) so the
+      // crew detail modal can immediately show a Share button using the same URL
+      // pattern as phone-bound tokens. This token is what's shared via Web Share API.
+      if (visibility === 'private') {
         try {
-          if (navigator.share) {
-            await navigator.share({
-              title: `${newCrew.name} — ${event.name}`,
-              text: smsBody,
-              url: shareUrl,
-            });
-          } else {
-            // Desktop fallback: copy to clipboard
-            if (navigator.clipboard) {
-              await navigator.clipboard.writeText(smsBody);
-              showToast('Invite link copied to clipboard!', 'success');
-            }
-          }
-        } catch {
-          // User cancelled share or share failed — non-fatal
+          await supabaseClient
+            .from('crew_invitee_tokens')
+            .insert([{
+              token: generateInviteToken(),
+              crew_id: newCrew.id,
+              phone_number: null,
+            }]);
+        } catch (tokErr) {
+          console.warn('Open invite token insert failed:', tokErr?.message);
         }
       }
 
-      showToast(visibility === 'public' ? 'Public crew created!' : 'Crew created!', 'success');
+      showToast(visibility === 'public' ? 'Public crew created!' : 'Crew created — tap Share to invite friends', 'success');
       setShowCreateCrew(false);
       await loadCrews(userProfile.id);
       await loadAllCrews();
+
+      // Patch D.1 — Open the newly-created crew's detail modal so user can share
+      setSelectedCrew(newCrew);
+      setShowCrewDetail(true);
     } catch (error) {
       console.error('Error creating crew:', error);
       showToast('Error creating crew. Please try again.', 'error');
@@ -14213,7 +14279,8 @@ export default function App() {
           min_age: updatedCrew.min_age,
           max_age: updatedCrew.max_age,
           min_badges: updatedCrew.min_badges,
-          requires_approval: updatedCrew.requires_approval
+          requires_approval: updatedCrew.requires_approval,
+          allow_member_invites: updatedCrew.allow_member_invites !== false
         })
         .eq('id', updatedCrew.id);
 
