@@ -11332,9 +11332,27 @@ function AdminPortal({ onClose, userEmail }) {
 
   const EventsList = () => (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4"><button onClick={() => setCurrentView('dashboard')} className="p-2 hover:bg-gray-800 rounded-lg"><ChevronLeft className="w-5 h-5 text-gray-400" /></button><div><h1 className="text-xl font-bold text-white">Events</h1><p className="text-gray-400 text-sm">{events.length} total</p></div></div>
-        <button onClick={() => setCurrentView('create-event')} className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-xl text-sm"><Plus className="w-4 h-4" />Create</button>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-4"><button onClick={() => setCurrentView('dashboard')} className="p-2 hover:bg-gray-800 rounded-lg"><ChevronLeft className="w-5 h-5 text-gray-400" /></button><div><h1 className="text-xl font-bold text-white">Events</h1><p className="text-gray-400 text-sm">{events.length} total · {events.filter(e => e.latitude == null || e.longitude == null).length} missing coords</p></div></div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Patch C2b — Bulk-paste tool (admin-only) */}
+          <button
+            onClick={() => { setShowBulkPaste(true); setBulkPasteText(''); setBulkParsedEvents([]); }}
+            className="flex items-center gap-2 px-3 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition text-sm"
+            title="Paste many events at once"
+          >
+            <Plus className="w-4 h-4" />Bulk paste
+          </button>
+          {/* Patch A — Geocode backfill (admin-only) */}
+          <button
+            onClick={handleBackfillGeocoding}
+            className="flex items-center gap-2 px-3 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition text-sm"
+            title="Geocode events missing latitude/longitude"
+          >
+            <MapPin className="w-4 h-4" />Geocode missing
+          </button>
+          <button onClick={() => setCurrentView('create-event')} className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-xl text-sm"><Plus className="w-4 h-4" />Create</button>
+        </div>
       </div>
       <div className="space-y-3">
         {events.map(e => (
@@ -12350,26 +12368,8 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
             {currentView === 'events' && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between flex-wrap gap-3">
-                  <div><h1 className="text-2xl font-bold text-white">Events</h1><p className="text-slate-400">{events.length} total · {events.filter(e => e.latitude == null || e.longitude == null).length} missing coordinates</p></div>
-                  <div className="flex items-center gap-2">
-                    {/* Patch C2b — Bulk-paste tool */}
-                    <button
-                      onClick={() => { setShowBulkPaste(true); setBulkPasteText(''); setBulkParsedEvents([]); }}
-                      className="flex items-center gap-2 px-3 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition text-sm"
-                      title="Paste many events at once"
-                    >
-                      <Plus className="w-4 h-4" />Bulk paste
-                    </button>
-                    {/* Patch A — Geocode backfill */}
-                    <button
-                      onClick={handleBackfillGeocoding}
-                      className="flex items-center gap-2 px-3 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition text-sm"
-                      title="Geocode events that are missing latitude/longitude"
-                    >
-                      <MapPin className="w-4 h-4" />Geocode missing
-                    </button>
-                    <button onClick={() => setCurrentView('create-event')} className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"><Plus className="w-4 h-4" />Create</button>
-                  </div>
+                  <div><h1 className="text-2xl font-bold text-white">Events</h1><p className="text-slate-400">{events.length} total</p></div>
+                  <button onClick={() => setCurrentView('create-event')} className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"><Plus className="w-4 h-4" />Create</button>
                 </div>
                 <div className="bg-slate-800 rounded-xl border border-slate-700">
                   {events.map(event => (
@@ -12381,11 +12381,8 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
                       <Calendar className="w-6 h-6 text-slate-400" />
                       <div className="flex-1">
                         <p className="text-white font-medium">{event.name}</p>
-                        <p className="text-slate-500 text-sm flex items-center gap-2">
-                          <span>{event.venue} • {event.date}</span>
-                          {(event.latitude == null || event.longitude == null) && (
-                            <span className="text-amber-400 text-xs" title="Missing coordinates — click 'Geocode missing' to fix">⚠ no geo</span>
-                          )}
+                        <p className="text-slate-500 text-sm">
+                          {event.venue} • {event.date}
                         </p>
                       </div>
                       <span className={`px-2 py-1 rounded-full text-xs ${event.status === 'pending' ? 'bg-amber-500/20 text-amber-400' : event.status === 'live' || event.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400' : event.status === 'rejected' ? 'bg-red-500/20 text-red-400' : 'bg-slate-600 text-slate-400'}`}>
