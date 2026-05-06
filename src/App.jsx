@@ -15610,7 +15610,8 @@ const loadSquads = async (userId) => {
                     return Date.now() - updated.getTime() < sevenDays;
                   })();
                   // Patch E.2 — Pull pre-fetched stories for this venue from the map
-                  const cardStories = (event.establishment_id && venueStoriesMap.get(event.establishment_id)) || [];
+                  // Defensive: guard in case map is somehow not a Map yet (e.g. mid-update)
+                  const cardStories = (event.establishment_id && venueStoriesMap && typeof venueStoriesMap.get === 'function' && venueStoriesMap.get(event.establishment_id)) || [];
                   return (
                     <EventFeedCard
                       key={event.id}
