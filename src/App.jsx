@@ -465,6 +465,59 @@ const formatVenueHours = (hours) => {
     .filter(([, v]) => v && String(v).trim().length > 0);
 };
 
+// Patch E.1 — Story prompts. Six tappable cards in StoryComposer; tap pre-fills body text.
+// Tagged on the story row (prompt_category) so we can show different icons/colors in the carousel.
+const STORY_PROMPTS = [
+  { id: 'special', label: "Tonight's special",  icon: '🍽️', starter: "Tonight's special: ", color: 'amber' },
+  { id: 'drink',   label: 'Drink feature',       icon: '🍹', starter: 'Pouring tonight: ',  color: 'orange' },
+  { id: 'vibe',    label: "Tonight's vibe",      icon: '🎵', starter: 'The vibe tonight: ', color: 'violet' },
+  { id: 'news',    label: 'Big news',            icon: '🎉', starter: '',                   color: 'emerald' },
+  { id: 'hours',   label: 'Hours update',        icon: '⏰', starter: 'Heads up: ',         color: 'sky' },
+  { id: 'custom',  label: 'Custom',              icon: '📝', starter: '',                   color: 'zinc' },
+];
+
+const STORY_BODY_MAX = 200;        // Patch E.1 — body character cap (Q3)
+const STORY_ACTIVE_CAP = 3;        // Patch E.1 — max active (non-expired) stories per venue
+const STORY_DEFAULT_EXPIRY_HOURS = 24;
+const STORY_MAX_EXPIRY_HOURS = 168; // 7 days
+const STORY_MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5MB
+
+// Patch E.1 — Upload a story image to the `venue-stories` Supabase Storage bucket.
+// Returns the public URL on success, throws on failure. Filename is `${venueId}/${uuidish}.${ext}`.
+const uploadStoryImage = async (supabaseClient, file, venueId) => {
+  if (!supabaseClient) throw new Error('No Supabase client');
+  if (!file) throw new Error('No file provided');
+  if (file.size > STORY_MAX_UPLOAD_BYTES) {
+    throw new Error(`Image is too large (max ${Math.round(STORY_MAX_UPLOAD_BYTES / 1024 / 1024)}MB)`);
+  }
+  const ext = (file.name?.split('.').pop() || 'jpg').toLowerCase();
+  const safeExt = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'].includes(ext) ? ext : 'jpg';
+  const filename = `${venueId || 'unknown'}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${safeExt}`;
+  const { error: upErr } = await supabaseClient.storage
+    .from('venue-stories')
+    .upload(filename, file, { cacheControl: '3600', upsert: false, contentType: file.type || 'image/jpeg' });
+  if (upErr) throw upErr;
+  const { data } = supabaseClient.storage.from('venue-stories').getPublicUrl(filename);
+  if (!data?.publicUrl) throw new Error('Could not resolve public URL');
+  return data.publicUrl;
+};
+
+// Patch E.1 — Format a "posted X ago" relative timestamp.
+const formatStoryAge = (createdAt) => {
+  if (!createdAt) return '';
+  const now = Date.now();
+  const then = new Date(createdAt).getTime();
+  if (isNaN(then)) return '';
+  const mins = Math.max(0, Math.floor((now - then) / 60000));
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
+
 const EVENT_TEMPLATES = [
   {
     id: 'trivia',
@@ -5330,6 +5383,160 @@ function EventFeedCard({
 // Removing the stale stubs to fix the duplicate-VenuePage build error.
 // Will rebuild deliberately in Patch E.1 when storage bucket is set up.
 
+// Patch E.1 — Story carousel viewer. Instagram-style full-screen overlay with auto-advance.
+// Tap right to advance, tap left to go back, tap-and-hold to pause, swipe-down or X to close.
+function StoryCarousel({ stories, venueName, startIndex = 0, onClose }) {
+  const [currentIdx, setCurrentIdx] = useState(startIndex);
+  const [progress, setProgress] = useState(0); // 0-100 of current story
+  const [paused, setPaused] = useState(false);
+  const story = stories?.[currentIdx];
+  const STORY_DURATION_MS = 5000;
+  const tickRef = useRef(null);
+  const startTimeRef = useRef(Date.now());
+  const elapsedRef = useRef(0); // accumulated elapsed ms before any pause
+
+  // Reset progress when story changes
+  useEffect(() => {
+    startTimeRef.current = Date.now();
+    elapsedRef.current = 0;
+    setProgress(0);
+  }, [currentIdx]);
+
+  // Tick: update progress + auto-advance
+  useEffect(() => {
+    if (paused || !story) return;
+    startTimeRef.current = Date.now();
+    tickRef.current = setInterval(() => {
+      const elapsed = elapsedRef.current + (Date.now() - startTimeRef.current);
+      const pct = Math.min(100, (elapsed / STORY_DURATION_MS) * 100);
+      setProgress(pct);
+      if (pct >= 100) {
+        if (currentIdx < stories.length - 1) {
+          setCurrentIdx(i => i + 1);
+        } else {
+          // last story finished — close
+          if (onClose) onClose();
+        }
+      }
+    }, 50);
+    return () => {
+      if (tickRef.current) clearInterval(tickRef.current);
+      // accumulate the elapsed time when we pause/unmount
+      elapsedRef.current += Date.now() - startTimeRef.current;
+    };
+  }, [paused, currentIdx, story, stories?.length, onClose]);
+
+  // Swipe-down to close (touch only)
+  const touchStartY = useRef(null);
+  const onTouchStart = (e) => { touchStartY.current = e.touches[0]?.clientY; };
+  const onTouchEnd = (e) => {
+    const start = touchStartY.current;
+    const end = e.changedTouches?.[0]?.clientY;
+    if (start != null && end != null && end - start > 80) {
+      onClose && onClose();
+    }
+    touchStartY.current = null;
+  };
+
+  if (!story) return null;
+
+  const promptMeta = STORY_PROMPTS.find(p => p.id === story.prompt_category) || STORY_PROMPTS[5];
+
+  const advance = () => {
+    if (currentIdx < stories.length - 1) {
+      setCurrentIdx(i => i + 1);
+    } else if (onClose) {
+      onClose();
+    }
+  };
+  const rewind = () => {
+    if (currentIdx > 0) setCurrentIdx(i => i - 1);
+    else { elapsedRef.current = 0; setProgress(0); startTimeRef.current = Date.now(); }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] bg-black flex flex-col"
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+    >
+      {/* Progress bars */}
+      <div className="absolute top-2 inset-x-3 z-20 flex gap-1">
+        {stories.map((_, i) => (
+          <div key={i} className="flex-1 h-0.5 bg-white/30 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-white"
+              style={{
+                width: i < currentIdx ? '100%' : i === currentIdx ? `${progress}%` : '0%',
+                transition: i === currentIdx ? 'width 50ms linear' : 'none'
+              }}
+            />
+          </div>
+        ))}
+      </div>
+
+      {/* Header: venue name + posted age + close */}
+      <div className="absolute top-6 inset-x-0 z-20 px-4 pt-2 flex items-center justify-between">
+        <div className="text-white">
+          <p className="text-sm font-semibold" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>{venueName || 'Venue'}</p>
+          <p className="text-xs text-white/80" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
+            <span className="mr-1">{promptMeta.icon}</span>
+            {formatStoryAge(story.created_at)}
+          </p>
+        </div>
+        <button
+          onClick={onClose}
+          className="w-10 h-10 rounded-full flex items-center justify-center bg-black/40 backdrop-blur-md text-white"
+          aria-label="Close"
+        >
+          <X className="w-6 h-6" />
+        </button>
+      </div>
+
+      {/* Image */}
+      <div
+        className="absolute inset-0 flex items-center justify-center"
+        onMouseDown={() => setPaused(true)}
+        onMouseUp={() => setPaused(false)}
+        onMouseLeave={() => setPaused(false)}
+        onTouchMove={(e) => { /* no-op, prevents pause on swipe */ }}
+      >
+        <img
+          src={story.image_url}
+          alt=""
+          className="max-w-full max-h-full object-contain"
+          draggable={false}
+        />
+      </div>
+
+      {/* Tap zones: left = back, right = forward */}
+      <div className="absolute inset-0 flex z-10">
+        <button
+          onClick={rewind}
+          className="flex-1 h-full"
+          aria-label="Previous story"
+          style={{ background: 'transparent' }}
+        />
+        <button
+          onClick={advance}
+          className="flex-[2] h-full"
+          aria-label="Next story"
+          style={{ background: 'transparent' }}
+        />
+      </div>
+
+      {/* Body caption — bottom overlay */}
+      {story.body && (
+        <div className="absolute bottom-0 inset-x-0 z-20 pt-16 pb-6 px-4 bg-gradient-to-t from-black/80 to-transparent pointer-events-none">
+          <p className="text-white text-sm leading-relaxed" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
+            {story.body}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function VenuePage({
   venue,
   upcomingEvents = [],
@@ -5341,8 +5548,45 @@ function VenuePage({
   isSaved,
   hasRSVPed,
   darkMode = true,
+  supabaseClient, // Patch E.1 — for loading active stories
 }) {
   if (!venue) return null;
+
+  // Patch E.1 — Load active (non-expired) stories for this venue
+  const [stories, setStories] = useState([]);
+  const [loadingStories, setLoadingStories] = useState(true);
+  const [carouselStartIdx, setCarouselStartIdx] = useState(null); // null = closed, number = open at idx
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadStories = async () => {
+      if (!supabaseClient || !venue?.id) {
+        setLoadingStories(false);
+        return;
+      }
+      try {
+        const { data, error } = await supabaseClient
+          .from('venue_stories')
+          .select('*')
+          .eq('venue_id', venue.id)
+          .gt('expires_at', new Date().toISOString())
+          .order('created_at', { ascending: false });
+        if (cancelled) return;
+        if (error) throw error;
+        setStories(data || []);
+      } catch (err) {
+        // Table may not exist yet — fail silent (don't block venue page render)
+        if (!cancelled) {
+          console.warn('venue_stories load failed:', err?.message);
+          setStories([]);
+        }
+      } finally {
+        if (!cancelled) setLoadingStories(false);
+      }
+    };
+    loadStories();
+    return () => { cancelled = true; };
+  }, [supabaseClient, venue?.id]);
 
   const heroImage = venue.cover_image_url || venue.image_url || null;
   const isRegular = userCheckinCount >= 3;
@@ -5449,6 +5693,53 @@ function VenuePage({
             <Star className="w-5 h-5 fill-current" />
             <span className="text-sm font-semibold">You're a regular here · {userCheckinCount} check-in{userCheckinCount !== 1 ? 's' : ''}</span>
           </div>
+        )}
+
+        {/* Patch E.1 — Stories bubble row (Instagram-style). Only renders if stories exist. */}
+        {stories.length > 0 && (
+          <div className="mb-5 -mx-4 sm:-mx-6 px-4 sm:px-6 overflow-x-auto scrollbar-hide">
+            <div className="flex gap-3" style={{ minWidth: 'min-content' }}>
+              {stories.map((s, idx) => {
+                const promptMeta = STORY_PROMPTS.find(p => p.id === s.prompt_category) || STORY_PROMPTS[5];
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => setCarouselStartIdx(idx)}
+                    className="flex flex-col items-center gap-1 flex-shrink-0"
+                    aria-label={`View story: ${promptMeta.label}`}
+                  >
+                    <span
+                      className="w-16 h-16 rounded-full p-0.5"
+                      style={{
+                        background: 'linear-gradient(135deg, #f59e0b 0%, #ec4899 50%, #8b5cf6 100%)',
+                      }}
+                    >
+                      <span className={`block w-full h-full rounded-full overflow-hidden ${darkMode ? 'bg-black' : 'bg-amber-50'} p-0.5`}>
+                        <img
+                          src={s.image_url}
+                          alt=""
+                          className="w-full h-full rounded-full object-cover"
+                        />
+                      </span>
+                    </span>
+                    <span className={`text-[10px] font-semibold ${darkMode ? 'text-zinc-300' : 'text-zinc-700'} max-w-[64px] truncate`}>
+                      {promptMeta.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Patch E.1 — Story carousel viewer (rendered when carouselStartIdx is set) */}
+        {carouselStartIdx != null && stories.length > 0 && (
+          <StoryCarousel
+            stories={stories}
+            venueName={venue.name}
+            startIndex={carouselStartIdx}
+            onClose={() => setCarouselStartIdx(null)}
+          />
         )}
 
         {/* Description — only if exists */}
@@ -5605,6 +5896,282 @@ function VenuePage({
               ))}
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Patch E.1 — Story creation flow. Used by both admin (any venue) and business portal (own venue only).
+// Six prompt cards → text starter pre-fills → photo upload → submit. Enforces 3-active cap.
+function StoryComposer({ venue, supabaseClient, userProfile, onClose, onCreated, showToast }) {
+  const [activeStoriesCount, setActiveStoriesCount] = useState(null);
+  const [promptId, setPromptId] = useState('');
+  const [body, setBody] = useState('');
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null); // dataURL for preview before upload
+  const [imageUrlInput, setImageUrlInput] = useState('');
+  const [showUrlInput, setShowUrlInput] = useState(false);
+  const [expiryHours, setExpiryHours] = useState(STORY_DEFAULT_EXPIRY_HOURS);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Load active stories count for this venue (for the 3-cap counter)
+  useEffect(() => {
+    let cancelled = false;
+    const loadCount = async () => {
+      if (!supabaseClient || !venue?.id) {
+        setActiveStoriesCount(0);
+        return;
+      }
+      try {
+        const { count, error } = await supabaseClient
+          .from('venue_stories')
+          .select('id', { count: 'exact', head: true })
+          .eq('venue_id', venue.id)
+          .gt('expires_at', new Date().toISOString());
+        if (cancelled) return;
+        if (error) throw error;
+        setActiveStoriesCount(count || 0);
+      } catch (err) {
+        // Table may not exist yet (migration not run)
+        if (!cancelled) {
+          console.warn('venue_stories count failed:', err?.message);
+          setActiveStoriesCount(0);
+        }
+      }
+    };
+    loadCount();
+    return () => { cancelled = true; };
+  }, [supabaseClient, venue?.id]);
+
+  const atCap = activeStoriesCount != null && activeStoriesCount >= STORY_ACTIVE_CAP;
+  const remaining = activeStoriesCount != null ? STORY_ACTIVE_CAP - activeStoriesCount : null;
+
+  const pickPrompt = (p) => {
+    setPromptId(p.id);
+    if (p.starter && !body.startsWith(p.starter)) {
+      setBody(p.starter);
+    }
+  };
+
+  const onFilePicked = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > STORY_MAX_UPLOAD_BYTES) {
+      showToast?.(`Image too large (max ${Math.round(STORY_MAX_UPLOAD_BYTES / 1024 / 1024)}MB)`, 'error');
+      return;
+    }
+    setImageFile(f);
+    setImageUrlInput(''); // clear paste-URL fallback
+    // Build a preview so user sees what they picked
+    const reader = new FileReader();
+    reader.onload = () => setImagePreview(reader.result);
+    reader.readAsDataURL(f);
+  };
+
+  const clearImage = () => {
+    setImageFile(null);
+    setImagePreview(null);
+    setImageUrlInput('');
+  };
+
+  const canSubmit = !!promptId && !!(imageFile || imageUrlInput.trim()) && !atCap && !submitting;
+
+  const handleSubmit = async () => {
+    if (!canSubmit || !venue?.id) return;
+    setSubmitting(true);
+    try {
+      // Determine final image URL: upload if file picked, else use pasted URL
+      let finalImageUrl = '';
+      if (imageFile) {
+        finalImageUrl = await uploadStoryImage(supabaseClient, imageFile, venue.id);
+      } else if (imageUrlInput.trim()) {
+        finalImageUrl = imageUrlInput.trim();
+      }
+      if (!finalImageUrl) throw new Error('No image provided');
+
+      const expiresAt = new Date(Date.now() + expiryHours * 60 * 60 * 1000).toISOString();
+      const payload = {
+        venue_id: venue.id,
+        prompt_category: promptId,
+        body: body.slice(0, STORY_BODY_MAX),
+        image_url: finalImageUrl,
+        created_by: userProfile?.id || null,
+        expires_at: expiresAt,
+      };
+      const { data, error } = await supabaseClient
+        .from('venue_stories')
+        .insert([payload])
+        .select()
+        .single();
+      if (error) throw error;
+      showToast?.('Story posted! 🎉', 'success');
+      if (onCreated) onCreated(data);
+      onClose && onClose();
+    } catch (err) {
+      console.error('Story create failed:', err);
+      showToast?.(`Couldn't post story: ${err?.message || 'unknown error'}`, 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/80 flex items-end sm:items-center justify-center sm:p-4">
+      <div className="bg-zinc-900 rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[95vh] flex flex-col">
+        <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-white">Post a story</h2>
+            <p className="text-xs text-zinc-400">{venue?.name || 'Venue'}</p>
+          </div>
+          <button onClick={onClose} className="text-zinc-400 hover:text-white">
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto p-4 space-y-4">
+          {/* Active count + cap warning */}
+          {activeStoriesCount != null && (
+            <div className={`text-xs ${atCap ? 'text-amber-300' : 'text-zinc-400'}`}>
+              {atCap
+                ? `You've reached the daily limit (${STORY_ACTIVE_CAP} active). Wait for one to expire or delete one before posting another.`
+                : `${remaining} of ${STORY_ACTIVE_CAP} stories available right now`}
+            </div>
+          )}
+
+          {/* Prompt cards */}
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-400 mb-2">What's the story?</label>
+            <div className="grid grid-cols-3 gap-2">
+              {STORY_PROMPTS.map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => pickPrompt(p)}
+                  className={`p-3 rounded-xl border text-center transition ${
+                    promptId === p.id
+                      ? 'bg-violet-500/20 border-violet-500 text-white'
+                      : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:border-zinc-600'
+                  }`}
+                >
+                  <div className="text-2xl mb-1">{p.icon}</div>
+                  <div className="text-[11px] font-semibold leading-tight">{p.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Image picker */}
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-400 mb-2">Photo (required)</label>
+            {imagePreview || imageUrlInput ? (
+              <div className="relative">
+                <img
+                  src={imagePreview || imageUrlInput}
+                  alt=""
+                  className="w-full max-h-64 object-cover rounded-xl"
+                />
+                <button
+                  onClick={clearImage}
+                  className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 backdrop-blur text-white flex items-center justify-center"
+                  title="Remove photo"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <>
+                <label className="block w-full p-6 rounded-xl border-2 border-dashed border-zinc-700 hover:border-violet-500 transition cursor-pointer text-center">
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                    onChange={onFilePicked}
+                    className="hidden"
+                  />
+                  <Camera className="w-8 h-8 mx-auto text-zinc-400 mb-2" />
+                  <p className="text-sm font-semibold text-white">Choose photo</p>
+                  <p className="text-xs text-zinc-500 mt-1">Upload from your phone or computer</p>
+                </label>
+                {!showUrlInput ? (
+                  <button
+                    onClick={() => setShowUrlInput(true)}
+                    className="mt-2 text-xs text-violet-400 hover:text-violet-300 underline"
+                  >
+                    or paste image URL
+                  </button>
+                ) : (
+                  <div className="mt-2">
+                    <input
+                      value={imageUrlInput}
+                      onChange={e => setImageUrlInput(e.target.value)}
+                      placeholder="https://..."
+                      className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm"
+                    />
+                    {imageUrlInput && (
+                      <button
+                        onClick={() => { setShowUrlInput(false); setImageUrlInput(''); }}
+                        className="mt-1 text-xs text-zinc-500 hover:text-zinc-300"
+                      >
+                        cancel
+                      </button>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Body textarea */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Caption (optional)</label>
+              <span className={`text-xs ${body.length > STORY_BODY_MAX * 0.9 ? 'text-amber-400' : 'text-zinc-500'}`}>
+                {body.length}/{STORY_BODY_MAX}
+              </span>
+            </div>
+            <textarea
+              rows={3}
+              value={body}
+              onChange={e => setBody(e.target.value.slice(0, STORY_BODY_MAX))}
+              placeholder="Add a quick caption…"
+              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm"
+            />
+          </div>
+
+          {/* Expiration */}
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-400 mb-2">Visible for</label>
+            <div className="flex gap-2 flex-wrap">
+              {[24, 48, 72, 168].map(h => (
+                <button
+                  key={h}
+                  onClick={() => setExpiryHours(h)}
+                  className={`px-3 py-2 rounded-full text-sm font-semibold transition ${
+                    expiryHours === h
+                      ? 'bg-violet-500 text-white'
+                      : 'bg-zinc-800 text-zinc-300 border border-zinc-700 hover:border-zinc-600'
+                  }`}
+                >
+                  {h === 24 ? '24 hours' : h === 168 ? '7 days' : `${h / 24} days`}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 border-t border-zinc-800 flex gap-2">
+          <button
+            onClick={onClose}
+            className="flex-1 py-3 bg-zinc-800 text-white rounded-lg hover:bg-zinc-700"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            className="flex-1 py-3 bg-violet-500 text-white rounded-lg font-semibold hover:bg-violet-600 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {submitting ? 'Posting…' : 'Post story'}
+          </button>
         </div>
       </div>
     </div>
@@ -8641,6 +9208,8 @@ function AdminPortal({ onClose, userEmail }) {
   const [bulkPasteText, setBulkPasteText] = useState('');
   const [bulkParsedEvents, setBulkParsedEvents] = useState([]);
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  // Patch E.1 — Admin story composer (any venue)
+  const [storyComposerVenue, setStoryComposerVenue] = useState(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -10267,14 +10836,26 @@ function AdminPortal({ onClose, userEmail }) {
       </div>
       <div className="space-y-3">
         {establishments.map(v => (
-          <button key={v.id} onClick={() => { setSelectedVenue(v); setCurrentView('venue-detail'); }} className="w-full bg-gray-800 rounded-xl border border-gray-700 p-4 text-left hover:border-gray-600">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-gray-700 rounded-lg flex items-center justify-center text-xl">{BUSINESS_VENUE_TYPES.find(t => t.id === v.venue_type)?.icon || '🏢'}</div>
-              <div className="flex-1 min-w-0"><p className="text-white font-medium truncate">{v.name}</p><p className="text-gray-500 text-sm">{v.neighborhood}</p></div>
-              <div className="text-right"><span className={`px-2 py-1 rounded-full text-xs ${v.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>{v.status || 'pending'}</span><p className="text-gray-500 text-xs mt-1">{events.filter(e => e.establishment_id === v.id || e.venue === v.name).length} events</p></div>
-              <ChevronRight className="w-4 h-4 text-gray-600" />
+          <div key={v.id} className="bg-gray-800 rounded-xl border border-gray-700 p-4 hover:border-gray-600">
+            <button onClick={() => { setSelectedVenue(v); setCurrentView('venue-detail'); }} className="w-full text-left">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-gray-700 rounded-lg flex items-center justify-center text-xl">{BUSINESS_VENUE_TYPES.find(t => t.id === v.venue_type)?.icon || '🏢'}</div>
+                <div className="flex-1 min-w-0"><p className="text-white font-medium truncate">{v.name}</p><p className="text-gray-500 text-sm">{v.neighborhood}</p></div>
+                <div className="text-right"><span className={`px-2 py-1 rounded-full text-xs ${v.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>{v.status || 'pending'}</span><p className="text-gray-500 text-xs mt-1">{events.filter(e => e.establishment_id === v.id || e.venue === v.name).length} events</p></div>
+                <ChevronRight className="w-4 h-4 text-gray-600" />
+              </div>
+            </button>
+            {/* Patch E.1 — Stories CTA per venue row */}
+            <div className="mt-3 pt-3 border-t border-gray-700/50 flex items-center gap-2">
+              <button
+                onClick={(ev) => { ev.stopPropagation(); setStoryComposerVenue(v); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600/20 text-violet-300 border border-violet-500/40 rounded-lg text-xs font-semibold hover:bg-violet-600/30 transition"
+              >
+                <Sparkles className="w-3.5 h-3.5" />Post story
+              </button>
+              <span className="text-xs text-gray-500">Daily updates: chef specials, drink picks, vibe</span>
             </div>
-          </button>
+          </div>
         ))}
         {establishments.length === 0 && <div className="text-center py-12 text-gray-500"><Building2 className="w-12 h-12 mx-auto mb-3 opacity-50" /><p>No venues</p><button onClick={() => setCurrentView('create-venue')} className="text-blue-400 mt-2">Add first venue</button></div>}
       </div>
@@ -10502,6 +11083,17 @@ function AdminPortal({ onClose, userEmail }) {
           </div>
         </div>
       )}
+      {/* Patch E.1 — Admin story composer (any venue) */}
+      {storyComposerVenue && (
+        <StoryComposer
+          venue={storyComposerVenue}
+          supabaseClient={supabaseClient}
+          userProfile={{ id: null }}
+          onClose={() => setStoryComposerVenue(null)}
+          onCreated={() => { /* admin story composer doesn't need refresh — venue page reloads on next visit */ }}
+          showToast={(msg, type) => showToastMsg(msg, type)}
+        />
+      )}
       {toast && <div className={`fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg text-white text-sm ${toast.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`}>{toast.message}</div>}
     </div>
   );
@@ -10589,6 +11181,8 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  // Patch E.1 — Story composer (own venue only)
+  const [showStoryComposer, setShowStoryComposer] = useState(false);
   
   // Detect mobile screen and auto-collapse sidebar
   useEffect(() => {
@@ -11242,7 +11836,13 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
               <div className="space-y-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
                   <div><h1 className="text-2xl font-bold text-white">Dashboard</h1><p className="text-slate-400">{venue?.name}</p></div>
-                  <button onClick={() => setCurrentView('create-event')} className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"><Plus className="w-4 h-4" />Create Event</button>
+                  <div className="flex gap-2 flex-wrap">
+                    {/* Patch E.1 — Post a story */}
+                    <button onClick={() => setShowStoryComposer(true)} className="flex items-center gap-2 px-4 py-2 bg-violet-600/20 text-violet-300 border border-violet-500/40 rounded-lg hover:bg-violet-600/30 transition">
+                      <Sparkles className="w-4 h-4" />Post Story
+                    </button>
+                    <button onClick={() => setCurrentView('create-event')} className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"><Plus className="w-4 h-4" />Create Event</button>
+                  </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="bg-slate-800 rounded-xl p-5 border border-slate-700"><Eye className="w-8 h-8 text-blue-400 mb-3" /><p className="text-3xl font-bold text-white">{analytics.totalViews.toLocaleString()}</p><p className="text-slate-400 text-sm">Event Views</p></div>
@@ -11697,6 +12297,18 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
           </div>
         )}
       </div>
+
+      {/* Patch E.1 — Story composer (own venue only) */}
+      {showStoryComposer && venue && (
+        <StoryComposer
+          venue={venue}
+          supabaseClient={supabaseClient}
+          userProfile={businessUser ? { id: businessUser.id } : { id: null }}
+          onClose={() => setShowStoryComposer(false)}
+          onCreated={() => { /* business portal doesn't need to refresh — venue page reloads on next visit */ }}
+          showToast={(msg, type) => showToastMsg(msg, type)}
+        />
+      )}
 
       {toast && <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg ${toast.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'} text-white max-w-sm`}>{toast.message}</div>}
     </div>
@@ -14652,6 +15264,7 @@ const loadSquads = async (userId) => {
               handleEventClick(ev);
             }}
             darkMode={darkMode}
+            supabaseClient={supabaseClient}
           />
         )}
 
