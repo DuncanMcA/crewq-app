@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Heart, X, Share2, Bell, BellOff, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle, Trash2, Eye, EyeOff, Shield, Sparkles, ExternalLink, Globe, UtensilsCrossed, Award, Trophy, Star, Flame, Music, Mic, Beer, Coffee, Utensils, Sunrise, Moon, Key, Crown, Zap, Target, Navigation, Map as MapIcon, Filter, Car, Building2, Plus, BarChart3, DollarSign } from 'lucide-react';
+import { Heart, X, Share2, Bell, BellOff, Settings, MapPin, Users, Calendar, Search, User, Home, Check, Send, ChevronLeft, ChevronRight, Clock, UserPlus, MessageCircle, Edit2, LogOut, Mail, Phone, Camera, CheckCircle, Trash2, Eye, EyeOff, Shield, Sparkles, ExternalLink, Globe, UtensilsCrossed, Award, Trophy, Star, Flame, Music, Mic, Beer, Coffee, Utensils, Sunrise, Moon, Key, Crown, Zap, Target, Navigation, Map as MapIcon, Filter, Car, Building2, Plus, BarChart3, DollarSign, Flag, Ban } from 'lucide-react';
 
 // Theme color configuration
 // Dark mode: Purple neon nighttime vibe
@@ -250,7 +250,7 @@ const BADGES = [
   // Getting Started Badges
   { id: 'first-checkin', name: 'First Steps', description: 'Check in to your first event', icon: '👟', category: 'getting-started', requirement: { type: 'checkins', count: 1 }, points: 10 },
   { id: 'profile-complete', name: 'Looking Good', description: 'Complete your profile with bio and vibes', icon: '✨', category: 'getting-started', requirement: { type: 'profile-complete' }, points: 15 },
-  { id: 'first-squad', name: 'Squad Leader', description: 'Create your first squad', icon: '👑', category: 'getting-started', requirement: { type: 'squads-created', count: 1 }, points: 20 },
+  { id: 'first-crew', name: 'Crew Leader', description: 'Create your first crew', icon: '👑', category: 'getting-started', requirement: { type: 'crews-created', count: 1 }, points: 20 },
   { id: 'first-share', name: 'Spread the Word', description: 'Share an event with friends', icon: '📢', category: 'getting-started', requirement: { type: 'shares', count: 1 }, points: 10 },
   { id: 'first-like', name: 'Heartbreaker', description: 'Like your first event', icon: '💕', category: 'getting-started', requirement: { type: 'likes', count: 1 }, points: 5 },
   
@@ -302,11 +302,11 @@ const BADGES = [
   { id: 'concert-goer', name: 'Concert Goer', description: 'Check in to 5 concerts', icon: '🎵', category: 'event-types', requirement: { type: 'category-checkins', category: 'concerts', count: 5 }, points: 50 },
   
   // Social Badges
-  { id: 'social-butterfly', name: 'Social Butterfly', description: 'Join 5 different squads', icon: '🦋', category: 'social', requirement: { type: 'squads-joined', count: 5 }, points: 60 },
-  { id: 'crew-builder', name: 'Crew Builder', description: 'Create 3 squads', icon: '🏗️', category: 'social', requirement: { type: 'squads-created', count: 3 }, points: 50 },
+  { id: 'social-butterfly', name: 'Social Butterfly', description: 'Join 5 different crews', icon: '🦋', category: 'social', requirement: { type: 'crews-joined', count: 5 }, points: 60 },
+  { id: 'crew-builder', name: 'Crew Builder', description: 'Create 3 crews', icon: '🏗️', category: 'social', requirement: { type: 'crews-created', count: 3 }, points: 50 },
   { id: 'solo-adventurer', name: 'Solo Adventurer', description: 'Check in solo to 5 events', icon: '🎒', category: 'social', requirement: { type: 'solo-checkins', count: 5 }, points: 40 },
-  { id: 'open-to-all', name: 'Open to All', description: 'Create a solo-friendly squad', icon: '🤝', category: 'social', requirement: { type: 'solo-squad-created' }, points: 25 },
-  { id: 'friend-magnet', name: 'Friend Magnet', description: 'Have 10 people join your squads', icon: '🧲', category: 'social', requirement: { type: 'squad-members-total', count: 10 }, points: 75 },
+  { id: 'open-to-all', name: 'Open to All', description: 'Create a solo-friendly crew', icon: '🤝', category: 'social', requirement: { type: 'solo-crew-created' }, points: 25 },
+  { id: 'friend-magnet', name: 'Friend Magnet', description: 'Have 10 people join your crews', icon: '🧲', category: 'social', requirement: { type: 'crew-members-total', count: 10 }, points: 75 },
   
   // Time-based Badges
   { id: 'early-bird', name: 'Early Bird', description: 'Check in to 3 brunch/morning events', icon: '🌅', category: 'time-based', requirement: { type: 'time-checkins', time: 'morning', count: 3 }, points: 35 },
@@ -342,7 +342,7 @@ const BADGE_CATEGORIES = [
   { id: 'ultimate', name: 'Ultimate', icon: '🔑' }
 ];
 
-// Gender options for profile and squad restrictions
+// Gender options for profile and crew restrictions
 const GENDER_OPTIONS = [
   { id: 'woman', label: 'Woman' },
   { id: 'man', label: 'Man' },
@@ -531,6 +531,74 @@ const uploadVenuePhoto = async (supabaseClient, file, venueId, kind = 'gallery')
 };
 
 const VENUE_GALLERY_MAX = 10; // Patch E.2 — max photos per venue gallery
+
+// Patch D — Build a Google Calendar URL for an event. Used by Add to Calendar buttons everywhere.
+// Returns null if event has insufficient date/time data.
+const addToCalendarUrl = (event) => {
+  if (!event?.date || !event?.time) return null;
+  try {
+    const start = new Date(`${event.date}T${event.time}`);
+    const end = event.end_time
+      ? new Date(`${event.date}T${event.end_time}`)
+      : new Date(start.getTime() + 2 * 60 * 60 * 1000);
+    const fmt = (d) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+    const params = new URLSearchParams({
+      action: 'TEMPLATE',
+      text: event.name || 'CrewQ Event',
+      dates: `${fmt(start)}/${fmt(end)}`,
+      details: `${event.description || ''}\n\nFound on CrewQ: https://crewq-app.vercel.app`,
+      location: [event.venue, event.address, event.neighborhood].filter(Boolean).join(', '),
+    });
+    return `https://calendar.google.com/calendar/render?${params.toString()}`;
+  } catch {
+    return null;
+  }
+};
+
+// Patch D — Generate a 24-char crypto-random token for crew magic-link invites.
+const generateInviteToken = () => {
+  // Use Web Crypto if available (browser); fallback to Math.random for SSR safety
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    const arr = new Uint8Array(18);
+    crypto.getRandomValues(arr);
+    return Array.from(arr).map(b => b.toString(36).padStart(2, '0')).join('').slice(0, 24);
+  }
+  return Math.random().toString(36).slice(2, 14) + Math.random().toString(36).slice(2, 14);
+};
+
+// Patch D — Build the SMS body that the crew creator's phone will send to invitees.
+// Returns plain-text suitable for `sms:` URL.
+const buildCrewInviteSmsBody = (crew, event, token) => {
+  const link = `${window.location?.origin || 'https://crewq-app.vercel.app'}/crew/${token}`;
+  const dateLine = event?.date ? ` on ${event.date}${event.time ? ` at ${event.time}` : ''}` : '';
+  return `${crew?.name || 'Join my crew'} — ${event?.name || 'an event'}${dateLine}. Tap to vote: ${link}`;
+};
+
+// Patch D — Compose group SMS body for post-decision native handoff.
+const buildPostDecisionSmsBody = (crew, event) => {
+  const dateLine = event?.date ? `\n${event.date}${event.time ? ` at ${event.time}` : ''}` : '';
+  const venueLine = event?.venue ? `\n📍 ${event.venue}${event.address ? `, ${event.address}` : ''}` : '';
+  return `🎉 We're locked in for ${event?.name || 'the event'}!${dateLine}${venueLine}\n\nLet's go!`;
+};
+
+// Patch D — Compute auto-lock timestamp = event_date - 2 hours.
+const computeAutoLockAt = (event) => {
+  if (!event?.date || !event?.time) return null;
+  try {
+    const eventStart = new Date(`${event.date}T${event.time}`);
+    return new Date(eventStart.getTime() - 2 * 60 * 60 * 1000).toISOString();
+  } catch {
+    return null;
+  }
+};
+
+// Patch D — Is this crew locked? Either explicitly (locked_at set) or via auto-lock past deadline.
+const isCrewLocked = (crew) => {
+  if (!crew) return false;
+  if (crew.locked_at) return true;
+  if (crew.auto_lock_at && new Date(crew.auto_lock_at) <= new Date()) return true;
+  return false;
+};
 
 // Patch E.1 — Format a "posted X ago" relative timestamp.
 const formatStoryAge = (createdAt) => {
@@ -911,7 +979,7 @@ const LIFE_STAGE_OPTIONS = [
   { id: 'empty-nester', label: 'Empty nester', icon: '🏠' }
 ];
 
-// Squad restriction presets
+// Crew restriction presets
 const SQUAD_GENDER_OPTIONS = [
   { id: 'all', label: 'Everyone welcome', icon: '👥' },
   { id: 'women-only', label: 'Women only', icon: '👩' },
@@ -920,7 +988,7 @@ const SQUAD_GENDER_OPTIONS = [
 
 // Rejection reasons (preset, no free text)
 const REJECTION_REASONS = [
-  { id: 'squad-full', label: 'Squad is at capacity right now' },
+  { id: 'crew-full', label: 'Crew is at capacity right now' },
   { id: 'plans-changed', label: 'Our plans have changed' },
   { id: 'private-group', label: 'Keeping it to close friends this time' },
   { id: 'timing', label: 'Timing didn\'t work out' }
@@ -1204,7 +1272,7 @@ const generateBioFromAnswers = (answers, userName) => {
   // Social style closing (first person)
   const groupClosings = [
     "I love bringing the crew together at spots with big tables.",
-    "Squad hangs at spacious spots are my specialty.",
+    "Crew hangs at spacious spots are my specialty.",
     "Big tables, bigger groups – that's my style."
   ];
   const loyalClosings = [
@@ -1423,602 +1491,230 @@ function BioBuilderModal({ onClose, onSaveBio, userName, currentAnswers, current
 // Patch C2b — Removed dead `EventCard` swipe component (replaced by EventFeedCard in Patch B+).
 
 
-function CreateSquadModal({ onClose, onCreate, userProfile, events }) {
-  const [step, setStep] = useState(1);
-  const [squadName, setSquadName] = useState('');
-  const [description, setDescription] = useState('');
-  const [selectedEvent, setSelectedEvent] = useState(null);
-  const [invitedMembers, setInvitedMembers] = useState([]);
-  const [phoneNumbers, setPhoneNumbers] = useState('');
-  const [isSoloFriendly, setIsSoloFriendly] = useState(false);
+function CreateCrewModal({ onClose, onCreate, userProfile, events, presetEvent = null }) {
+  // Patch D — single-screen crew creation. Event-first per scope doc.
+  // If presetEvent is provided (typical case from feed/detail "Crew up" button), event is locked.
+  // Otherwise user can pick from upcoming events.
+  const [selectedEvent, setSelectedEvent] = useState(presetEvent || null);
+  const [crewName, setCrewName] = useState(presetEvent?.name ? `Crew for ${presetEvent.name}` : '');
+  const [visibility, setVisibility] = useState('private'); // 'private' | 'public'
+  const [twentyOnePlus, setTwentyOnePlus] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-  
-  // Squad restrictions
-  const [genderRestriction, setGenderRestriction] = useState('all');
-  const [minAge, setMinAge] = useState('');
-  const [maxAge, setMaxAge] = useState('');
-  const [minBadges, setMinBadges] = useState(0);
-  const [requiresApproval, setRequiresApproval] = useState(true);
-  
-  // New fields
-  const [maxMembers, setMaxMembers] = useState('');
-  const [meetingSpot, setMeetingSpot] = useState('');
-  const [meetingInstructions, setMeetingInstructions] = useState('');
+  // Manual phone-fallback list (for users who'd rather type than share)
+  const [phoneInput, setPhoneInput] = useState('');
+  const [invitePhones, setInvitePhones] = useState([]);
 
-  // Filter events to today and upcoming
-  const today = new Date();
-  const upcomingEvents = events.filter(event => {
-    const eventDate = new Date(event.date);
-    return eventDate >= today;
-  }).slice(0, 10);
+  // Filter events to today and upcoming for the picker (only when presetEvent is null)
+  const today = new Date(); today.setHours(0,0,0,0);
+  const upcomingEvents = events
+    .filter(ev => ev.date && new Date(ev.date) >= today)
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+    .slice(0, 30);
 
-  const handleAddPhoneNumbers = () => {
-    const phones = phoneNumbers.split(',').map(p => p.trim()).filter(p => p);
-    setInvitedMembers(prev => [...new Set([...prev, ...phones])]);
-    setPhoneNumbers('');
+  const addPhone = () => {
+    const cleaned = phoneInput.replace(/[^\d+]/g, '');
+    if (cleaned.length < 7) return;
+    if (invitePhones.includes(cleaned)) { setPhoneInput(''); return; }
+    setInvitePhones([...invitePhones, cleaned]);
+    setPhoneInput('');
   };
+  const removePhone = (p) => setInvitePhones(invitePhones.filter(x => x !== p));
 
-  const handleRemoveMember = (phone) => {
-    setInvitedMembers(prev => prev.filter(p => p !== phone));
-  };
+  const canSubmit = !!selectedEvent && !isCreating;
 
-  const handleCreate = async () => {
-    if (!squadName || !selectedEvent) {
-      alert('Please enter a squad name and select an event');
-      return;
-    }
-
+  const handleSubmit = async () => {
+    if (!canSubmit) return;
     setIsCreating(true);
-    await onCreate({
-      name: squadName,
-      description,
-      event: selectedEvent,
-      invited_members: invitedMembers,
-      is_solo_friendly: isSoloFriendly,
-      created_by: userProfile.id,
-      // Restriction fields
-      gender_restriction: isSoloFriendly ? genderRestriction : 'all',
-      min_age: isSoloFriendly && minAge ? parseInt(minAge) : null,
-      max_age: isSoloFriendly && maxAge ? parseInt(maxAge) : null,
-      min_badges: isSoloFriendly ? minBadges : 0,
-      requires_approval: isSoloFriendly ? requiresApproval : false,
-      // New fields
-      max_members: maxMembers ? parseInt(maxMembers) : null,
-      meeting_spot: meetingSpot,
-      meeting_instructions: meetingInstructions
-    });
-    setIsCreating(false);
+    try {
+      await onCreate({
+        name: crewName.trim() || `Crew for ${selectedEvent.name}`,
+        description: '',
+        event: selectedEvent,
+        visibility,
+        twentyone_plus_only: visibility === 'public' && twentyOnePlus,
+        is_solo_friendly: visibility === 'public', // public crews are by definition solo-discoverable
+        created_by: userProfile.id,
+        invited_members: invitePhones,
+        // Defaults — restriction logic dropped per scope (C-B)
+        gender_restriction: 'all',
+        min_age: null,
+        max_age: null,
+        min_badges: 0,
+        requires_approval: visibility === 'public', // owner approves public joiners
+        max_members: null,
+        meeting_spot: '',
+        meeting_instructions: '',
+      });
+    } finally {
+      setIsCreating(false);
+    }
   };
-
-  // Calculate total steps based on settings
-  const totalSteps = isSoloFriendly ? 5 : 4;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
-      <div className="bg-zinc-900 rounded-3xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-zinc-900 border-b border-zinc-800 p-6 z-10">
-          <div className="flex justify-between items-center">
-            <h3 className="text-2xl font-bold text-white">Create Squad</h3>
-            <button onClick={onClose} className="text-zinc-400 hover:text-white">
-              <X className="w-6 h-6" />
-            </button>
+    <div className="fixed inset-0 bg-black/85 z-50 flex items-end sm:items-center justify-center sm:p-4">
+      <div className="bg-zinc-900 rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[95vh] flex flex-col">
+        <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-white">Create a Crew</h2>
+            <p className="text-xs text-zinc-400">Crews are per-event. Decide together, head out together.</p>
           </div>
-          
-          <div className="flex gap-2 mt-4">
-            {Array.from({ length: totalSteps }, (_, i) => i + 1).map(s => (
-              <div
-                key={s}
-                className={`flex-1 h-1 rounded-full ${
-                  step >= s ? 'bg-orange-500' : 'bg-zinc-800'
-                }`}
-              />
-            ))}
-          </div>
+          <button onClick={onClose} className="text-zinc-400 hover:text-white">
+            <X className="w-6 h-6" />
+          </button>
         </div>
 
-        <div className="p-6">
-          {step === 1 && (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-zinc-300 mb-2">
-                  Squad Name *
-                </label>
-                <input
-                  type="text"
-                  value={squadName}
-                  onChange={(e) => setSquadName(e.target.value)}
-                  placeholder="e.g., Friday Night Crew, Trivia Squad"
-                  className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-zinc-300 mb-2">
-                  Description (Optional)
-                </label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="What's this squad about?"
-                  className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500 resize-none"
-                  rows="3"
-                />
-              </div>
-
-              {/* Member Cap */}
-              <div>
-                <label className="block text-sm font-semibold text-zinc-300 mb-2">
-                  Maximum Members (Optional)
-                </label>
-                <div className="flex gap-2">
-                  {[null, 4, 6, 8, 10, 15].map(num => (
+        <div className="overflow-y-auto p-5 space-y-5">
+          {/* Event picker (skip if presetEvent given) */}
+          {!presetEvent && (
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-400 mb-2">Event</label>
+              {selectedEvent ? (
+                <div className="p-3 bg-zinc-800 border border-violet-500/40 rounded-xl flex items-center gap-3">
+                  {selectedEvent.image_url && <img src={selectedEvent.image_url} className="w-12 h-12 rounded-lg object-cover" alt="" />}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-semibold truncate">{selectedEvent.name}</p>
+                    <p className="text-xs text-zinc-400">{selectedEvent.venue} • {selectedEvent.date}</p>
+                  </div>
+                  <button onClick={() => setSelectedEvent(null)} className="text-zinc-400 hover:text-white text-sm">Change</button>
+                </div>
+              ) : (
+                <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                  {upcomingEvents.map(ev => (
                     <button
-                      key={num || 'unlimited'}
-                      onClick={() => setMaxMembers(num ? num.toString() : '')}
-                      className={`flex-1 py-3 rounded-xl text-sm font-semibold transition ${
-                        (maxMembers === '' && num === null) || (parseInt(maxMembers) === num)
-                          ? 'bg-orange-500 text-white'
-                          : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-                      }`}
+                      key={ev.id}
+                      onClick={() => { setSelectedEvent(ev); if (!crewName) setCrewName(`Crew for ${ev.name}`); }}
+                      className="w-full p-2 bg-zinc-800 border border-zinc-700 rounded-lg flex items-center gap-2 hover:border-violet-500 transition text-left"
                     >
-                      {num === null ? '∞' : num}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-zinc-500 mt-1">
-                  Squad will auto-close when limit is reached
-                </p>
-              </div>
-
-              <div className="bg-zinc-800 rounded-xl p-4 border-2 border-zinc-700">
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <p className="text-white font-semibold">Open to Solo Members?</p>
-                    <p className="text-xs text-zinc-400 mt-1">
-                      Let people join your squad even if they don't know anyone
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setIsSoloFriendly(!isSoloFriendly)}
-                    className={`relative w-12 h-7 rounded-full transition ${
-                      isSoloFriendly ? 'bg-orange-500' : 'bg-zinc-700'
-                    }`}
-                  >
-                    <div
-                      className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform ${
-                        isSoloFriendly ? 'transform translate-x-5' : ''
-                      }`}
-                    />
-                  </button>
-                </div>
-                {isSoloFriendly && (
-                  <div className="mt-3 p-3 bg-orange-500 bg-opacity-10 rounded-lg border border-orange-500 border-opacity-30">
-                    <p className="text-orange-400 text-xs">
-                      ✨ Your squad will appear in Solo Mode for people looking to meet new friends!
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              <button
-                onClick={() => setStep(2)}
-                disabled={!squadName}
-                className="w-full bg-orange-500 text-white py-4 rounded-xl font-bold hover:bg-orange-600 transition disabled:opacity-50"
-              >
-                Next: Pick an Event
-              </button>
-            </div>
-          )}
-
-          {step === 2 && (
-            <div className="space-y-4">
-              <div>
-                <h4 className="text-lg font-bold text-white mb-3">Pick an Event</h4>
-                <p className="text-sm text-zinc-400 mb-4">
-                  Choose what your squad will do together
-                </p>
-              </div>
-
-              <div className="space-y-3 max-h-96 overflow-y-auto">
-                {upcomingEvents.map(event => (
-                  <button
-                    key={event.id}
-                    onClick={() => setSelectedEvent(event)}
-                    className={`w-full text-left p-4 rounded-xl transition ${
-                      selectedEvent?.id === event.id
-                        ? 'bg-orange-500 bg-opacity-20 border-2 border-orange-500'
-                        : 'bg-zinc-800 border-2 border-transparent hover:border-zinc-700'
-                    }`}
-                  >
-                    <div className="flex gap-3">
-                      <img
-                        src={event.image_url}
-                        alt={event.name}
-                        className="w-20 h-20 rounded-lg object-cover"
-                      />
+                      {ev.image_url && <img src={ev.image_url} className="w-8 h-8 rounded object-cover flex-shrink-0" alt="" />}
                       <div className="flex-1 min-w-0">
-                        <h5 className="text-white font-semibold mb-1 truncate">
-                          {event.name}
-                        </h5>
-                        <p className="text-zinc-400 text-sm mb-1 truncate">
-                          {event.venue}
-                        </p>
-                        <div className="flex items-center gap-2 text-xs text-zinc-500">
-                          <Calendar className="w-3 h-3" />
-                          <span>{event.date}</span>
-                          <span>•</span>
-                          <span>{event.time}</span>
-                        </div>
+                        <p className="text-sm text-white font-medium truncate">{ev.name}</p>
+                        <p className="text-[11px] text-zinc-500">{ev.date}</p>
                       </div>
-                      {selectedEvent?.id === event.id && (
-                        <Check className="w-5 h-5 text-orange-500 flex-shrink-0" />
-                      )}
-                    </div>
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setStep(1)}
-                  className="flex-1 bg-zinc-800 text-white py-4 rounded-xl font-bold hover:bg-zinc-700 transition"
-                >
-                  Back
-                </button>
-                <button
-                  onClick={() => setStep(isSoloFriendly ? 3 : 4)}
-                  disabled={!selectedEvent}
-                  className="flex-1 bg-orange-500 text-white py-4 rounded-xl font-bold hover:bg-orange-600 transition disabled:opacity-50"
-                >
-                  {isSoloFriendly ? 'Next: Set Rules' : 'Next: Meeting Details'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {step === 3 && isSoloFriendly && (
-            <div className="space-y-4">
-              <div>
-                <h4 className="text-lg font-bold text-white mb-3">Squad Rules</h4>
-                <p className="text-sm text-zinc-400 mb-4">
-                  Set who can request to join your squad
-                </p>
-              </div>
-
-              {/* Gender Restriction */}
-              <div>
-                <label className="block text-sm font-semibold text-zinc-300 mb-2">
-                  Who can join?
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {SQUAD_GENDER_OPTIONS.map(option => (
-                    <button
-                      key={option.id}
-                      onClick={() => setGenderRestriction(option.id)}
-                      className={`p-3 rounded-xl text-sm font-semibold transition flex items-center gap-2 ${
-                        genderRestriction === option.id
-                          ? 'bg-orange-500 text-white'
-                          : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-                      }`}
-                    >
-                      <span>{option.icon}</span>
-                      <span>{option.label}</span>
                     </button>
                   ))}
-                </div>
-              </div>
-
-              {/* Age Range */}
-              <div>
-                <label className="block text-sm font-semibold text-zinc-300 mb-2">
-                  Age Range (Optional)
-                </label>
-                <div className="flex gap-2 items-center">
-                  <input
-                    type="number"
-                    value={minAge}
-                    onChange={(e) => setMinAge(e.target.value)}
-                    placeholder="Min"
-                    className="w-24 bg-zinc-800 text-white rounded-xl px-3 py-3 outline-none focus:ring-2 focus:ring-orange-500 text-center"
-                  />
-                  <span className="text-zinc-500">to</span>
-                  <input
-                    type="number"
-                    value={maxAge}
-                    onChange={(e) => setMaxAge(e.target.value)}
-                    placeholder="Max"
-                    className="w-24 bg-zinc-800 text-white rounded-xl px-3 py-3 outline-none focus:ring-2 focus:ring-orange-500 text-center"
-                  />
-                </div>
-              </div>
-
-              {/* Minimum Badges */}
-              <div>
-                <label className="block text-sm font-semibold text-zinc-300 mb-2">
-                  Minimum Badges Required
-                </label>
-                <div className="flex gap-2">
-                  {[0, 1, 3, 5, 10].map(num => (
-                    <button
-                      key={num}
-                      onClick={() => setMinBadges(num)}
-                      className={`flex-1 py-3 rounded-xl text-sm font-semibold transition ${
-                        minBadges === num
-                          ? 'bg-orange-500 text-white'
-                          : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-                      }`}
-                    >
-                      {num === 0 ? 'Any' : `${num}+`}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-zinc-500 mt-1">
-                  Higher badge requirements help ensure active, trusted members
-                </p>
-              </div>
-
-              {/* Approval Toggle */}
-              <div className="bg-zinc-800 rounded-xl p-4 border-2 border-zinc-700">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-white font-semibold">Review Join Requests</p>
-                    <p className="text-xs text-zinc-400 mt-1">
-                      {requiresApproval 
-                        ? 'You\'ll approve each person before they join' 
-                        : 'Anyone meeting requirements joins automatically'}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setRequiresApproval(!requiresApproval)}
-                    className={`relative w-12 h-7 rounded-full transition ${
-                      requiresApproval ? 'bg-orange-500' : 'bg-zinc-700'
-                    }`}
-                  >
-                    <div
-                      className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform ${
-                        requiresApproval ? 'transform translate-x-5' : ''
-                      }`}
-                    />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setStep(2)}
-                  className="flex-1 bg-zinc-800 text-white py-4 rounded-xl font-bold hover:bg-zinc-700 transition"
-                >
-                  Back
-                </button>
-                <button
-                  onClick={() => setStep(4)}
-                  className="flex-1 bg-orange-500 text-white py-4 rounded-xl font-bold hover:bg-orange-600 transition"
-                >
-                  Next: Meeting Details
-                </button>
-              </div>
-            </div>
-          )}
-
-          {step === 4 && (
-            <div className="space-y-4">
-              <div>
-                <h4 className="text-lg font-bold text-white mb-3">Meeting Details</h4>
-                <p className="text-sm text-zinc-400 mb-4">
-                  How will your squad find each other?
-                </p>
-              </div>
-
-              {/* Meeting Spot */}
-              <div>
-                <label className="block text-sm font-semibold text-zinc-300 mb-2">
-                  Meeting Spot
-                </label>
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  {['At the bar', 'Near the entrance', 'At a table', 'Outside/Patio', 'Near the stage'].map(spot => (
-                    <button
-                      key={spot}
-                      onClick={() => setMeetingSpot(spot)}
-                      className={`p-3 rounded-xl text-sm font-semibold transition ${
-                        meetingSpot === spot
-                          ? 'bg-orange-500 text-white'
-                          : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-                      }`}
-                    >
-                      {spot}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  type="text"
-                  value={['At the bar', 'Near the entrance', 'At a table', 'Outside/Patio', 'Near the stage'].includes(meetingSpot) ? '' : meetingSpot}
-                  onChange={(e) => setMeetingSpot(e.target.value)}
-                  placeholder="Or type a custom meeting spot (up to 50 chars)..."
-                  maxLength={50}
-                  className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
-                />
-              </div>
-
-              {/* Meeting Instructions */}
-              <div>
-                <label className="block text-sm font-semibold text-zinc-300 mb-2">
-                  How will they recognize you? (Optional)
-                </label>
-                <textarea
-                  value={meetingInstructions}
-                  onChange={(e) => setMeetingInstructions(e.target.value)}
-                  placeholder="e.g., I'll be wearing a red jacket, Look for the table with the CrewQ sign"
-                  className="w-full bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500 resize-none"
-                  rows="3"
-                />
-              </div>
-
-              <div className="bg-zinc-800 rounded-xl p-4">
-                <p className="text-sm text-zinc-400">
-                  💡 <strong className="text-white">Tip:</strong> Clear meeting details help solo members feel confident joining!
-                </p>
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setStep(isSoloFriendly ? 3 : 2)}
-                  className="flex-1 bg-zinc-800 text-white py-4 rounded-xl font-bold hover:bg-zinc-700 transition"
-                >
-                  Back
-                </button>
-                <button
-                  onClick={() => setStep(5)}
-                  className="flex-1 bg-orange-500 text-white py-4 rounded-xl font-bold hover:bg-orange-600 transition"
-                >
-                  Next: Invite Friends
-                </button>
-              </div>
-            </div>
-          )}
-
-          {step === 5 && (
-            <div className="space-y-4">
-              <div>
-                <h4 className="text-lg font-bold text-white mb-3">Invite Friends</h4>
-                <p className="text-sm text-zinc-400 mb-4">
-                  Add phone numbers to send squad invites
-                </p>
-              </div>
-
-              {/* Access Contacts Button */}
-              <button
-                onClick={async () => {
-                  try {
-                    // Request contacts permission using Contacts API
-                    if ('contacts' in navigator && 'ContactsManager' in window) {
-                      const props = ['tel', 'name'];
-                      const opts = { multiple: true };
-                      const contacts = await navigator.contacts.select(props, opts);
-                      const phones = contacts
-                        .filter(c => c.tel && c.tel.length > 0)
-                        .map(c => c.tel[0])
-                        .filter(Boolean);
-                      if (phones.length > 0) {
-                        setInvitedMembers(prev => [...new Set([...prev, ...phones])]);
-                      }
-                    } else {
-                      // Fallback for browsers that don't support Contacts API
-                      alert('Contact access requires a mobile device. Please enter phone numbers manually below.');
-                    }
-                  } catch (err) {
-                    console.log('Contacts access:', err);
-                    if (err.name !== 'TypeError') {
-                      alert('Unable to access contacts. Please enter phone numbers manually.');
-                    }
-                  }
-                }}
-                className="w-full bg-gradient-to-r from-violet-500 to-purple-600 text-white py-3 rounded-xl font-semibold hover:opacity-90 transition flex items-center justify-center gap-2"
-              >
-                <Phone className="w-5 h-5" />
-                Import from Contacts
-              </button>
-
-              <div className="relative flex items-center gap-4">
-                <div className="flex-1 h-px bg-zinc-700" />
-                <span className="text-zinc-500 text-sm">or enter manually</span>
-                <div className="flex-1 h-px bg-zinc-700" />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-zinc-300 mb-2">
-                  Phone Numbers
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={phoneNumbers}
-                    onChange={(e) => setPhoneNumbers(e.target.value)}
-                    placeholder="555-1234, 555-5678 (comma separated)"
-                    className="flex-1 bg-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                  <button
-                    onClick={handleAddPhoneNumbers}
-                    disabled={!phoneNumbers.trim()}
-                    className="bg-orange-500 text-white px-4 rounded-xl font-semibold hover:bg-orange-600 transition disabled:opacity-50"
-                  >
-                    Add
-                  </button>
-                </div>
-              </div>
-
-              {invitedMembers.length > 0 && (
-                <div>
-                  <p className="text-sm font-semibold text-zinc-400 mb-2">
-                    Invited ({invitedMembers.length})
-                  </p>
-                  <div className="space-y-2">
-                    {invitedMembers.map(phone => (
-                      <div
-                        key={phone}
-                        className="flex items-center justify-between bg-zinc-800 rounded-xl px-4 py-3"
-                      >
-                        <span className="text-white">{phone}</span>
-                        <button
-                          onClick={() => handleRemoveMember(phone)}
-                          className="text-red-500 hover:text-red-400"
-                        >
-                          <X className="w-5 h-5" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                  {upcomingEvents.length === 0 && <p className="text-sm text-zinc-500 text-center py-4">No upcoming events</p>}
                 </div>
               )}
+            </div>
+          )}
 
-              <div className="bg-zinc-800 rounded-xl p-4">
-                <p className="text-sm text-zinc-400">
-                  💡 <strong className="text-white">Tip:</strong> You can skip this step and invite people later!
-                </p>
+          {/* Crew name */}
+          {selectedEvent && (
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-400 mb-2">Crew name</label>
+              <input
+                value={crewName}
+                onChange={e => setCrewName(e.target.value.slice(0, 80))}
+                placeholder={`Crew for ${selectedEvent?.name || 'this event'}`}
+                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm"
+              />
+            </div>
+          )}
+
+          {/* Visibility toggle */}
+          {selectedEvent && (
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-400 mb-2">Who can join?</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setVisibility('private')}
+                  className={`p-3 rounded-xl border text-left transition ${
+                    visibility === 'private' ? 'bg-violet-500/20 border-violet-500 text-white' : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+                  }`}
+                >
+                  <div className="font-semibold text-sm">🔒 Private</div>
+                  <div className="text-[11px] opacity-80">Invite-only</div>
+                </button>
+                <button
+                  onClick={() => setVisibility('public')}
+                  className={`p-3 rounded-xl border text-left transition ${
+                    visibility === 'public' ? 'bg-orange-500/20 border-orange-500 text-white' : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+                  }`}
+                >
+                  <div className="font-semibold text-sm">🌐 Public</div>
+                  <div className="text-[11px] opacity-80">Anyone can ask</div>
+                </button>
               </div>
+              {visibility === 'public' && (
+                <p className="mt-2 text-[11px] text-zinc-500 leading-snug">
+                  Anyone in your area can request to join. You'll approve or deny each request.
+                </p>
+              )}
+            </div>
+          )}
 
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setStep(4)}
-                  className="flex-1 bg-zinc-800 text-white py-4 rounded-xl font-bold hover:bg-zinc-700 transition"
-                >
-                  Back
-                </button>
-                <button
-                  onClick={handleCreate}
-                  disabled={isCreating}
-                  className="flex-1 bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold hover:shadow-lg transition disabled:opacity-50"
-                >
-                  {isCreating ? 'Creating...' : 'Create Squad'}
-                </button>
+          {/* 21+ toggle (public only) */}
+          {selectedEvent && visibility === 'public' && (
+            <label className="flex items-center gap-2 p-3 bg-zinc-800 border border-zinc-700 rounded-xl cursor-pointer">
+              <input type="checkbox" checked={twentyOnePlus} onChange={e => setTwentyOnePlus(e.target.checked)} className="w-4 h-4 accent-violet-500" />
+              <span className="text-sm text-white">21+ only</span>
+              <span className="text-[11px] text-zinc-500 ml-auto">Filter to verified-21+ users</span>
+            </label>
+          )}
+
+          {/* Invite section (private only) */}
+          {selectedEvent && visibility === 'private' && (
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-400 mb-2">Invite friends</label>
+              <p className="text-[11px] text-zinc-500 mb-2">After you create the crew, you can share an invite link via your messaging app or a group thread.</p>
+              <div className="space-y-2">
+                {invitePhones.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {invitePhones.map(p => (
+                      <span key={p} className="inline-flex items-center gap-1 px-2 py-1 bg-violet-500/20 border border-violet-500/40 rounded-full text-xs text-white">
+                        {p}
+                        <button onClick={() => removePhone(p)} className="text-zinc-400 hover:text-white">×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <input
+                    type="tel"
+                    value={phoneInput}
+                    onChange={e => setPhoneInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addPhone(); } }}
+                    placeholder="Optional: add phone numbers"
+                    className="flex-1 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm"
+                  />
+                  <button onClick={addPhone} className="px-3 py-2 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg text-sm">Add</button>
+                </div>
               </div>
             </div>
           )}
+        </div>
+
+        <div className="p-4 border-t border-zinc-800 flex gap-2">
+          <button onClick={onClose} className="flex-1 py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg">Cancel</button>
+          <button onClick={handleSubmit} disabled={!canSubmit} className="flex-1 py-3 bg-violet-500 hover:bg-violet-600 text-white rounded-lg font-semibold disabled:opacity-40">
+            {isCreating ? 'Creating…' : 'Create Crew'}
+          </button>
         </div>
       </div>
     </div>
   );
 }
 
-// Edit Squad Modal
-function EditSquadModal({ squad, onClose, onSave }) {
-  const [name, setName] = useState(squad.name || '');
-  const [description, setDescription] = useState(squad.description || '');
-  const [maxMembers, setMaxMembers] = useState(squad.max_members ? squad.max_members.toString() : '');
-  const [meetingSpot, setMeetingSpot] = useState(squad.meeting_spot || '');
-  const [meetingInstructions, setMeetingInstructions] = useState(squad.meeting_instructions || '');
-  const [isSoloFriendly, setIsSoloFriendly] = useState(squad.is_solo_friendly || false);
-  const [genderRestriction, setGenderRestriction] = useState(squad.gender_restriction || 'all');
-  const [minAge, setMinAge] = useState(squad.min_age ? squad.min_age.toString() : '');
-  const [maxAge, setMaxAge] = useState(squad.max_age ? squad.max_age.toString() : '');
-  const [minBadges, setMinBadges] = useState(squad.min_badges || 0);
-  const [requiresApproval, setRequiresApproval] = useState(squad.requires_approval !== false);
+// Edit Crew Modal
+function EditCrewModal({ crew, onClose, onSave }) {
+  const [name, setName] = useState(crew.name || '');
+  const [description, setDescription] = useState(crew.description || '');
+  const [maxMembers, setMaxMembers] = useState(crew.max_members ? crew.max_members.toString() : '');
+  const [meetingSpot, setMeetingSpot] = useState(crew.meeting_spot || '');
+  const [meetingInstructions, setMeetingInstructions] = useState(crew.meeting_instructions || '');
+  const [isSoloFriendly, setIsSoloFriendly] = useState(crew.is_solo_friendly || false);
+  const [genderRestriction, setGenderRestriction] = useState(crew.gender_restriction || 'all');
+  const [minAge, setMinAge] = useState(crew.min_age ? crew.min_age.toString() : '');
+  const [maxAge, setMaxAge] = useState(crew.max_age ? crew.max_age.toString() : '');
+  const [minBadges, setMinBadges] = useState(crew.min_badges || 0);
+  const [requiresApproval, setRequiresApproval] = useState(crew.requires_approval !== false);
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSave = async () => {
     if (!name) return;
     setIsSaving(true);
     await onSave({
-      ...squad,
+      ...crew,
       name,
       description,
       max_members: maxMembers ? parseInt(maxMembers) : null,
@@ -2039,7 +1735,7 @@ function EditSquadModal({ squad, onClose, onSave }) {
       <div className="bg-zinc-900 rounded-3xl max-w-md w-full max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-zinc-900 border-b border-zinc-800 p-6 z-10">
           <div className="flex justify-between items-center">
-            <h3 className="text-2xl font-bold text-white">Edit Squad</h3>
+            <h3 className="text-2xl font-bold text-white">Edit Crew</h3>
             <button onClick={onClose} className="text-zinc-400 hover:text-white">
               <X className="w-6 h-6" />
             </button>
@@ -2048,7 +1744,7 @@ function EditSquadModal({ squad, onClose, onSave }) {
 
         <div className="p-6 space-y-4">
           <div>
-            <label className="block text-sm font-semibold text-zinc-300 mb-2">Squad Name *</label>
+            <label className="block text-sm font-semibold text-zinc-300 mb-2">Crew Name *</label>
             <input
               type="text"
               value={name}
@@ -2228,47 +1924,47 @@ function EditSquadModal({ squad, onClose, onSave }) {
   );
 }
 
-function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile, isMember, onEventClick, onEdit, onDelete, onMute, onOpenChat }) {
+function CrewDetailModal({ crew, onClose, onJoin, onLeave, onVote, userProfile, isMember, onEventClick, onEdit, onDelete, onMute, onReportUser, onBlockUser }) {
   const [hasVoted, setHasVoted] = useState(false);
   const [vote, setVote] = useState(null);
-  const [squadMembers, setSquadMembers] = useState([]);
+  const [crewMembersState, setCrewMembersState] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [viewingMember, setViewingMember] = useState(null);
   const [memberBadges, setMemberBadges] = useState([]);
   const [loadingMemberBadges, setLoadingMemberBadges] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [squadLeader, setSquadLeader] = useState(null);
+  const [crewLeader, setCrewLeader] = useState(null);
 
-  // Check if squad is muted
+  // Check if crew is muted
   useEffect(() => {
-    if (userProfile?.id && squad?.id) {
-      const mutedSquads = JSON.parse(localStorage.getItem(`crewq_${userProfile.id}_muted_squads`) || '[]');
-      setIsMuted(mutedSquads.includes(squad.id));
+    if (userProfile?.id && crew?.id) {
+      const mutedCrews = JSON.parse(localStorage.getItem(`crewq_${userProfile.id}_muted_squads`) || '[]');
+      setIsMuted(mutedCrews.includes(crew.id));
     }
-  }, [userProfile?.id, squad?.id]);
+  }, [userProfile?.id, crew?.id]);
 
-  // Load squad leader info
+  // Load crew leader info
   useEffect(() => {
     const loadLeader = async () => {
-      if (!supabaseClient || !squad?.created_by) return;
+      if (!supabaseClient || !crew?.created_by) return;
       try {
         const { data } = await supabaseClient
           .from('users')
           .select('id, name, profile_picture')
-          .eq('id', squad.created_by)
+          .eq('id', crew.created_by)
           .single();
-        if (data) setSquadLeader(data);
+        if (data) setCrewLeader(data);
       } catch (error) {
-        console.error('Error loading squad leader:', error);
+        console.error('Error loading crew leader:', error);
       }
     };
     loadLeader();
-  }, [squad?.created_by]);
+  }, [crew?.created_by]);
 
   // Handle mute toggle
   const handleMuteToggle = () => {
     if (onMute) {
-      onMute(squad);
+      onMute(crew);
       setIsMuted(!isMuted);
     }
   };
@@ -2292,26 +1988,26 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
   const handleViewMember = async (member) => {
     // Respect privacy settings
     if (member.profile_visibility === 'squad_only' && member.id !== userProfile?.id) {
-      // For squad_only profiles, only show if we're in the same squad
+      // For squad_only profiles, only show if we're in the same crew
       if (!isMember) return;
     }
     setViewingMember(member);
     await loadMemberBadges(member.id);
   };
 
-  // Load squad members when modal opens
+  // Load crew members when modal opens
   useEffect(() => {
     const loadMembers = async () => {
-      if (!supabaseClient || !squad?.id) return;
+      if (!supabaseClient || !crew?.id) return;
       setLoadingMembers(true);
       try {
         const { data } = await supabaseClient
-          .from('squad_members')
+          .from('crew_invitees')
           .select('user_id, users(*)')
-          .eq('squad_id', squad.id);
+          .eq('squad_id', crew.id);
         
         const members = (data || []).map(m => m.users).filter(Boolean);
-        setSquadMembers(members);
+        setCrewMembersState(members);
       } catch (error) {
         console.error('Error loading members:', error);
       }
@@ -2319,30 +2015,78 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
     };
     
     loadMembers();
-  }, [squad?.id]);
+  }, [crew?.id]);
 
   const handleVote = async (voteType) => {
     setVote(voteType);
     setHasVoted(true);
-    await onVote(squad.id, voteType);
+    await onVote(crew.id, voteType);
   };
 
-  const totalVotes = (squad.votes_yes || 0) + (squad.votes_no || 0);
-  const yesPercentage = totalVotes > 0 ? Math.round(((squad.votes_yes || 0) / totalVotes) * 100) : 0;
+  const totalVotes = (crew.votes_yes || 0) + (crew.votes_no || 0);
+  const yesPercentage = totalVotes > 0 ? Math.round(((crew.votes_yes || 0) / totalVotes) * 100) : 0;
 
-  // Use loaded members or fallback to squad.members - actual count takes precedence
-  const displayMembers = squadMembers.length > 0 ? squadMembers : (squad.members || []);
-  const actualMemberCount = squadMembers.length > 0 ? squadMembers.length : (squad.member_count || displayMembers.length || 0);
+  // Patch D — lock-it-in state
+  const isOwner = crew.created_by === userProfile?.id;
+  const locked = isCrewLocked(crew);
+  const [lockingIn, setLockingIn] = useState(false);
+  const [tokenVotes, setTokenVotes] = useState({ in: 0, out: 0, pending: 0, phones: [] });
+
+  // Pull magic-link token votes for this crew (combined with member votes for tally)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!supabaseClient || !crew?.id) return;
+      try {
+        const { data, error } = await supabaseClient
+          .from('crew_invitee_tokens')
+          .select('vote, phone_number')
+          .eq('crew_id', crew.id);
+        if (cancelled || error) return;
+        const inCount = (data || []).filter(t => t.vote === 'in').length;
+        const outCount = (data || []).filter(t => t.vote === 'out').length;
+        const pendingCount = (data || []).filter(t => !t.vote).length;
+        const phones = (data || []).filter(t => t.vote === 'in' && t.phone_number).map(t => t.phone_number);
+        setTokenVotes({ in: inCount, out: outCount, pending: pendingCount, phones });
+      } catch { /* table may not exist; degrade silently */ }
+    })();
+    return () => { cancelled = true; };
+  }, [crew?.id]);
+
+  const handleLockIn = async () => {
+    if (!supabaseClient || lockingIn || !crew?.id) return;
+    setLockingIn(true);
+    try {
+      const { error } = await supabaseClient
+        .from('squads')
+        .update({ locked_at: new Date().toISOString(), locked_by: userProfile?.id })
+        .eq('id', crew.id);
+      if (error) throw error;
+      // Compose group SMS
+      const smsBody = buildPostDecisionSmsBody(crew, crew.event);
+      const phoneList = tokenVotes.phones.join(',');
+      const href = `sms:${phoneList}${phoneList ? '&' : ''}body=${encodeURIComponent(smsBody)}`;
+      window.location.href = href;
+    } catch (err) {
+      console.error('Lock-in failed:', err);
+    } finally {
+      setLockingIn(false);
+    }
+  };
+
+  // Use loaded members or fallback to crew.members - actual count takes precedence
+  const displayMembers = crewMembersState.length > 0 ? crewMembersState : (crew.members || []);
+  const actualMemberCount = crewMembersState.length > 0 ? crewMembersState.length : (crew.member_count || displayMembers.length || 0);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
       <div className="bg-zinc-900 rounded-3xl max-w-md w-full max-h-[90vh] overflow-y-auto">
         <div className="relative">
-          {squad.event?.image_url && (
+          {crew.event?.image_url && (
             <div className="relative h-48">
               <img
-                src={squad.event.image_url}
-                alt={squad.event.name}
+                src={crew.event.image_url}
+                alt={crew.event.name}
                 className="w-full h-full object-cover"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-transparent" />
@@ -2360,34 +2104,34 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
           <div className="flex items-start justify-between mb-4">
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-2">
-                <h2 className="text-2xl font-bold text-white">{squad.name}</h2>
-                {squad.is_solo_friendly && (
+                <h2 className="text-2xl font-bold text-white">{crew.name}</h2>
+                {crew.is_solo_friendly && (
                   <span className="bg-orange-500 bg-opacity-20 text-orange-400 px-2 py-1 rounded-full text-xs font-bold">
                     SOLO FRIENDLY
                   </span>
                 )}
               </div>
-              {squad.description && (
-                <p className="text-zinc-400 text-sm mb-3">{squad.description}</p>
+              {crew.description && (
+                <p className="text-zinc-400 text-sm mb-3">{crew.description}</p>
               )}
             </div>
           </div>
 
-          {squad.event && (
+          {crew.event && (
             <button
-              onClick={() => onEventClick && onEventClick(squad.event)}
+              onClick={() => onEventClick && onEventClick(crew.event)}
               className="w-full bg-zinc-800 rounded-xl p-4 mb-4 text-left hover:bg-zinc-700 transition"
             >
-              <p className="text-orange-500 text-xs font-semibold uppercase mb-2">Squad Event</p>
-              <h4 className="text-white font-semibold mb-2">{squad.event.name}</h4>
+              <p className="text-orange-500 text-xs font-semibold uppercase mb-2">Crew Event</p>
+              <h4 className="text-white font-semibold mb-2">{crew.event.name}</h4>
               <div className="space-y-1 text-sm text-zinc-400">
                 <div className="flex items-center gap-2">
                   <MapPin className="w-4 h-4" />
-                  <span>{squad.event.venue}</span>
+                  <span>{crew.event.venue}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4" />
-                  <span>{squad.event.date} • {squad.event.time}</span>
+                  <span>{crew.event.date} • {crew.event.time}</span>
                 </div>
               </div>
               <p className="text-orange-500 text-xs mt-2">Tap to view event details →</p>
@@ -2414,6 +2158,62 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
             </div>
           )}
 
+          {/* Patch D — Token-based vote tally (invitees who don't have accounts) */}
+          {(tokenVotes.in > 0 || tokenVotes.out > 0 || tokenVotes.pending > 0) && (
+            <div className="bg-zinc-800 rounded-xl p-4 mb-4">
+              <p className="text-white font-semibold mb-2">Invite responses</p>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <p className="text-2xl font-bold text-emerald-400">{tokenVotes.in}</p>
+                  <p className="text-xs text-zinc-400">In</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-red-400">{tokenVotes.out}</p>
+                  <p className="text-xs text-zinc-400">Out</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-zinc-500">{tokenVotes.pending}</p>
+                  <p className="text-xs text-zinc-400">Pending</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Patch D — Lock-it-in (owner only, when not locked, and at least one yes vote) */}
+          {isOwner && !locked && ((crew.votes_yes || 0) > 0 || tokenVotes.in > 0) && (
+            <div className="bg-violet-500/10 border border-violet-500/40 rounded-xl p-4 mb-4">
+              <p className="text-white font-semibold mb-1">Ready to lock it in?</p>
+              <p className="text-xs text-zinc-400 mb-3">
+                We'll text the group with the plan. After this, voting closes.
+              </p>
+              <button
+                onClick={handleLockIn}
+                disabled={lockingIn}
+                className="w-full py-3 bg-violet-500 hover:bg-violet-600 text-white rounded-xl font-bold disabled:opacity-50"
+              >
+                {lockingIn ? 'Locking…' : '🔒 Lock it in & text the crew'}
+              </button>
+            </div>
+          )}
+
+          {/* Patch D — Locked state */}
+          {locked && (
+            <div className="bg-emerald-500/10 border border-emerald-500/40 rounded-xl p-4 mb-4">
+              <p className="text-white font-semibold mb-1">🎉 Locked in!</p>
+              <p className="text-xs text-zinc-400 mb-3">
+                {crew.locked_at ? `Decision made ${new Date(crew.locked_at).toLocaleString()}` : 'Auto-locked at deadline'}
+              </p>
+              {tokenVotes.phones.length > 0 && (
+                <a
+                  href={`sms:${tokenVotes.phones.join(',')}&body=${encodeURIComponent(buildPostDecisionSmsBody(crew, crew.event))}`}
+                  className="block w-full py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-semibold text-center"
+                >
+                  📱 Text the group
+                </a>
+              )}
+            </div>
+          )}
+
           {hasVoted && (
             <div className="bg-zinc-800 rounded-xl p-4 mb-4">
               <p className="text-white font-semibold mb-2">
@@ -2426,7 +2226,7 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
           {totalVotes > 0 && (
             <div className="bg-zinc-800 rounded-xl p-4 mb-4">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-white font-semibold">Squad Vote</p>
+                <p className="text-white font-semibold">Crew Vote</p>
                 <p className="text-zinc-400 text-sm">{totalVotes} {totalVotes === 1 ? 'vote' : 'votes'}</p>
               </div>
               <div className="flex gap-2 mb-2">
@@ -2444,7 +2244,7 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
             </div>
           )}
 
-          {/* Squad Members Section */}
+          {/* Crew Members Section */}
           <div className="mb-4">
             <p className="text-sm font-semibold text-zinc-400 mb-3">
               Members ({actualMemberCount})
@@ -2455,7 +2255,7 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
                 Loading members...
               </div>
             ) : isMember && displayMembers.length > 0 ? (
-              // Show detailed member list for squad members
+              // Show detailed member list for crew members
               <div className="space-y-2">
                 {displayMembers.map(member => (
                   <button
@@ -2575,6 +2375,38 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
                   )}
                 </div>
 
+                {/* Patch D — Report / Block actions (only for other users) */}
+                {viewingMember.id !== userProfile?.id && (onReportUser || onBlockUser) && (
+                  <div className="grid grid-cols-2 gap-2 mt-4">
+                    {onReportUser && (
+                      <button
+                        onClick={() => {
+                          onReportUser(viewingMember);
+                          setViewingMember(null);
+                        }}
+                        className="py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm rounded-xl font-semibold flex items-center justify-center gap-1.5"
+                      >
+                        <Flag className="w-4 h-4" />
+                        Report
+                      </button>
+                    )}
+                    {onBlockUser && (
+                      <button
+                        onClick={() => {
+                          if (window.confirm(`Block ${viewingMember.name || 'this user'}? You won't see them in public crews and they won't be able to interact with you.`)) {
+                            onBlockUser(viewingMember.id);
+                            setViewingMember(null);
+                          }
+                        }}
+                        className="py-2.5 bg-red-500/15 hover:bg-red-500/25 border border-red-500/40 text-red-400 text-sm rounded-xl font-semibold flex items-center justify-center gap-1.5"
+                      >
+                        <Ban className="w-4 h-4" />
+                        Block
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 <button
                   onClick={() => setViewingMember(null)}
                   className="w-full mt-4 bg-zinc-800 text-white py-3 rounded-xl font-semibold hover:bg-zinc-700 transition"
@@ -2585,21 +2417,21 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
             </div>
           )}
 
-          {/* Squad Leader */}
-          {squadLeader && (
+          {/* Crew Leader */}
+          {crewLeader && (
             <div className="bg-violet-500 bg-opacity-10 border border-violet-500 border-opacity-30 rounded-xl p-4 mb-4">
-              <p className="text-violet-400 text-xs font-semibold uppercase mb-2">👑 Squad Leader</p>
+              <p className="text-violet-400 text-xs font-semibold uppercase mb-2">👑 Crew Leader</p>
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-violet-500/20 flex items-center justify-center overflow-hidden">
-                  {squadLeader.profile_picture ? (
-                    <img src={squadLeader.profile_picture} alt={squadLeader.name} className="w-full h-full object-cover" />
+                  {crewLeader.profile_picture ? (
+                    <img src={crewLeader.profile_picture} alt={crewLeader.name} className="w-full h-full object-cover" />
                   ) : (
                     <Crown className="w-5 h-5 text-violet-400" />
                   )}
                 </div>
                 <div>
-                  <p className="text-white font-semibold">{squadLeader.name}</p>
-                  {squadLeader.id === userProfile?.id && (
+                  <p className="text-white font-semibold">{crewLeader.name}</p>
+                  {crewLeader.id === userProfile?.id && (
                     <span className="text-xs text-violet-400">That's you!</span>
                   )}
                 </div>
@@ -2608,90 +2440,81 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
           )}
 
           {/* Meeting Spot */}
-          {(squad.meeting_spot || squad.meeting_instructions) && (
+          {(crew.meeting_spot || crew.meeting_instructions) && (
             <div className="bg-emerald-500 bg-opacity-10 border border-emerald-500 border-opacity-30 rounded-xl p-4 mb-4">
               <p className="text-emerald-400 text-xs font-semibold uppercase mb-2">📍 Meeting Details</p>
-              {squad.meeting_spot && (
-                <p className="text-white font-semibold mb-1">{squad.meeting_spot}</p>
+              {crew.meeting_spot && (
+                <p className="text-white font-semibold mb-1">{crew.meeting_spot}</p>
               )}
-              {squad.meeting_instructions && (
-                <p className="text-emerald-300 text-sm">{squad.meeting_instructions}</p>
+              {crew.meeting_instructions && (
+                <p className="text-emerald-300 text-sm">{crew.meeting_instructions}</p>
               )}
             </div>
           )}
 
           {/* Member Cap Status */}
-          {squad.max_members && (
+          {crew.max_members && (
             <div className={`rounded-xl p-3 mb-4 ${
-              actualMemberCount >= squad.max_members
+              actualMemberCount >= crew.max_members
                 ? 'bg-red-500 bg-opacity-10 border border-red-500 border-opacity-30'
                 : 'bg-zinc-800'
             }`}>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-zinc-400">Squad Capacity</span>
+                <span className="text-sm text-zinc-400">Crew Capacity</span>
                 <span className={`text-sm font-semibold ${
-                  actualMemberCount >= squad.max_members ? 'text-red-400' : 'text-white'
+                  actualMemberCount >= crew.max_members ? 'text-red-400' : 'text-white'
                 }`}>
-                  {actualMemberCount} / {squad.max_members}
+                  {actualMemberCount} / {crew.max_members}
                 </span>
               </div>
-              {actualMemberCount >= squad.max_members && (
-                <p className="text-red-400 text-xs mt-1">🔒 Squad is full</p>
+              {actualMemberCount >= crew.max_members && (
+                <p className="text-red-400 text-xs mt-1">🔒 Crew is full</p>
               )}
             </div>
           )}
 
           {/* Action Buttons */}
           {!isMember ? (
-            squad.max_members && actualMemberCount >= squad.max_members ? (
+            crew.max_members && actualMemberCount >= crew.max_members ? (
               <div className="w-full bg-zinc-800 text-zinc-500 py-4 rounded-xl font-bold text-center">
-                Squad is Full
+                Crew is Full
               </div>
-            ) : squad.requires_approval ? (
+            ) : crew.requires_approval ? (
               <button
-                onClick={() => onJoin(squad, true)}
+                onClick={() => onJoin(crew, true)}
                 className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold hover:shadow-lg transition"
               >
                 Request to Join
               </button>
             ) : (
               <button
-                onClick={() => onJoin(squad, false)}
+                onClick={() => onJoin(crew, false)}
                 className="w-full bg-gradient-to-r from-orange-500 to-orange-600 text-white py-4 rounded-xl font-bold hover:shadow-lg transition"
               >
-                Join Squad
+                Join Crew
               </button>
             )
           ) : (
             <div className="space-y-2">
-              {/* Squad Chat Button */}
               <button
-                onClick={() => onOpenChat && onOpenChat(squad)}
-                className="w-full bg-gradient-to-r from-violet-500 to-purple-600 text-white py-3 rounded-xl font-bold hover:shadow-lg transition flex items-center justify-center gap-2"
-              >
-                <MessageCircle className="w-5 h-5" />
-                Squad Chat
-              </button>
-
-              <button
-                onClick={() => onLeave(squad)}
+                onClick={() => onLeave(crew)}
                 className="w-full bg-zinc-800 text-zinc-400 py-3 rounded-xl font-bold hover:bg-zinc-700 transition"
               >
-                Leave Squad
+                Leave Crew
               </button>
               
-              {/* Squad Creator Options */}
-              {squad.created_by === userProfile?.id && (
+              {/* Crew Creator Options */}
+              {crew.created_by === userProfile?.id && (
                 <div className="grid grid-cols-2 gap-2 pt-2 border-t border-zinc-800">
                   <button
-                    onClick={() => onEdit && onEdit(squad)}
+                    onClick={() => onEdit && onEdit(crew)}
                     className="flex items-center justify-center gap-2 bg-zinc-800 text-orange-400 py-3 rounded-xl font-semibold hover:bg-zinc-700 transition"
                   >
                     <Edit2 className="w-4 h-4" />
-                    Edit Squad
+                    Edit Crew
                   </button>
                   <button
-                    onClick={() => onDelete && onDelete(squad)}
+                    onClick={() => onDelete && onDelete(crew)}
                     className="flex items-center justify-center gap-2 bg-red-500 bg-opacity-20 text-red-400 py-3 rounded-xl font-semibold hover:bg-opacity-30 transition"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -2723,26 +2546,26 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
           )}
 
           {/* Show restrictions if any */}
-          {squad.is_solo_friendly && (squad.gender_restriction !== 'all' || squad.min_age || squad.max_age || squad.min_badges > 0) && (
+          {crew.is_solo_friendly && (crew.gender_restriction !== 'all' || crew.min_age || crew.max_age || crew.min_badges > 0) && (
             <div className="mt-4 bg-zinc-800 rounded-xl p-4">
-              <p className="text-sm font-semibold text-zinc-400 mb-2">Squad Requirements</p>
+              <p className="text-sm font-semibold text-zinc-400 mb-2">Crew Requirements</p>
               <div className="space-y-1 text-sm text-zinc-500">
-                {squad.gender_restriction && squad.gender_restriction !== 'all' && (
-                  <p>• {SQUAD_GENDER_OPTIONS.find(o => o.id === squad.gender_restriction)?.label || squad.gender_restriction}</p>
+                {crew.gender_restriction && crew.gender_restriction !== 'all' && (
+                  <p>• {SQUAD_GENDER_OPTIONS.find(o => o.id === crew.gender_restriction)?.label || crew.gender_restriction}</p>
                 )}
-                {squad.min_age && squad.max_age && (
-                  <p>• Ages {squad.min_age} - {squad.max_age}</p>
+                {crew.min_age && crew.max_age && (
+                  <p>• Ages {crew.min_age} - {crew.max_age}</p>
                 )}
-                {squad.min_age && !squad.max_age && (
-                  <p>• Ages {squad.min_age}+</p>
+                {crew.min_age && !crew.max_age && (
+                  <p>• Ages {crew.min_age}+</p>
                 )}
-                {!squad.min_age && squad.max_age && (
-                  <p>• Ages up to {squad.max_age}</p>
+                {!crew.min_age && crew.max_age && (
+                  <p>• Ages up to {crew.max_age}</p>
                 )}
-                {squad.min_badges > 0 && (
-                  <p>• Minimum {squad.min_badges} badges earned</p>
+                {crew.min_badges > 0 && (
+                  <p>• Minimum {crew.min_badges} badges earned</p>
                 )}
-                {squad.requires_approval && (
+                {crew.requires_approval && (
                   <p>• Approval required to join</p>
                 )}
               </div>
@@ -2755,7 +2578,7 @@ function SquadDetailModal({ squad, onClose, onJoin, onLeave, onVote, userProfile
 }
 
 // Settings Modal
-function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, onLinkGoogle, onUpdateProfile, onResetEvents, isAdmin, onOpenAdmin, onOpenNotificationPrefs }) {
+function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, onLinkGoogle, onUpdateProfile, onResetEvents, isAdmin, onOpenAdmin, onOpenNotificationPrefs, onOpenBlockedUsers }) {
   const [activeSection, setActiveSection] = useState(null);
   const [isLinkingGoogle, setIsLinkingGoogle] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -2767,8 +2590,8 @@ function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, 
   const [editBio, setEditBio] = useState(userProfile?.bio || '');
   
   // Privacy settings
-  const [allowSquadRequests, setAllowSquadRequests] = useState(userProfile?.allow_squad_requests !== false);
-  const [showAgeToSquads, setShowAgeToSquads] = useState(userProfile?.show_age_to_squads !== false);
+  const [allowCrewRequests, setAllowCrewRequests] = useState(userProfile?.allow_squad_requests !== false);
+  const [showAgeToCrews, setShowAgeToCrews] = useState(userProfile?.show_age_to_squads !== false);
   const [showProfilePublicly, setShowProfilePublicly] = useState(userProfile?.show_profile_publicly !== false);
   
   // Content preferences
@@ -2813,8 +2636,8 @@ function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, 
     setIsSaving(true);
     try {
       await onUpdateProfile({
-        allow_squad_requests: allowSquadRequests,
-        show_age_to_squads: showAgeToSquads,
+        allow_squad_requests: allowCrewRequests,
+        show_age_to_squads: showAgeToCrews,
         show_profile_publicly: showProfilePublicly
       });
       setActiveSection(null);
@@ -2909,7 +2732,7 @@ function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, 
                   </p>
                   <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
                     {showProfilePublicly 
-                      ? 'Others can see your profile when browsing squads' 
+                      ? 'Others can see your profile when browsing crews' 
                       : 'Your profile is hidden from others'}
                   </p>
                 </div>
@@ -2954,49 +2777,49 @@ function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, 
           </div>
           
           <div className="p-4 space-y-4">
-            {/* Allow Squad Requests */}
+            {/* Allow Crew Requests */}
             <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
               <div className="flex items-center justify-between">
                 <div className="flex-1">
                   <p className={`font-semibold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
-                    Allow Squad Invites
+                    Allow Crew Invites
                   </p>
                   <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
-                    Let others invite you to their squads
+                    Let others invite you to their crews
                   </p>
                 </div>
                 <button
-                  onClick={() => setAllowSquadRequests(!allowSquadRequests)}
+                  onClick={() => setAllowCrewRequests(!allowCrewRequests)}
                   className={`relative w-14 h-8 rounded-full transition ${
-                    allowSquadRequests ? 'bg-orange-500' : darkMode ? 'bg-zinc-700' : 'bg-zinc-300'
+                    allowCrewRequests ? 'bg-orange-500' : darkMode ? 'bg-zinc-700' : 'bg-zinc-300'
                   }`}
                 >
                   <div className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full transition-transform shadow ${
-                    allowSquadRequests ? 'transform translate-x-6' : ''
+                    allowCrewRequests ? 'transform translate-x-6' : ''
                   }`} />
                 </button>
               </div>
             </div>
 
-            {/* Show Age to Squads */}
+            {/* Show Age to Crews */}
             <div className={`rounded-2xl p-4 ${darkMode ? 'bg-zinc-900' : 'bg-white'}`}>
               <div className="flex items-center justify-between">
                 <div className="flex-1">
                   <p className={`font-semibold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
-                    Show Age to Squad Leaders
+                    Show Age to Crew Leaders
                   </p>
                   <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
-                    Display your age when requesting to join squads
+                    Display your age when requesting to join crews
                   </p>
                 </div>
                 <button
-                  onClick={() => setShowAgeToSquads(!showAgeToSquads)}
+                  onClick={() => setShowAgeToCrews(!showAgeToCrews)}
                   className={`relative w-14 h-8 rounded-full transition ${
-                    showAgeToSquads ? 'bg-orange-500' : darkMode ? 'bg-zinc-700' : 'bg-zinc-300'
+                    showAgeToCrews ? 'bg-orange-500' : darkMode ? 'bg-zinc-700' : 'bg-zinc-300'
                   }`}
                 >
                   <div className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full transition-transform shadow ${
-                    showAgeToSquads ? 'transform translate-x-6' : ''
+                    showAgeToCrews ? 'transform translate-x-6' : ''
                   }`} />
                 </button>
               </div>
@@ -3010,7 +2833,7 @@ function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, 
                     Public Profile
                   </p>
                   <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
-                    Allow others to see your profile when browsing squads
+                    Allow others to see your profile when browsing crews
                   </p>
                 </div>
                 <button
@@ -3131,7 +2954,7 @@ function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, 
                       Notifications
                     </p>
                     <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
-                      Get notified about events and squads
+                      Get notified about events and crews
                     </p>
                   </div>
                 </div>
@@ -3158,6 +2981,22 @@ function SettingsModal({ onClose, darkMode, setDarkMode, userProfile, onLogout, 
                   <div className="flex items-center gap-3">
                     <Settings className="w-5 h-5 text-orange-500" />
                     <span className={darkMode ? 'text-white' : 'text-zinc-900'}>Customize Notifications</span>
+                  </div>
+                  <ChevronRight className={`w-4 h-4 ${darkMode ? 'text-zinc-600' : 'text-zinc-400'}`} />
+                </button>
+              )}
+
+              {/* Patch D — Blocked users */}
+              {onOpenBlockedUsers && (
+                <button
+                  onClick={onOpenBlockedUsers}
+                  className={`w-full p-3 rounded-xl text-left flex items-center justify-between ${
+                    darkMode ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-zinc-100 hover:bg-zinc-200'
+                  } transition mt-2`}
+                >
+                  <div className="flex items-center gap-3">
+                    <Ban className="w-5 h-5 text-red-400" />
+                    <span className={darkMode ? 'text-white' : 'text-zinc-900'}>Blocked users</span>
                   </div>
                   <ChevronRight className={`w-4 h-4 ${darkMode ? 'text-zinc-600' : 'text-zinc-400'}`} />
                 </button>
@@ -3524,7 +3363,7 @@ function NotificationPreferencesModal({ onClose, darkMode, userProfile, onSavePr
   const [preferences, setPreferences] = useState(() => {
     const saved = localStorage.getItem(`crewq_${userProfile?.id}_notification_prefs`);
     return saved ? JSON.parse(saved) : {
-      squadActivity: true,
+      crewActivity: true,
       friendActivity: true,
       eventReminders: true,
       venueUpdates: true,
@@ -3545,10 +3384,10 @@ function NotificationPreferencesModal({ onClose, darkMode, userProfile, onSavePr
 
   const notificationTypes = [
     { 
-      key: 'squadActivity', 
+      key: 'crewActivity', 
       icon: '👥', 
-      title: 'Squad Activity', 
-      description: 'When your squad is heading out or members update status'
+      title: 'Crew Activity', 
+      description: 'When your crew is heading out or members update status'
     },
     { 
       key: 'friendActivity', 
@@ -3649,320 +3488,9 @@ function NotificationPreferencesModal({ onClose, darkMode, userProfile, onSavePr
   );
 }
 
-// Squad Chat Component
-function SquadChat({ squad, userProfile, darkMode, onClose, supabaseClient, showToast }) {
-  const [messages, setMessages] = useState([]);
-  const [newMessage, setNewMessage] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const messagesEndRef = useRef(null);
-  const fileInputRef = useRef(null);
-  const pollIntervalRef = useRef(null);
+// Crew Chat Component
+// Patch D — SquadChat component (~313 lines) deleted. Crew logistics now happen via native SMS.
 
-  const isLeader = squad?.created_by === userProfile?.id;
-
-  // Quick status messages
-  const quickStatuses = [
-    { emoji: '🚗', text: 'On my way!' },
-    { emoji: '⏰', text: 'Running late' },
-    { emoji: '📍', text: 'I\'m here!' },
-    { emoji: '❌', text: 'Can\'t make it' }
-  ];
-
-  // Load messages
-  const loadMessages = async () => {
-    if (!supabaseClient || !squad?.id) return;
-    
-    try {
-      const { data, error } = await supabaseClient
-        .from('squad_messages')
-        .select('*, users(id, name, profile_picture, profile_visibility)')
-        .eq('squad_id', squad.id)
-        .order('created_at', { ascending: true })
-        .limit(100);
-      
-      if (!error && data) {
-        setMessages(data);
-      }
-    } catch (err) {
-      console.error('Error loading messages:', err);
-    }
-    setLoading(false);
-  };
-
-  // Poll for new messages every 5 seconds
-  useEffect(() => {
-    loadMessages();
-    pollIntervalRef.current = setInterval(loadMessages, 5000);
-    
-    return () => {
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-    };
-  }, [squad?.id]);
-
-  // Scroll to bottom when new messages arrive
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  const sendMessage = async (text, imageUrl = null) => {
-    if (!supabaseClient || !userProfile?.id || (!text.trim() && !imageUrl)) return;
-    
-    setSending(true);
-    try {
-      const { error } = await supabaseClient
-        .from('squad_messages')
-        .insert([{
-          squad_id: squad.id,
-          user_id: userProfile.id,
-          message: text.trim(),
-          image_url: imageUrl,
-          is_status: false,
-          created_at: new Date().toISOString()
-        }]);
-      
-      if (error) {
-        console.error('Send error:', error);
-        if (showToast) showToast('Could not send message — try again', 'error');
-      } else {
-        setNewMessage('');
-        await loadMessages();
-      }
-    } catch (err) {
-      console.error('Error sending message:', err);
-      if (showToast) showToast('Could not send message — try again', 'error');
-    }
-    setSending(false);
-  };
-
-  const sendQuickStatus = async (status) => {
-    if (!supabaseClient || !userProfile?.id) return;
-    
-    try {
-      await supabaseClient
-        .from('squad_messages')
-        .insert([{
-          squad_id: squad.id,
-          user_id: userProfile.id,
-          message: `${status.emoji} ${status.text}`,
-          is_status: true,
-          created_at: new Date().toISOString()
-        }]);
-      
-      await loadMessages();
-    } catch (err) {
-      console.error('Error sending status:', err);
-    }
-  };
-
-  const handleImageUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploadingImage(true);
-    try {
-      // For MVP, convert to base64 and store inline
-      // In production, upload to Supabase Storage
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        await sendMessage('', reader.result);
-        setUploadingImage(false);
-      };
-      reader.readAsDataURL(file);
-    } catch (err) {
-      console.error('Error uploading image:', err);
-      setUploadingImage(false);
-    }
-  };
-
-  const deleteMessage = async (messageId) => {
-    if (!supabaseClient || !isLeader) return;
-    
-    try {
-      await supabaseClient
-        .from('squad_messages')
-        .delete()
-        .eq('id', messageId);
-      
-      await loadMessages();
-    } catch (err) {
-      console.error('Error deleting message:', err);
-    }
-  };
-
-  const pinMessage = async (messageId) => {
-    if (!supabaseClient || !isLeader) return;
-    
-    try {
-      // Unpin all other messages first
-      await supabaseClient
-        .from('squad_messages')
-        .update({ is_pinned: false })
-        .eq('squad_id', squad.id);
-      
-      // Pin this message
-      await supabaseClient
-        .from('squad_messages')
-        .update({ is_pinned: true })
-        .eq('id', messageId);
-      
-      await loadMessages();
-    } catch (err) {
-      console.error('Error pinning message:', err);
-    }
-  };
-
-  const pinnedMessage = messages.find(m => m.is_pinned);
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
-      <div className={`${darkMode ? 'bg-zinc-900' : 'bg-white'} rounded-3xl max-w-md w-full h-[85vh] flex flex-col`}>
-        {/* Header */}
-        <div className={`p-4 border-b ${darkMode ? 'border-zinc-800' : 'border-zinc-200'} flex items-center justify-between`}>
-          <div>
-            <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>{squad.name}</h3>
-            <p className={`text-sm ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>Squad Chat</p>
-          </div>
-          <button onClick={onClose} className={darkMode ? 'text-zinc-400' : 'text-zinc-600'}>
-            <X className="w-6 h-6" />
-          </button>
-        </div>
-
-        {/* Pinned Message */}
-        {pinnedMessage && (
-          <div className={`px-4 py-2 ${darkMode ? 'bg-orange-500/10 border-orange-500/30' : 'bg-orange-50 border-orange-200'} border-b`}>
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-orange-500">📌</span>
-              <span className={darkMode ? 'text-orange-300' : 'text-orange-700'}>{pinnedMessage.message}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Quick Status Buttons */}
-        <div className={`px-4 py-2 border-b ${darkMode ? 'border-zinc-800' : 'border-zinc-200'}`}>
-          <div className="flex gap-2 overflow-x-auto">
-            {quickStatuses.map((status, idx) => (
-              <button
-                key={idx}
-                onClick={() => sendQuickStatus(status)}
-                className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition ${
-                  darkMode ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
-                }`}
-              >
-                <span>{status.emoji}</span>
-                <span>{status.text}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {loading ? (
-            <div className="flex items-center justify-center h-full">
-              <div className="animate-spin w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full" />
-            </div>
-          ) : messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center">
-              <MessageCircle className={`w-12 h-12 ${darkMode ? 'text-zinc-700' : 'text-zinc-300'} mb-3`} />
-              <p className={darkMode ? 'text-zinc-500' : 'text-zinc-400'}>No messages yet</p>
-              <p className={`text-sm ${darkMode ? 'text-zinc-600' : 'text-zinc-400'}`}>Start the conversation!</p>
-            </div>
-          ) : (
-            messages.map(msg => {
-              const isOwn = msg.user_id === userProfile?.id;
-              const userName = msg.users?.profile_visibility === 'public' || isOwn 
-                ? msg.users?.name?.split(' ')[0] 
-                : 'Member';
-              
-              return (
-                <div key={msg.id} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[80%] ${msg.is_status ? 'w-full' : ''}`}>
-                    {msg.is_status ? (
-                      <div className={`text-center py-2 text-sm ${darkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                        <span className="font-medium">{userName}</span> {msg.message}
-                      </div>
-                    ) : (
-                      <div className={`rounded-2xl px-4 py-2 ${
-                        isOwn 
-                          ? 'bg-orange-500 text-white rounded-br-md' 
-                          : darkMode ? 'bg-zinc-800 text-white rounded-bl-md' : 'bg-zinc-100 text-zinc-900 rounded-bl-md'
-                      }`}>
-                        {!isOwn && (
-                          <p className={`text-xs font-semibold mb-1 ${isOwn ? 'text-orange-200' : darkMode ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                            {userName}
-                          </p>
-                        )}
-                        {msg.image_url && (
-                          <img src={msg.image_url} alt="Shared" className="rounded-lg max-w-full mb-2" />
-                        )}
-                        {msg.message && <p>{msg.message}</p>}
-                        <p className={`text-xs mt-1 ${isOwn ? 'text-orange-200' : darkMode ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                          {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                      </div>
-                    )}
-                    
-                    {/* Leader actions */}
-                    {isLeader && !isOwn && !msg.is_status && (
-                      <div className="flex gap-2 mt-1">
-                        <button onClick={() => pinMessage(msg.id)} className="text-xs text-zinc-500 hover:text-orange-500">📌 Pin</button>
-                        <button onClick={() => deleteMessage(msg.id)} className="text-xs text-zinc-500 hover:text-red-500">🗑️ Delete</button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Input */}
-        <div className={`p-4 border-t ${darkMode ? 'border-zinc-800' : 'border-zinc-200'}`}>
-          <div className="flex items-center gap-2">
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleImageUpload}
-              accept="image/*"
-              className="hidden"
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploadingImage}
-              className={`p-2 rounded-full transition ${darkMode ? 'hover:bg-zinc-800 text-zinc-400' : 'hover:bg-zinc-100 text-zinc-600'}`}
-            >
-              {uploadingImage ? (
-                <div className="w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <Camera className="w-5 h-5" />
-              )}
-            </button>
-            <input
-              type="text"
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage(newMessage)}
-              placeholder="Message your squad..."
-              className={`flex-1 px-4 py-2 rounded-full outline-none ${
-                darkMode ? 'bg-zinc-800 text-white placeholder-zinc-500' : 'bg-zinc-100 text-zinc-900 placeholder-zinc-400'
-              }`}
-            />
-            <button
-              onClick={() => sendMessage(newMessage)}
-              disabled={!newMessage.trim() || sending}
-              className="p-2 bg-orange-500 text-white rounded-full disabled:opacity-50"
-            >
-              <Send className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // Leaderboard Component
 function LeaderboardModal({ onClose, darkMode, userProfile, supabaseClient }) {
@@ -4202,7 +3730,7 @@ function NotificationsModal({
           {pendingJoinRequests.length > 0 && (
             <div>
               <h3 className={`text-sm font-semibold mb-3 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
-                Squad Requests ({pendingJoinRequests.length})
+                Crew Requests ({pendingJoinRequests.length})
               </h3>
               <div className="space-y-2">
                 {pendingJoinRequests.map(request => (
@@ -4230,7 +3758,7 @@ function NotificationsModal({
                           {request.user?.name} wants to join
                         </p>
                         <p className={`text-sm ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>
-                          {request.squad?.name}
+                          {request.crew?.name}
                         </p>
                       </div>
                       <div className="bg-orange-500 text-white text-xs px-2 py-1 rounded-full font-bold">
@@ -4335,7 +3863,7 @@ function NotificationsModal({
   );
 }
 
-// Profile Preview for squad leaders reviewing join requests
+// Profile Preview for crew leaders reviewing join requests
 function ProfilePreviewModal({ user, onClose, onApprove, onReject, rejectionReasons }) {
   const [showRejectOptions, setShowRejectOptions] = useState(false);
   const [selectedReason, setSelectedReason] = useState(null);
@@ -4481,9 +4009,9 @@ function ProfilePreviewModal({ user, onClose, onApprove, onReject, rejectionReas
   );
 }
 
-function SoloFriendlySquadsView({ squads, onSquadClick, userProfile }) {
-  // Filter squads based on user's eligibility
-  const soloSquads = squads.filter(s => {
+function SoloFriendlyCrewsView({ crews, onCrewClick, userProfile }) {
+  // Filter crews based on user's eligibility
+  const soloCrews = crews.filter(s => {
     if (!s.is_solo_friendly) return false;
     
     // Check gender restriction
@@ -4507,44 +4035,44 @@ function SoloFriendlySquadsView({ squads, onSquadClick, userProfile }) {
   return (
     <div className="p-4">
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-white mb-2">Solo-Friendly Squads</h2>
+        <h2 className="text-2xl font-bold text-white mb-2">Solo-Friendly Crews</h2>
         <p className="text-zinc-400 text-sm">
-          Join these squads and meet new people in Dallas!
+          Join these crews and meet new people in Dallas!
         </p>
       </div>
 
-      {soloSquads.length > 0 ? (
+      {soloCrews.length > 0 ? (
         <div className="space-y-4">
-          {soloSquads.map(squad => (
+          {soloCrews.map(crew => (
             <button
-              key={squad.id}
-              onClick={() => onSquadClick(squad)}
+              key={crew.id}
+              onClick={() => onCrewClick(crew)}
               className="w-full bg-zinc-900 rounded-2xl p-5 text-left hover:bg-zinc-800 transition"
             >
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
-                    <h3 className="text-xl font-bold text-white">{squad.name}</h3>
+                    <h3 className="text-xl font-bold text-white">{crew.name}</h3>
                     <span className="bg-orange-500 bg-opacity-20 text-orange-400 px-2 py-1 rounded-full text-xs font-bold">
                       OPEN
                     </span>
                   </div>
-                  {squad.description && (
-                    <p className="text-zinc-400 text-sm mb-3">{squad.description}</p>
+                  {crew.description && (
+                    <p className="text-zinc-400 text-sm mb-3">{crew.description}</p>
                   )}
                 </div>
               </div>
 
-              {squad.event && (
+              {crew.event && (
                 <div className="bg-zinc-800 rounded-xl p-3 mb-3">
-                  <p className="text-white font-semibold text-sm mb-1">{squad.event.name}</p>
-                  <p className="text-zinc-400 text-xs">{squad.event.venue} • {squad.event.date}</p>
+                  <p className="text-white font-semibold text-sm mb-1">{crew.event.name}</p>
+                  <p className="text-zinc-400 text-xs">{crew.event.venue} • {crew.event.date}</p>
                 </div>
               )}
 
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  {squad.members?.slice(0, 4).map(member => (
+                  {crew.members?.slice(0, 4).map(member => (
                     <div
                       key={member.id}
                       className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center text-white text-xs font-semibold overflow-hidden"
@@ -4556,9 +4084,9 @@ function SoloFriendlySquadsView({ squads, onSquadClick, userProfile }) {
                       )}
                     </div>
                   ))}
-                  <span className="text-zinc-500 text-sm">{squad.member_count || 0} members</span>
+                  <span className="text-zinc-500 text-sm">{crew.member_count || 0} members</span>
                 </div>
-                <div className="text-orange-500 font-semibold text-sm">View Squad →</div>
+                <div className="text-orange-500 font-semibold text-sm">View Crew →</div>
               </div>
             </button>
           ))}
@@ -4566,7 +4094,7 @@ function SoloFriendlySquadsView({ squads, onSquadClick, userProfile }) {
       ) : (
         <div className="text-center py-12">
           <Users className="w-16 h-16 text-zinc-700 mx-auto mb-4" />
-          <p className="text-zinc-400 mb-2">No solo-friendly squads yet</p>
+          <p className="text-zinc-400 mb-2">No solo-friendly crews yet</p>
           <p className="text-zinc-600 text-sm">Check back later or create one yourself!</p>
         </div>
       )}
@@ -4581,25 +4109,8 @@ function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount
 
   // Patch C — Post-RSVP follow-up: show calendar + bring-a-friend prompts inline after a successful RSVP
   // showPostRsvp comes from parent (set when handleRSVP succeeds for THIS event)
-  // Calendar export: build a Google Calendar URL with the event details
-  const buildCalendarUrl = () => {
-    if (!event?.date || !event?.time) return null;
-    try {
-      const start = new Date(`${event.date}T${event.time}`);
-      const end = event.end_time ? new Date(`${event.date}T${event.end_time}`) : new Date(start.getTime() + 2 * 60 * 60 * 1000);
-      const fmt = (d) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-      const params = new URLSearchParams({
-        action: 'TEMPLATE',
-        text: event.name || 'CrewQ Event',
-        dates: `${fmt(start)}/${fmt(end)}`,
-        details: `${event.description || ''}\n\nFound on CrewQ: https://crewq-app.vercel.app`,
-        location: [event.venue, event.address, event.neighborhood].filter(Boolean).join(', ')
-      });
-      return `https://calendar.google.com/calendar/render?${params.toString()}`;
-    } catch {
-      return null;
-    }
-  };
+  // Patch D — calendar URL helper now module-level (addToCalendarUrl)
+  const buildCalendarUrl = () => addToCalendarUrl(event);
 
   // Bring-a-friend SMS — opens native SMS with pre-filled message
   const buildFriendSmsHref = () => {
@@ -4743,9 +4254,22 @@ function EventDetailModal({ event, onClose, onCheckIn, isCheckedIn, checkInCount
                 </button>
               )}
             </div>
-            <div className="flex items-center gap-2 text-zinc-300 text-sm">
-              <Calendar className="w-4 h-4 text-orange-500" />
-              <span>{event.time}</span>
+            <div className="flex items-center justify-between gap-2 text-zinc-300 text-sm">
+              <div className="flex items-center gap-2 min-w-0">
+                <Calendar className="w-4 h-4 text-orange-500 flex-shrink-0" />
+                <span>{event.time}</span>
+              </div>
+              {/* Patch D — Always-visible Add to Calendar */}
+              {buildCalendarUrl() && (
+                <a
+                  href={buildCalendarUrl()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-shrink-0 text-xs font-semibold text-violet-400 hover:text-violet-300 underline"
+                >
+                  Add to calendar →
+                </a>
+              )}
             </div>
             {checkInCount > 0 && (
               <div className="flex items-center gap-2 text-zinc-300 text-sm">
@@ -5005,7 +4529,7 @@ function EventSuggestionModal({ onClose, userProfile, supabaseClient, userBadges
               </div>
               <p className="text-zinc-500 text-xs mt-2">{MIN_BADGES_TO_SUBMIT - earnedCount} badge{MIN_BADGES_TO_SUBMIT - earnedCount !== 1 ? 's' : ''} to go</p>
             </div>
-            <p className="text-zinc-500 text-xs mb-6">Earn badges by completing your profile, swiping events, joining squads, and checking in to events.</p>
+            <p className="text-zinc-500 text-xs mb-6">Earn badges by completing your profile, swiping events, joining crews, and checking in to events.</p>
             <button
               onClick={onClose}
               className="w-full bg-zinc-800 text-white py-3 rounded-xl font-semibold hover:bg-zinc-700 transition"
@@ -5962,27 +5486,44 @@ function VenuePage({
           ) : (
             <div className="space-y-2">
               {upcomingEvents.map(ev => (
-                <button
+                <div
                   key={ev.id}
-                  onClick={() => onEventClick && onEventClick(ev)}
-                  className={`w-full text-left p-3 rounded-xl flex items-center gap-3 transition ${darkMode ? 'bg-zinc-900 border border-zinc-800 hover:border-zinc-700' : 'bg-white border border-amber-200 hover:border-amber-300'}`}
+                  className={`w-full p-3 rounded-xl flex items-center gap-3 transition ${darkMode ? 'bg-zinc-900 border border-zinc-800 hover:border-zinc-700' : 'bg-white border border-amber-200 hover:border-amber-300'}`}
                 >
-                  {ev.image_url && (
-                    <img src={ev.image_url} alt="" className="w-16 h-16 rounded-lg object-cover flex-shrink-0" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className={`font-semibold truncate ${darkMode ? 'text-white' : 'text-zinc-900'}`}>{ev.name}</p>
-                    <p className={`text-xs ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
-                      {formatEventDate(ev.date)} · {formatEventTime(ev.time)}
-                    </p>
-                    {ev.category && (
-                      <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize ${darkMode ? 'bg-zinc-800 text-zinc-400' : 'bg-amber-100 text-zinc-600'}`}>
-                        {ev.category.replace(/-/g, ' ')}
-                      </span>
+                  <button
+                    onClick={() => onEventClick && onEventClick(ev)}
+                    className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                  >
+                    {ev.image_url && (
+                      <img src={ev.image_url} alt="" className="w-16 h-16 rounded-lg object-cover flex-shrink-0" />
                     )}
-                  </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`font-semibold truncate ${darkMode ? 'text-white' : 'text-zinc-900'}`}>{ev.name}</p>
+                      <p className={`text-xs ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                        {formatEventDate(ev.date)} · {formatEventTime(ev.time)}
+                      </p>
+                      {ev.category && (
+                        <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize ${darkMode ? 'bg-zinc-800 text-zinc-400' : 'bg-amber-100 text-zinc-600'}`}>
+                          {ev.category.replace(/-/g, ' ')}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                  {/* Patch D — Add to Calendar inline */}
+                  {addToCalendarUrl(ev) && (
+                    <a
+                      href={addToCalendarUrl(ev)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className={`flex-shrink-0 p-2 rounded-lg ${darkMode ? 'text-zinc-400 hover:text-violet-300 hover:bg-zinc-800' : 'text-zinc-500 hover:text-orange-500 hover:bg-amber-50'}`}
+                      title="Add to calendar"
+                    >
+                      <Calendar className="w-4 h-4" />
+                    </a>
+                  )}
                   <ChevronRight className={`w-5 h-5 flex-shrink-0 ${darkMode ? 'text-zinc-600' : 'text-zinc-400'}`} />
-                </button>
+                </div>
               ))}
             </div>
           )}
@@ -6640,6 +6181,418 @@ function EditMyVenue({ venue, supabaseClient, onClose, onSaved, showToast }) {
           <button onClick={handleSave} disabled={saving || !!uploadingKind} className="flex-1 py-3 bg-violet-500 hover:bg-violet-600 text-white rounded-lg font-semibold disabled:opacity-40">
             {saving ? 'Saving…' : 'Save & publish'}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Patch D — Magic-link landing page for crew invitees. Renders at /crew/:token.
+// No auth required. Recipient votes 'in' or 'out'; we record vote on the token row.
+// After voting, gentle nudge to create a CrewQ account.
+function CrewInviteeVotePage({ token, supabaseClient, onClose, onSignupCta }) {
+  const [loading, setLoading] = useState(true);
+  const [tokenRow, setTokenRow] = useState(null);
+  const [crew, setCrew] = useState(null);
+  const [event, setEvent] = useState(null);
+  const [error, setError] = useState(null);
+  const [voting, setVoting] = useState(false);
+  const [phoneInput, setPhoneInput] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!supabaseClient || !token) { setLoading(false); return; }
+      try {
+        // Fetch token row
+        const { data: tRow, error: tErr } = await supabaseClient
+          .from('crew_invitee_tokens')
+          .select('*')
+          .eq('token', token)
+          .single();
+        if (tErr) throw tErr;
+        if (cancelled) return;
+        setTokenRow(tRow);
+        if (tRow.phone_number) setPhoneInput(tRow.phone_number);
+
+        // Fetch crew (squad)
+        const { data: crewData, error: cErr } = await supabaseClient
+          .from('squads')
+          .select('*')
+          .eq('id', tRow.crew_id)
+          .single();
+        if (cErr) throw cErr;
+        if (cancelled) return;
+        setCrew(crewData);
+
+        // Fetch event
+        if (crewData?.event_id) {
+          const { data: evData } = await supabaseClient
+            .from('events')
+            .select('*')
+            .eq('id', crewData.event_id)
+            .single();
+          if (!cancelled) setEvent(evData);
+        }
+      } catch (err) {
+        if (!cancelled) setError(err?.message || 'Could not load this crew invite');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [token, supabaseClient]);
+
+  const submitVote = async (vote) => {
+    if (!supabaseClient || !tokenRow || voting) return;
+    setVoting(true);
+    try {
+      const updates = {
+        vote,
+        voted_at: new Date().toISOString(),
+      };
+      if (phoneInput.trim() && !tokenRow.phone_number) {
+        updates.phone_number = phoneInput.replace(/[^\d+]/g, '');
+      }
+      const { error: vErr } = await supabaseClient
+        .from('crew_invitee_tokens')
+        .update(updates)
+        .eq('token', token);
+      if (vErr) throw vErr;
+      setTokenRow(prev => ({ ...prev, ...updates }));
+    } catch (err) {
+      setError(`Couldn't save vote: ${err?.message || 'unknown error'}`);
+    } finally {
+      setVoting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
+        <div className="text-zinc-400 text-sm">Loading crew invite…</div>
+      </div>
+    );
+  }
+
+  if (error || !tokenRow || !crew) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black flex items-center justify-center p-4">
+        <div className="max-w-md text-center">
+          <p className="text-white text-lg font-semibold mb-2">Invite link invalid</p>
+          <p className="text-zinc-400 text-sm mb-6">{error || "This crew invite couldn't be found. It may have expired."}</p>
+          <button onClick={onClose} className="px-4 py-2 bg-violet-500 hover:bg-violet-600 text-white rounded-lg">
+            Open CrewQ
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const hasVoted = !!tokenRow.vote;
+  const isLocked = isCrewLocked(crew);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black overflow-y-auto">
+      <div className="max-w-md mx-auto p-5 pt-8">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="text-white">
+            <span className="bg-orange-500 px-2 py-0.5 rounded text-xs font-bold">CrewQ</span>
+          </div>
+          <button onClick={onClose} className="text-zinc-400 hover:text-white text-xs underline">
+            Open app
+          </button>
+        </div>
+
+        {/* Hero */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden mb-5">
+          {event?.image_url && (
+            <img src={event.image_url} alt="" className="w-full aspect-video object-cover" />
+          )}
+          <div className="p-4">
+            <p className="text-xs uppercase tracking-wide text-violet-400 font-semibold mb-1">
+              You're invited to a crew
+            </p>
+            <h1 className="text-xl font-bold text-white mb-1">{crew.name}</h1>
+            {event && (
+              <>
+                <p className="text-sm text-zinc-300">{event.name}</p>
+                <p className="text-xs text-zinc-400 mt-1">
+                  {event.date && event.time && (
+                    <>
+                      {new Date(`${event.date}T${event.time}`).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                      {' · '}
+                      {new Date(`${event.date}T${event.time}`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                    </>
+                  )}
+                  {event.venue && <> · 📍 {event.venue}</>}
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Voting / state */}
+        {isLocked ? (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 text-center">
+            <p className="text-white font-semibold mb-1">This crew is locked in</p>
+            <p className="text-zinc-400 text-sm">A decision was made — voting is closed.</p>
+          </div>
+        ) : hasVoted ? (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 text-center">
+            <p className="text-white font-semibold mb-2">
+              {tokenRow.vote === 'in' ? "You're in! 🎉" : "You said you can't make it"}
+            </p>
+            <p className="text-zinc-400 text-sm mb-4">
+              {tokenRow.vote === 'in'
+                ? "We'll let the crew know. The crew leader will lock in plans soon."
+                : "Thanks for letting us know. The crew will figure it out."}
+            </p>
+            <button
+              onClick={() => submitVote(tokenRow.vote === 'in' ? 'out' : 'in')}
+              disabled={voting}
+              className="text-xs text-violet-400 hover:text-violet-300 underline"
+            >
+              Change vote
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-center text-white font-semibold mb-2">Are you in?</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => submitVote('in')}
+                disabled={voting}
+                className="py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold text-lg disabled:opacity-50"
+              >
+                ✓ I'm in
+              </button>
+              <button
+                onClick={() => submitVote('out')}
+                disabled={voting}
+                className="py-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl font-bold text-lg disabled:opacity-50"
+              >
+                ✗ I'm out
+              </button>
+            </div>
+            {/* Optional phone capture (Q7 re-engagement) */}
+            {!tokenRow.phone_number && (
+              <div className="mt-4">
+                <p className="text-xs text-zinc-500 mb-2">Optional: drop your number so the crew can reach you</p>
+                <input
+                  type="tel"
+                  value={phoneInput}
+                  onChange={(e) => setPhoneInput(e.target.value)}
+                  placeholder="Phone number"
+                  className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-white text-sm"
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Sign-up nudge (Q3) */}
+        <div className="mt-6 p-4 bg-violet-500/10 border border-violet-500/30 rounded-xl text-center">
+          <p className="text-sm text-white font-semibold mb-1">See more events?</p>
+          <p className="text-xs text-zinc-400 mb-3">CrewQ helps you find vibes around Dallas.</p>
+          <button
+            onClick={() => onSignupCta && onSignupCta(tokenRow.phone_number || phoneInput)}
+            className="px-4 py-2 bg-violet-500 hover:bg-violet-600 text-white rounded-lg text-sm font-semibold"
+          >
+            Join CrewQ
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Patch D — Report a user. Universal modal — takes a target user, optional context, writes to user_reports.
+// Used from crew detail member rows (and elsewhere as needed).
+function ReportUserModal({ targetUser, contextType = null, contextId = null, supabaseClient, userProfile, onClose, showToast }) {
+  const [reason, setReason] = useState('');
+  const [details, setDetails] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const REASON_OPTIONS = [
+    { id: 'harassment',     label: 'Harassment or bullying' },
+    { id: 'inappropriate',  label: 'Inappropriate content' },
+    { id: 'fake',           label: 'Fake account or impersonation' },
+    { id: 'spam',           label: 'Spam' },
+    { id: 'safety',         label: 'Safety concern' },
+    { id: 'other',          label: 'Other' },
+  ];
+
+  const handleSubmit = async () => {
+    if (!supabaseClient || !targetUser?.id || !reason || submitting) return;
+    setSubmitting(true);
+    try {
+      const { error } = await supabaseClient.from('user_reports').insert([{
+        reporter_id: userProfile?.id,
+        reported_user_id: targetUser.id,
+        context_type: contextType,
+        context_id: contextId,
+        reason,
+        details: details.trim() || null,
+      }]);
+      if (error) throw error;
+      showToast?.('Report submitted. Thanks for helping keep CrewQ safe.', 'success');
+      onClose && onClose();
+    } catch (err) {
+      console.error('Report failed:', err);
+      showToast?.(`Couldn't submit report: ${err?.message || 'unknown error'}`, 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (!targetUser) return null;
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/85 flex items-end sm:items-center justify-center sm:p-4">
+      <div className="bg-zinc-900 rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[95vh] flex flex-col">
+        <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-white">Report user</h2>
+            <p className="text-xs text-zinc-400">{targetUser.name || 'User'}</p>
+          </div>
+          <button onClick={onClose} className="text-zinc-400 hover:text-white"><X className="w-6 h-6" /></button>
+        </div>
+
+        <div className="overflow-y-auto p-5 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-400 mb-2">What's wrong?</label>
+            <div className="space-y-1.5">
+              {REASON_OPTIONS.map(o => (
+                <button
+                  key={o.id}
+                  onClick={() => setReason(o.id)}
+                  className={`w-full text-left p-3 rounded-xl border transition ${
+                    reason === o.id
+                      ? 'bg-red-500/15 border-red-500 text-white'
+                      : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:border-zinc-600'
+                  }`}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-400 mb-2">More info (optional)</label>
+            <textarea
+              rows={3}
+              value={details}
+              onChange={e => setDetails(e.target.value.slice(0, 500))}
+              placeholder="Anything else that helps us understand the report"
+              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm"
+            />
+            <p className="mt-1 text-[10px] text-zinc-500">{details.length}/500</p>
+          </div>
+
+          <p className="text-xs text-zinc-500">
+            Reports are reviewed by CrewQ. We may follow up with you if we need more info.
+          </p>
+        </div>
+
+        <div className="p-4 border-t border-zinc-800 flex gap-2">
+          <button onClick={onClose} className="flex-1 py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg">Cancel</button>
+          <button
+            onClick={handleSubmit}
+            disabled={!reason || submitting}
+            className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold disabled:opacity-40"
+          >
+            {submitting ? 'Submitting…' : 'Submit report'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Patch D — Settings list of blocked users with unblock action
+function BlockedUsersList({ supabaseClient, userProfile, onClose, showToast }) {
+  const [blocks, setBlocks] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!supabaseClient || !userProfile?.id) { setLoading(false); return; }
+      try {
+        const { data, error } = await supabaseClient
+          .from('user_blocks')
+          .select('id, blocked_id, created_at, blocked:users!user_blocks_blocked_id_fkey(id, name, profile_picture)')
+          .eq('blocker_id', userProfile.id)
+          .order('created_at', { ascending: false });
+        if (cancelled) return;
+        if (error) throw error;
+        setBlocks(data || []);
+      } catch (err) {
+        if (!cancelled) {
+          console.warn('Load blocks failed:', err?.message);
+          setBlocks([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [supabaseClient, userProfile?.id]);
+
+  const unblock = async (blockId, blockedId) => {
+    try {
+      const { error } = await supabaseClient
+        .from('user_blocks')
+        .delete()
+        .eq('id', blockId);
+      if (error) throw error;
+      setBlocks(prev => prev.filter(b => b.id !== blockId));
+      showToast?.('User unblocked', 'success');
+    } catch (err) {
+      showToast?.(`Couldn't unblock: ${err?.message || 'error'}`, 'error');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/85 flex items-end sm:items-center justify-center sm:p-4">
+      <div className="bg-zinc-900 rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[90vh] flex flex-col">
+        <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-white">Blocked users</h2>
+            <p className="text-xs text-zinc-400">{blocks.length} blocked</p>
+          </div>
+          <button onClick={onClose} className="text-zinc-400 hover:text-white"><X className="w-6 h-6" /></button>
+        </div>
+        <div className="overflow-y-auto p-4">
+          {loading ? (
+            <p className="text-zinc-500 text-sm text-center py-8">Loading…</p>
+          ) : blocks.length === 0 ? (
+            <p className="text-zinc-500 text-sm text-center py-8">No blocked users.</p>
+          ) : (
+            <div className="space-y-2">
+              {blocks.map(b => (
+                <div key={b.id} className="flex items-center gap-3 p-3 bg-zinc-800 rounded-xl">
+                  {b.blocked?.profile_picture ? (
+                    <img src={b.blocked.profile_picture} alt="" className="w-10 h-10 rounded-full object-cover" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-zinc-700 flex items-center justify-center text-white text-sm font-semibold">
+                      {(b.blocked?.name || '?').charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <p className="flex-1 text-sm text-white truncate">{b.blocked?.name || 'Unknown user'}</p>
+                  <button
+                    onClick={() => unblock(b.id, b.blocked_id)}
+                    className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-xs rounded-lg"
+                  >
+                    Unblock
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -7835,112 +7788,126 @@ function CalendarView({ likedEvents, onEventClick, onUnlikeEvent }) {
   />;
 }
 
-function CrewTab({ squads, onCreateSquad, onSquadClick }) {
+function CrewTab({ crews, onCreateCrew, onCrewClick, allCrews = [], onRequestJoin, userProfile }) {
+  // Patch D — toggle between "My crews" and "Discover" (public crews)
+  const [view, setView] = useState('mine');
+
+  // Public crews user is NOT already a member of
+  const myCrewIds = new Set((crews || []).map(c => c.id));
+  const publicCrews = (allCrews || [])
+    .filter(c => c.visibility === 'public' && !myCrewIds.has(c.id) && !isCrewLocked(c));
+
   return (
     <div className="p-4">
-      <h2 className="text-2xl font-bold text-white mb-6">Your Squads</h2>
-      
-      {squads.length > 0 ? (
-        <div className="space-y-4">
-          {squads.map(squad => (
-            <button 
-              key={squad.id} 
-              onClick={() => onSquadClick && onSquadClick(squad)}
-              className="w-full bg-zinc-900 rounded-2xl p-5 text-left hover:bg-zinc-800 transition"
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h3 className="text-xl font-bold text-white">{squad.name}</h3>
-                    {squad.is_solo_friendly && (
-                      <span className="bg-orange-500 bg-opacity-20 text-orange-400 px-2 py-1 rounded-full text-xs font-bold">
-                        SOLO
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-zinc-400 text-sm mb-3">{squad.description}</p>
-                  <div className="flex items-center gap-4 text-zinc-500 text-sm">
-                    <div className="flex items-center gap-2">
-                      <Users className="w-4 h-4" />
-                      <span>{squad.member_count || 0} members</span>
-                    </div>
-                    {squad.max_members && (
-                      <span className={`text-xs ${(squad.member_count || 0) >= squad.max_members ? 'text-red-400' : 'text-zinc-600'}`}>
-                        (max {squad.max_members})
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <ChevronRight className="w-5 h-5 text-zinc-600" />
-              </div>
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-2xl font-bold text-white">Crews</h2>
+      </div>
 
-              {squad.members && squad.members.length > 0 && (
-                <div className="flex items-center gap-2 mb-4 overflow-x-auto">
-                  {squad.members.slice(0, 5).map(member => (
-                    <div key={member.id} className="flex-shrink-0">
-                      <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-white text-sm font-semibold overflow-hidden">
-                        {member.profile_picture ? (
-                          <img src={member.profile_picture} alt={member.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <span>{member.name?.charAt(0).toUpperCase() || '?'}</span>
-                        )}
-                      </div>
+      {/* Tab toggle */}
+      <div className="flex gap-1 bg-zinc-900 rounded-xl p-1 mb-5">
+        <button
+          onClick={() => setView('mine')}
+          className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${view === 'mine' ? 'bg-violet-500 text-white' : 'text-zinc-400 hover:text-white'}`}
+        >
+          My Crews ({crews.length})
+        </button>
+        <button
+          onClick={() => setView('discover')}
+          className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${view === 'discover' ? 'bg-orange-500 text-white' : 'text-zinc-400 hover:text-white'}`}
+        >
+          Discover ({publicCrews.length})
+        </button>
+      </div>
+
+      {view === 'mine' ? (
+        crews.length > 0 ? (
+          <div className="space-y-4">
+            {crews.map(crew => (
+              <button
+                key={crew.id}
+                onClick={() => onCrewClick && onCrewClick(crew)}
+                className="w-full bg-zinc-900 rounded-2xl p-5 text-left hover:bg-zinc-800 transition"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="text-lg font-bold text-white truncate">{crew.name}</h3>
+                      {crew.visibility === 'public' && (
+                        <span className="bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded-full text-xs font-bold flex-shrink-0">PUBLIC</span>
+                      )}
+                      {isCrewLocked(crew) && (
+                        <span className="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full text-xs font-bold flex-shrink-0">LOCKED</span>
+                      )}
                     </div>
-                  ))}
-                  {(squad.member_count || 0) > 5 && (
-                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 text-xs font-semibold">
-                      +{(squad.member_count || 0) - 5}
-                    </div>
+                    {crew.event && (
+                      <p className="text-sm text-zinc-400 truncate">{crew.event.name} · {crew.event.date}</p>
+                    )}
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-zinc-600 flex-shrink-0" />
+                </div>
+                <div className="flex items-center gap-3 text-xs text-zinc-500">
+                  <span>👥 {crew.member_count || 1} members</span>
+                  <span>👍 {crew.votes_yes || 0}</span>
+                  <span>👎 {crew.votes_no || 0}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-12">
+            <Users className="w-12 h-12 text-zinc-700 mx-auto mb-3" />
+            <p className="text-zinc-400 mb-1">No crews yet</p>
+            <p className="text-zinc-500 text-sm">Create one for your next event</p>
+          </div>
+        )
+      ) : (
+        publicCrews.length > 0 ? (
+          <div className="space-y-3">
+            {publicCrews.map(crew => (
+              <div
+                key={crew.id}
+                className="bg-zinc-900 rounded-2xl p-4 border border-zinc-800"
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-base font-bold text-white truncate">{crew.name}</h3>
+                    {crew.event && (
+                      <p className="text-sm text-zinc-400 truncate">{crew.event.name} · {crew.event.date}</p>
+                    )}
+                  </div>
+                  {crew.twentyone_plus_only && (
+                    <span className="bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full text-xs font-bold flex-shrink-0">21+</span>
                   )}
                 </div>
-              )}
-
-              {squad.event && (
-                <div className="bg-zinc-800 rounded-xl p-4 border border-zinc-700">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <p className="text-orange-500 text-xs font-semibold uppercase mb-1">Next Event</p>
-                      <h4 className="text-white font-semibold mb-1">{squad.event.name}</h4>
-                      <p className="text-zinc-400 text-sm mb-2">{squad.event.venue}</p>
-                      <div className="flex items-center gap-3 text-xs text-zinc-500">
-                        <div className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          <span>{squad.event.date}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          <span>{squad.event.time}</span>
-                        </div>
-                      </div>
-                    </div>
+                <div className="flex items-center justify-between gap-3 mt-3">
+                  <div className="flex items-center gap-3 text-xs text-zinc-500">
+                    <span>👥 {crew.member_count || 1} {crew.max_members ? `/ ${crew.max_members}` : ''}</span>
                   </div>
+                  <button
+                    onClick={() => onRequestJoin && onRequestJoin(crew)}
+                    className="px-4 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold rounded-lg"
+                  >
+                    Request to join
+                  </button>
                 </div>
-              )}
-
-              {/* Meeting spot preview */}
-              {squad.meeting_spot && (
-                <div className="mt-3 flex items-center gap-2 text-emerald-400 text-xs">
-                  <MapPin className="w-3 h-3" />
-                  <span>Meeting: {squad.meeting_spot}</span>
-                </div>
-              )}
-            </button>
-          ))}
-        </div>
-      ) : (
-        <div className="text-center py-12">
-          <Users className="w-16 h-16 text-zinc-700 mx-auto mb-4" />
-          <p className="text-zinc-400">No squads yet</p>
-          <p className="text-zinc-600 text-sm mt-2">Create a squad to connect with friends</p>
-        </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-12">
+            <Users className="w-12 h-12 text-zinc-700 mx-auto mb-3" />
+            <p className="text-zinc-400 mb-1">No public crews right now</p>
+            <p className="text-zinc-500 text-sm">Be the first — create one and make it public</p>
+          </div>
+        )
       )}
 
-      <button 
-        onClick={onCreateSquad}
-        className="w-full mt-6 bg-zinc-900 border-2 border-dashed border-zinc-700 rounded-2xl p-6 text-zinc-400 hover:border-orange-500 hover:text-orange-500 transition flex items-center justify-center gap-2"
+      <button
+        onClick={() => onCreateCrew && onCreateCrew()}
+        className="w-full mt-6 bg-violet-500 hover:bg-violet-600 text-white py-3 rounded-xl flex items-center justify-center gap-2"
       >
         <UserPlus className="w-5 h-5" />
-        <span className="font-semibold">Create New Squad</span>
+        <span className="font-semibold">Create New Crew</span>
       </button>
     </div>
   );
@@ -7973,10 +7940,10 @@ function AwardsTab({ userProfile, userBadges, userStats, onOpenLeaderboard }) {
     switch (req.type) {
       case 'checkins':
         return Math.min(100, ((stats.totalCheckins || 0) / req.count) * 100);
-      case 'squads-created':
-        return Math.min(100, ((stats.squadsCreated || 0) / req.count) * 100);
-      case 'squads-joined':
-        return Math.min(100, ((stats.squadsJoined || 0) / req.count) * 100);
+      case 'crews-created':
+        return Math.min(100, ((stats.crewsCreated || 0) / req.count) * 100);
+      case 'crews-joined':
+        return Math.min(100, ((stats.crewsJoined || 0) / req.count) * 100);
       case 'streak':
         return Math.min(100, ((stats.currentStreak || 0) / req.count) * 100);
       case 'category-checkins':
@@ -8236,7 +8203,7 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
   const [editedProfile, setEditedProfile] = useState(userProfile);
   const [uploadingImage, setUploadingImage] = useState(false);
   const likedEvents = JSON.parse(localStorage.getItem(`crewq_${userProfile?.id}_liked`) || '[]');
-  const [squadsCount, setSquadsCount] = useState(0);
+  const [crewsCount, setCrewsCount] = useState(0);
   const fileInputRef = useRef(null);
   const [showBioBuilder, setShowBioBuilder] = useState(false);
 
@@ -8244,7 +8211,7 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
   const earnedBadges = BADGES.filter(b => userBadges.includes(b.id));
 
   useEffect(() => {
-    loadSquadsCount();
+    loadCrewsCount();
   }, []);
 
   useEffect(() => {
@@ -8260,17 +8227,17 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
     await onUpdateProfile(updatedProfile);
   };
 
-  const loadSquadsCount = async () => {
+  const loadCrewsCount = async () => {
     if (!supabaseClient) return;
     try {
-      // Count squads the user is a member of
+      // Count crews the user is a member of
       const { count } = await supabaseClient
-        .from('squad_members')
+        .from('crew_invitees')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', userProfile.id);
-      setSquadsCount(count || 0);
+      setCrewsCount(count || 0);
     } catch (error) {
-      console.error('Error loading squads count:', error);
+      console.error('Error loading crews count:', error);
     }
   };
 
@@ -8464,7 +8431,7 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
                     </span>
                   </button>
                 )}
-                <p className="text-xs text-zinc-500 mt-1">Private by default — toggle to share with squads.</p>
+                <p className="text-xs text-zinc-500 mt-1">Private by default — toggle to share with crews.</p>
               </>
             ) : (
               <div className="flex items-center gap-3 bg-zinc-800 rounded-xl px-4 py-3">
@@ -8603,8 +8570,8 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
             onClick={() => onNavigate && onNavigate('crew')}
             className="bg-zinc-800 rounded-xl p-4 text-center hover:bg-zinc-700 transition"
           >
-            <div className="text-3xl font-bold text-orange-500 mb-1">{squadsCount}</div>
-            <div className="text-sm text-zinc-400">Squads</div>
+            <div className="text-3xl font-bold text-orange-500 mb-1">{crewsCount}</div>
+            <div className="text-sm text-zinc-400">Crews</div>
             <div className="text-xs text-orange-500 mt-1">View →</div>
           </button>
         </div>
@@ -8625,7 +8592,7 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
               <p className="text-zinc-400 text-sm">
                 {(editedProfile.profile_visibility || userProfile.profile_visibility) === 'public' 
                   ? 'Public: Anyone can see your profile in Solo mode' 
-                  : 'Private: Only squad members can see your profile'}
+                  : 'Private: Only crew members can see your profile'}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -8676,7 +8643,7 @@ function ProfileTab({ userProfile, onLogout, onUpdateProfile, userBadges = [], a
                 <EyeOff className="w-5 h-5 text-orange-400" />
                 <div>
                   <p className="text-orange-400 font-semibold">Private Profile</p>
-                  <p className="text-orange-400 text-opacity-70 text-xs">Only squad members can see your profile</p>
+                  <p className="text-orange-400 text-opacity-70 text-xs">Only crew members can see your profile</p>
                 </div>
               </>
             )}
@@ -8923,7 +8890,7 @@ function LegalModal({ type, onClose, darkMode }) {
               </section>
               <section>
                 <h3 className="font-semibold text-base mb-1">3. User Conduct</h3>
-                <p className={darkMode ? 'text-zinc-300' : 'text-zinc-700'}>You agree to use CrewQ respectfully. Do not harass, threaten, or impersonate other users. Squad coordination features are provided to help groups organize — meeting strangers from any app carries inherent risks. CrewQ is not responsible for in-person interactions that take place off the platform.</p>
+                <p className={darkMode ? 'text-zinc-300' : 'text-zinc-700'}>You agree to use CrewQ respectfully. Do not harass, threaten, or impersonate other users. Crew coordination features are provided to help groups organize — meeting strangers from any app carries inherent risks. CrewQ is not responsible for in-person interactions that take place off the platform.</p>
               </section>
               <section>
                 <h3 className="font-semibold text-base mb-1">4. User-Submitted Content</h3>
@@ -8954,11 +8921,11 @@ function LegalModal({ type, onClose, darkMode }) {
               </section>
               <section>
                 <h3 className="font-semibold text-base mb-1">How we use it</h3>
-                <p className={darkMode ? 'text-zinc-300' : 'text-zinc-700'}>To personalize your event feed, surface squads that match your vibe, send you relevant notifications, and share aggregate (never personally identifiable) data with venue partners.</p>
+                <p className={darkMode ? 'text-zinc-300' : 'text-zinc-700'}>To personalize your event feed, surface crews that match your vibe, send you relevant notifications, and share aggregate (never personally identifiable) data with venue partners.</p>
               </section>
               <section>
                 <h3 className="font-semibold text-base mb-1">What stays private</h3>
-                <p className={darkMode ? 'text-zinc-300' : 'text-zinc-700'}>Your relationship status is private by default. Your profile is squad-only by default. We never sell personal data. We do not share your individual swipe history, RSVPs, or location with any third party.</p>
+                <p className={darkMode ? 'text-zinc-300' : 'text-zinc-700'}>Your relationship status is private by default. Your profile is crew-only by default. We never sell personal data. We do not share your individual swipe history, RSVPs, or location with any third party.</p>
               </section>
               <section>
                 <h3 className="font-semibold text-base mb-1">Your rights</h3>
@@ -9245,7 +9212,7 @@ function AuthScreen({ onAuth, onGoogleAuth, onOpenBusinessPortal }) {
                   </span>
                 </button>
               )}
-              <p className={`text-xs ${textSecondaryClass} mt-1`}>Private by default — toggle to share with squads.</p>
+              <p className={`text-xs ${textSecondaryClass} mt-1`}>Private by default — toggle to share with crews.</p>
             </div>
 
             <button
@@ -9475,7 +9442,7 @@ function GoogleOnboardingModal({ pendingUser, onComplete }) {
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-zinc-500 mt-1">Helps match you with the right squads</p>
+              <p className="text-xs text-zinc-500 mt-1">Helps match you with the right crews</p>
             </div>
 
             {/* Patch 4 — Relationship status (private by default) */}
@@ -9510,7 +9477,7 @@ function GoogleOnboardingModal({ pendingUser, onComplete }) {
                   </span>
                 </button>
               )}
-              <p className="text-xs text-zinc-500 mt-1">Private by default — toggle to share with squads.</p>
+              <p className="text-xs text-zinc-500 mt-1">Private by default — toggle to share with crews.</p>
             </div>
 
             <button
@@ -12803,21 +12770,21 @@ export default function App() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showShareModal, setShowShareModal] = useState(false);
   const [events, setEvents] = useState([]); // Filtered events for discover feed
-  const [allEvents, setAllEvents] = useState([]); // All events for squads, map, etc.
+  const [allEvents, setAllEvents] = useState([]); // All events for crews, map, etc.
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [crewMembers, setCrewMembers] = useState([]);
-  const [squads, setSquads] = useState([]);
-  const [allSquads, setAllSquads] = useState([]);
+  const [crews, setCrews] = useState([]);
+  const [allCrews, setAllCrews] = useState([]);
   const [sharedEventId, setSharedEventId] = useState(null);
   const [showSharedEvent, setShowSharedEvent] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showEventDetail, setShowEventDetail] = useState(false);
   const [selectedEventHistoricalCount, setSelectedEventHistoricalCount] = useState(0);
   const [checkedInEvents, setCheckedInEvents] = useState([]);
-  const [showCreateSquad, setShowCreateSquad] = useState(false);
-  const [showSquadDetail, setShowSquadDetail] = useState(false);
-  const [selectedSquad, setSelectedSquad] = useState(null);
+  const [showCreateCrew, setShowCreateCrew] = useState(false);
+  const [showCrewDetail, setShowCrewDetail] = useState(false);
+  const [selectedCrew, setSelectedCrew] = useState(null);
   const [likedEventsRefresh, setLikedEventsRefresh] = useState(0);
   const [likedEvents, setLikedEvents] = useState([]);
   const [showSuggestionModal, setShowSuggestionModal] = useState(false);
@@ -12851,6 +12818,15 @@ export default function App() {
   const [postRsvpEvent, setPostRsvpEvent] = useState(null);
   // Patch E — Venue page state. Setting selectedVenuePage opens the public venue profile.
   const [selectedVenuePage, setSelectedVenuePage] = useState(null);
+  // Patch D — Crew invitee magic-link token (from /crew/:token URL).
+  const [crewInviteeToken, setCrewInviteeToken] = useState(null);
+  // Patch D — Report user state. Setting reportTarget opens the modal.
+  const [reportTarget, setReportTarget] = useState(null);
+  const [reportContext, setReportContext] = useState(null); // { type, id }
+  // Patch D — Blocked users list view (settings)
+  const [showBlockedUsers, setShowBlockedUsers] = useState(false);
+  // Patch D — Set of blocked user IDs (for filtering across surfaces)
+  const [blockedUserIds, setBlockedUserIds] = useState(new Set());
   // Patch E.2 — Map of venueId → active stories[] for feed indicators (batched, not per-card)
   const [venueStoriesMap, setVenueStoriesMap] = useState(new Map());
   // Patch E.2 — Stories opened directly from a feed-card indicator (separate from venue page carousel)
@@ -12919,11 +12895,28 @@ export default function App() {
     return () => window.removeEventListener('popstate', checkAndOpenFromUrl);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allVenues]);
+
+  // Patch D — Handle /crew/:token deep links for invitee voting
+  useEffect(() => {
+    const checkCrewToken = () => {
+      try {
+        const m = window.location.pathname.match(/^\/crew\/([a-zA-Z0-9_-]+)\/?$/);
+        if (m) {
+          setCrewInviteeToken(m[1]);
+        } else if (crewInviteeToken) {
+          setCrewInviteeToken(null);
+        }
+      } catch { /* fail silent */ }
+    };
+    checkCrewToken();
+    window.addEventListener('popstate', checkCrewToken);
+    return () => window.removeEventListener('popstate', checkCrewToken);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   
   // New feature modals
   const [showNotificationPrefs, setShowNotificationPrefs] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
-  const [showSquadChat, setShowSquadChat] = useState(null); // squad object or null
   
   // Streak tracking
   const [userStreaks, setUserStreaks] = useState({
@@ -13047,9 +13040,9 @@ export default function App() {
       loadNotifications();
       loadPendingJoinRequests();
       
-      // Refresh squads data
-      loadSquads(userProfile.id);
-      loadAllSquads();
+      // Refresh crews data
+      loadCrews(userProfile.id);
+      loadAllCrews();
       
       // Refresh events - pass userId to filter out seen events
       loadEvents(userProfile.id);
@@ -13170,28 +13163,28 @@ export default function App() {
     if (!supabaseClient || !userProfile) return;
     
     try {
-      // Get squads created by this user
-      const { data: mySquads } = await supabaseClient
+      // Get crews created by this user
+      const { data: myCrews } = await supabaseClient
         .from('squads')
         .select('id')
         .eq('created_by', userProfile.id);
       
-      if (!mySquads || mySquads.length === 0) {
+      if (!myCrews || myCrews.length === 0) {
         setPendingJoinRequests([]);
         return;
       }
       
-      const squadIds = mySquads.map(s => s.id);
+      const crewIds = myCrews.map(s => s.id);
       
-      // Get pending requests for those squads
+      // Get pending requests for those crews
       const { data: requests } = await supabaseClient
         .from('squad_join_requests')
         .select(`
           *,
           user:users(*),
-          squad:squads(*)
+          crew:squads(*)
         `)
-        .in('squad_id', squadIds)
+        .in('squad_id', crewIds)
         .eq('status', 'pending');
       
       // Fetch accurate badge counts for each user
@@ -13227,15 +13220,15 @@ export default function App() {
         .update({ status: 'approved', responded_at: new Date().toISOString() })
         .eq('id', request.id);
       
-      // Add user to squad
+      // Add user to crew
       await supabaseClient
-        .from('squad_members')
+        .from('crew_invitees')
         .insert([{ squad_id: request.squad_id, user_id: request.user_id }]);
       
       // Update member count
       await supabaseClient
         .from('squads')
-        .update({ member_count: (request.squad?.member_count || 0) + 1 })
+        .update({ member_count: (request.crew?.member_count || 0) + 1 })
         .eq('id', request.squad_id);
       
       // Send notification to the approved user
@@ -13245,8 +13238,8 @@ export default function App() {
           .insert([{
             user_id: request.user_id,
             type: 'squad_request_approved',
-            title: 'Squad Request Approved! 🎉',
-            message: `You've been approved to join "${request.squad?.name}"!`,
+            title: 'Crew Request Approved! 🎉',
+            message: `You've been approved to join "${request.crew?.name}"!`,
             squad_id: request.squad_id,
             read: false
           }]);
@@ -13254,11 +13247,11 @@ export default function App() {
         console.log('Notification table may not exist:', notifError);
       }
       
-      showToast('Request approved! They\'ve been added to the squad.', 'success');
+      showToast('Request approved! They\'ve been added to the crew.', 'success');
       setShowJoinRequestReview(null);
       loadPendingJoinRequests();
-      await loadSquads(userProfile.id);
-      await loadAllSquads();
+      await loadCrews(userProfile.id);
+      await loadAllCrews();
     } catch (error) {
       console.error('Error approving request:', error);
       showToast('Error approving request. Please try again.', 'error');
@@ -13300,8 +13293,8 @@ export default function App() {
           .insert([{
             user_id: request.user_id,
             type: 'squad_request_declined',
-            title: 'Squad Request Update',
-            message: `Your request to join "${request.squad?.name}" wasn't approved. Reason: ${reasonLabel}`,
+            title: 'Crew Request Update',
+            message: `Your request to join "${request.crew?.name}" wasn't approved. Reason: ${reasonLabel}`,
             squad_id: request.squad_id,
             read: false
           }]);
@@ -13443,8 +13436,8 @@ export default function App() {
         .select('*', { count: 'exact', head: true })
         .eq('user_id', userId);
 
-      // Get squads created
-      const { count: squadsCreated } = await supabaseClient
+      // Get crews created
+      const { count: crewsCreated } = await supabaseClient
         .from('squads')
         .select('*', { count: 'exact', head: true })
         .eq('created_by', userId);
@@ -13487,7 +13480,7 @@ export default function App() {
 
       setUserStats({
         totalCheckins: totalCheckins || 0,
-        squadsCreated: squadsCreated || 0,
+        crewsCreated: crewsCreated || 0,
         categoryCheckins,
         totalSwipes,
         totalLikes,
@@ -13591,11 +13584,11 @@ export default function App() {
       await awardBadge('checkin-25');
     }
     
-    // Check squad badges
-    if (stats.squadsCreated >= 1 && !userBadges.includes('first-squad')) {
-      await awardBadge('first-squad');
+    // Check crew badges
+    if (stats.crewsCreated >= 1 && !userBadges.includes('first-crew')) {
+      await awardBadge('first-crew');
     }
-    if (stats.squadsCreated >= 3 && !userBadges.includes('crew-builder')) {
+    if (stats.crewsCreated >= 3 && !userBadges.includes('crew-builder')) {
       await awardBadge('crew-builder');
     }
     
@@ -13931,56 +13924,143 @@ export default function App() {
     }
   };
 
-  const handleCreateSquad = async (squadData) => {
+  const handleCreateCrew = async (crewData) => {
     if (!supabaseClient) return;
     
     try {
-      const { data: newSquad, error } = await supabaseClient
+      const visibility = crewData.visibility || 'private';
+      const autoLockAt = computeAutoLockAt(crewData.event);
+      const slug = visibility === 'public'
+        ? `${(crewData.name || 'crew').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)}-${Math.random().toString(36).slice(2, 8)}`
+        : null;
+
+      const { data: newCrew, error } = await supabaseClient
         .from('squads')
         .insert([{
-          name: squadData.name,
-          description: squadData.description,
-          created_by: squadData.created_by,
-          is_solo_friendly: squadData.is_solo_friendly,
-          event_id: squadData.event.id,
+          name: crewData.name,
+          description: crewData.description,
+          created_by: crewData.created_by,
+          is_solo_friendly: crewData.is_solo_friendly,
+          event_id: crewData.event.id,
           member_count: 1,
-          invited_members: squadData.invited_members,
+          invited_members: crewData.invited_members,
           votes_yes: 0,
           votes_no: 0,
-          // Restriction fields
-          gender_restriction: squadData.gender_restriction || 'all',
-          min_age: squadData.min_age || null,
-          max_age: squadData.max_age || null,
-          min_badges: squadData.min_badges || 0,
-          requires_approval: squadData.requires_approval || false,
-          // New fields
-          max_members: squadData.max_members || null,
-          meeting_spot: squadData.meeting_spot || null,
-          meeting_instructions: squadData.meeting_instructions || null
+          // Patch D — new columns
+          visibility,
+          auto_lock_at: autoLockAt,
+          twentyone_plus_only: crewData.twentyone_plus_only || false,
+          slug,
+          // Restriction fields (legacy, defaults preserved)
+          gender_restriction: crewData.gender_restriction || 'all',
+          min_age: crewData.min_age || null,
+          max_age: crewData.max_age || null,
+          min_badges: crewData.min_badges || 0,
+          requires_approval: crewData.requires_approval || false,
+          max_members: crewData.max_members || null,
+          meeting_spot: crewData.meeting_spot || null,
+          meeting_instructions: crewData.meeting_instructions || null
         }])
         .select()
         .single();
 
       if (error) throw error;
 
+      // Add creator to crew_invitees as a member who's already "in"
       await supabaseClient
-        .from('squad_members')
+        .from('crew_invitees')
         .insert([{
-          squad_id: newSquad.id,
-          user_id: userProfile.id
+          squad_id: newCrew.id,
+          user_id: userProfile.id,
+          vote: 'in',
+          voted_at: new Date().toISOString()
         }]);
 
-      showToast('Squad created! Invites will be sent to your friends.', 'success');
-      setShowCreateSquad(false);
-      await loadSquads(userProfile.id);
-      await loadAllSquads();
+      // Patch D — for private crews with phone invites, generate magic-link tokens
+      let inviteTokens = [];
+      if (visibility === 'private' && Array.isArray(crewData.invited_members) && crewData.invited_members.length > 0) {
+        const tokenRows = crewData.invited_members.map(phone => ({
+          token: generateInviteToken(),
+          crew_id: newCrew.id,
+          phone_number: phone,
+        }));
+        const { data: tokensData, error: tokenErr } = await supabaseClient
+          .from('crew_invitee_tokens')
+          .insert(tokenRows)
+          .select();
+        if (tokenErr) {
+          console.warn('Token insert failed (table may not exist):', tokenErr?.message);
+        } else {
+          inviteTokens = tokensData || [];
+        }
+      }
+
+      // Trigger native share for invitations (private crews) — let user actually send the SMS
+      if (visibility === 'private' && inviteTokens.length > 0) {
+        const event = crewData.event;
+        const firstToken = inviteTokens[0].token;
+        const smsBody = buildCrewInviteSmsBody(newCrew, event, firstToken);
+        const shareUrl = `${window.location.origin}/crew/${firstToken}`;
+        try {
+          if (navigator.share) {
+            await navigator.share({
+              title: `${newCrew.name} — ${event.name}`,
+              text: smsBody,
+              url: shareUrl,
+            });
+          } else {
+            // Desktop fallback: copy to clipboard
+            if (navigator.clipboard) {
+              await navigator.clipboard.writeText(smsBody);
+              showToast('Invite link copied to clipboard!', 'success');
+            }
+          }
+        } catch {
+          // User cancelled share or share failed — non-fatal
+        }
+      }
+
+      showToast(visibility === 'public' ? 'Public crew created!' : 'Crew created!', 'success');
+      setShowCreateCrew(false);
+      await loadCrews(userProfile.id);
+      await loadAllCrews();
     } catch (error) {
-      console.error('Error creating squad:', error);
-      showToast('Error creating squad. Please try again.', 'error');
+      console.error('Error creating crew:', error);
+      showToast('Error creating crew. Please try again.', 'error');
     }
   };
 
-  const handleJoinSquad = async (squad, isRequest = false) => {
+  // Patch D — Load this user's blocked-users set for filtering (public crew browse, member visibility)
+  const loadBlockedUsers = async (userId) => {
+    if (!supabaseClient || !userId) return;
+    try {
+      const { data, error } = await supabaseClient
+        .from('user_blocks')
+        .select('blocked_id')
+        .eq('blocker_id', userId);
+      if (error) throw error;
+      setBlockedUserIds(new Set((data || []).map(b => b.blocked_id)));
+    } catch (err) {
+      console.warn('loadBlockedUsers failed:', err?.message);
+    }
+  };
+
+  // Patch D — Block a user. After block, refresh blocked set.
+  const handleBlockUser = async (targetUserId) => {
+    if (!supabaseClient || !userProfile?.id || !targetUserId) return;
+    try {
+      const { error } = await supabaseClient
+        .from('user_blocks')
+        .insert([{ blocker_id: userProfile.id, blocked_id: targetUserId }]);
+      if (error && !error.message?.includes('duplicate')) throw error;
+      setBlockedUserIds(prev => new Set([...prev, targetUserId]));
+      showToast('User blocked', 'success');
+    } catch (err) {
+      showToast(`Couldn't block: ${err?.message || 'error'}`, 'error');
+    }
+  };
+
+  const handleJoinCrew = async (crew, isRequest = false) => {
     if (!supabaseClient || !userProfile) return;
     
     // Patch 6 — One-time off-app meeting safety warning
@@ -14001,204 +14081,204 @@ export default function App() {
     }
     
     try {
-      if (isRequest && squad.requires_approval) {
+      if (isRequest && crew.requires_approval) {
         // Submit a join request instead of joining directly
         await supabaseClient
           .from('squad_join_requests')
           .insert([{
-            squad_id: squad.id,
+            squad_id: crew.id,
             user_id: userProfile.id,
             status: 'pending'
           }]);
 
-        showToast('Request sent! The squad leader will review it.', 'success');
-        setShowSquadDetail(false);
+        showToast('Request sent! The crew leader will review it.', 'success');
+        setShowCrewDetail(false);
       } else {
         // Direct join (no approval required or approved request)
         await supabaseClient
-          .from('squad_members')
+          .from('crew_invitees')
           .insert([{
-            squad_id: squad.id,
+            squad_id: crew.id,
             user_id: userProfile.id
           }]);
 
         await supabaseClient
           .from('squads')
-          .update({ member_count: (squad.member_count || 0) + 1 })
-          .eq('id', squad.id);
+          .update({ member_count: (crew.member_count || 0) + 1 })
+          .eq('id', crew.id);
 
-        showToast('You joined the squad!', 'success');
-        setShowSquadDetail(false);
-        await loadSquads(userProfile.id);
-        await loadAllSquads();
+        showToast('You joined the crew!', 'success');
+        setShowCrewDetail(false);
+        await loadCrews(userProfile.id);
+        await loadAllCrews();
       }
     } catch (error) {
-      console.error('Error joining squad:', error);
+      console.error('Error joining crew:', error);
       if (error.code === '23505') {
-        showToast('You already have a pending request for this squad.', 'info');
+        showToast('You already have a pending request for this crew.', 'info');
       } else {
-        showToast('Error joining squad. Please try again.', 'error');
+        showToast('Error joining crew. Please try again.', 'error');
       }
     }
   };
 
-  const handleLeaveSquad = async (squad) => {
+  const handleLeaveCrew = async (crew) => {
     if (!supabaseClient || !userProfile) return;
     
     try {
       await supabaseClient
-        .from('squad_members')
+        .from('crew_invitees')
         .delete()
-        .eq('squad_id', squad.id)
+        .eq('squad_id', crew.id)
         .eq('user_id', userProfile.id);
 
       await supabaseClient
         .from('squads')
-        .update({ member_count: Math.max((squad.member_count || 1) - 1, 0) })
-        .eq('id', squad.id);
+        .update({ member_count: Math.max((crew.member_count || 1) - 1, 0) })
+        .eq('id', crew.id);
 
-      showToast('You left the squad', 'info');
-      setShowSquadDetail(false);
-      await loadSquads(userProfile.id);
-      await loadAllSquads();
+      showToast('You left the crew', 'info');
+      setShowCrewDetail(false);
+      await loadCrews(userProfile.id);
+      await loadAllCrews();
     } catch (error) {
-      console.error('Error leaving squad:', error);
-      showToast('Error leaving squad. Please try again.', 'error');
+      console.error('Error leaving crew:', error);
+      showToast('Error leaving crew. Please try again.', 'error');
     }
   };
 
-  const handleDeleteSquad = async (squad) => {
+  const handleDeleteCrew = async (crew) => {
     if (!supabaseClient || !userProfile) return;
     
-    if (!confirm(`Are you sure you want to delete "${squad.name}"? This cannot be undone.`)) {
+    if (!confirm(`Are you sure you want to delete "${crew.name}"? This cannot be undone.`)) {
       return;
     }
     
     try {
-      // Delete squad members first
+      // Delete crew members first
       await supabaseClient
-        .from('squad_members')
+        .from('crew_invitees')
         .delete()
-        .eq('squad_id', squad.id);
+        .eq('squad_id', crew.id);
       
       // Delete join requests
       await supabaseClient
         .from('squad_join_requests')
         .delete()
-        .eq('squad_id', squad.id);
+        .eq('squad_id', crew.id);
       
-      // Delete squad votes
+      // Delete crew votes
       await supabaseClient
         .from('squad_votes')
         .delete()
-        .eq('squad_id', squad.id);
+        .eq('squad_id', crew.id);
       
-      // Delete the squad
+      // Delete the crew
       await supabaseClient
         .from('squads')
         .delete()
-        .eq('id', squad.id);
+        .eq('id', crew.id);
 
-      showToast('Squad deleted', 'success');
-      setShowSquadDetail(false);
-      await loadSquads(userProfile.id);
-      await loadAllSquads();
+      showToast('Crew deleted', 'success');
+      setShowCrewDetail(false);
+      await loadCrews(userProfile.id);
+      await loadAllCrews();
     } catch (error) {
-      console.error('Error deleting squad:', error);
-      showToast('Error deleting squad. Please try again.', 'error');
+      console.error('Error deleting crew:', error);
+      showToast('Error deleting crew. Please try again.', 'error');
     }
   };
 
-  const [showEditSquad, setShowEditSquad] = useState(null);
+  const [showEditCrew, setShowEditCrew] = useState(null);
 
-  const handleEditSquad = (squad) => {
-    setShowSquadDetail(false);
-    setShowEditSquad(squad);
+  const handleEditCrew = (crew) => {
+    setShowCrewDetail(false);
+    setShowEditCrew(crew);
   };
 
-  const handleSaveSquadEdit = async (updatedSquad) => {
+  const handleSaveCrewEdit = async (updatedCrew) => {
     if (!supabaseClient) return;
     
     try {
       await supabaseClient
         .from('squads')
         .update({
-          name: updatedSquad.name,
-          description: updatedSquad.description,
-          max_members: updatedSquad.max_members,
-          meeting_spot: updatedSquad.meeting_spot,
-          meeting_instructions: updatedSquad.meeting_instructions,
-          is_solo_friendly: updatedSquad.is_solo_friendly,
-          gender_restriction: updatedSquad.gender_restriction,
-          min_age: updatedSquad.min_age,
-          max_age: updatedSquad.max_age,
-          min_badges: updatedSquad.min_badges,
-          requires_approval: updatedSquad.requires_approval
+          name: updatedCrew.name,
+          description: updatedCrew.description,
+          max_members: updatedCrew.max_members,
+          meeting_spot: updatedCrew.meeting_spot,
+          meeting_instructions: updatedCrew.meeting_instructions,
+          is_solo_friendly: updatedCrew.is_solo_friendly,
+          gender_restriction: updatedCrew.gender_restriction,
+          min_age: updatedCrew.min_age,
+          max_age: updatedCrew.max_age,
+          min_badges: updatedCrew.min_badges,
+          requires_approval: updatedCrew.requires_approval
         })
-        .eq('id', updatedSquad.id);
+        .eq('id', updatedCrew.id);
 
-      showToast('Squad updated!', 'success');
+      showToast('Crew updated!', 'success');
       
-      // Reload squads to get fresh data
-      await loadSquads(userProfile.id);
-      await loadAllSquads();
+      // Reload crews to get fresh data
+      await loadCrews(userProfile.id);
+      await loadAllCrews();
       
-      // Return to squad detail with updated squad
-      setShowEditSquad(null);
-      setSelectedSquad(updatedSquad);
-      setShowSquadDetail(true);
+      // Return to crew detail with updated crew
+      setShowEditCrew(null);
+      setSelectedCrew(updatedCrew);
+      setShowCrewDetail(true);
     } catch (error) {
-      console.error('Error updating squad:', error);
-      showToast('Error updating squad. Please try again.', 'error');
+      console.error('Error updating crew:', error);
+      showToast('Error updating crew. Please try again.', 'error');
     }
   };
 
-  const handleMuteSquad = async (squad) => {
-    // For now, store muted squads in localStorage
-    const mutedSquads = JSON.parse(localStorage.getItem(`crewq_${userProfile.id}_muted_squads`) || '[]');
+  const handleMuteCrew = async (crew) => {
+    // For now, store muted crews in localStorage
+    const mutedCrews = JSON.parse(localStorage.getItem(`crewq_${userProfile.id}_muted_squads`) || '[]');
     
-    if (mutedSquads.includes(squad.id)) {
+    if (mutedCrews.includes(crew.id)) {
       // Unmute
-      const updated = mutedSquads.filter(id => id !== squad.id);
+      const updated = mutedCrews.filter(id => id !== crew.id);
       localStorage.setItem(`crewq_${userProfile.id}_muted_squads`, JSON.stringify(updated));
-      showToast('Notifications enabled for this squad', 'success');
+      showToast('Notifications enabled for this crew', 'success');
     } else {
       // Mute
-      mutedSquads.push(squad.id);
-      localStorage.setItem(`crewq_${userProfile.id}_muted_squads`, JSON.stringify(mutedSquads));
-      showToast('Notifications muted for this squad', 'info');
+      mutedCrews.push(crew.id);
+      localStorage.setItem(`crewq_${userProfile.id}_muted_squads`, JSON.stringify(mutedCrews));
+      showToast('Notifications muted for this crew', 'info');
     }
   };
 
-  const handleVote = async (squadId, voteType) => {
+  const handleVote = async (crewId, voteType) => {
     if (!supabaseClient || !userProfile) return;
     
     try {
       await supabaseClient
         .from('squad_votes')
         .insert([{
-          squad_id: squadId,
+          squad_id: crewId,
           user_id: userProfile.id,
           vote: voteType
         }]);
 
-      const { data: squad } = await supabaseClient
+      const { data: crew } = await supabaseClient
         .from('squads')
         .select('votes_yes, votes_no')
-        .eq('id', squadId)
+        .eq('id', crewId)
         .single();
 
       const updates = voteType === 'yes'
-        ? { votes_yes: (squad.votes_yes || 0) + 1 }
-        : { votes_no: (squad.votes_no || 0) + 1 };
+        ? { votes_yes: (crew.votes_yes || 0) + 1 }
+        : { votes_no: (crew.votes_no || 0) + 1 };
 
       await supabaseClient
         .from('squads')
         .update(updates)
-        .eq('id', squadId);
+        .eq('id', crewId);
 
-      await loadSquads(userProfile.id);
-      await loadAllSquads();
+      await loadCrews(userProfile.id);
+      await loadAllCrews();
     } catch (error) {
       console.error('Error voting:', error);
     }
@@ -14327,11 +14407,12 @@ export default function App() {
           
           await loadEvents(existingProfile.id);
           await loadCrewMembers(existingProfile.id);
-          await loadSquads(existingProfile.id);
-          await loadAllSquads();
+          await loadCrews(existingProfile.id);
+          await loadAllCrews();
           await loadCheckedInEvents(existingProfile.id);
           await loadUserRsvps(existingProfile.id);
           loadVenues();
+          loadBlockedUsers(existingProfile.id);
         } else {
           // New Google user - store their info and show onboarding
           console.log('checkAuth: New Google user, showing onboarding');
@@ -14369,11 +14450,12 @@ export default function App() {
           
           await loadEvents(data.id);
           await loadCrewMembers(data.id);
-          await loadSquads(data.id);
-          await loadAllSquads();
+          await loadCrews(data.id);
+          await loadAllCrews();
           await loadCheckedInEvents(data.id);
           await loadUserRsvps(data.id);
           loadVenues();
+          loadBlockedUsers(data.id);
         } else {
           localStorage.removeItem('crewq_user_id');
         }
@@ -14436,8 +14518,8 @@ export default function App() {
         setPendingGoogleUser(null);
         showToast('Welcome to CrewQ! 🎉', 'success');
         await loadCrewMembers(newUser.id);
-        await loadSquads(newUser.id);
-        await loadAllSquads();
+        await loadCrews(newUser.id);
+        await loadAllCrews();
       }
     } catch (error) {
       console.error('Error completing Google onboarding:', error);
@@ -14502,11 +14584,12 @@ export default function App() {
       localStorage.setItem('crewq_user_id', newUser.id);
       await loadEvents();
       await loadCrewMembers(newUser.id);
-      await loadSquads(newUser.id);
-      await loadAllSquads();
+      await loadCrews(newUser.id);
+      await loadAllCrews();
       await loadCheckedInEvents(newUser.id);
       await loadUserRsvps(newUser.id);
       loadVenues();
+      loadBlockedUsers(newUser.id);
     } catch (error) {
       console.error('Error creating account:', error);
       alert('Error creating account: ' + error.message);
@@ -14621,7 +14704,7 @@ export default function App() {
       
       if (error) throw error;
       
-      // Store all events for squads, map, etc.
+      // Store all events for crews, map, etc.
       setAllEvents(data || []);
       
       // Filter for only live/approved events for the Discover feed
@@ -14667,84 +14750,84 @@ export default function App() {
     }
   };
 
-const loadSquads = async (userId) => {
+const loadCrews = async (userId) => {
     if (!supabaseClient) return;
     
     try {
-      const { data: squadMemberships } = await supabaseClient
-        .from('squad_members')
+      const { data: crewMemberships } = await supabaseClient
+        .from('crew_invitees')
         .select('squad_id')
         .eq('user_id', userId);
 
-      const squadIds = squadMemberships?.map(sm => sm.squad_id) || [];
+      const crewIds = crewMemberships?.map(sm => sm.squad_id) || [];
       
-      if (squadIds.length === 0) {
-        setSquads([]);
+      if (crewIds.length === 0) {
+        setCrews([]);
         return;
       }
 
-      // First get squads
-      const { data: squadsData, error: squadsError } = await supabaseClient
+      // First get crews
+      const { data: crewsData, error: crewsError } = await supabaseClient
         .from('squads')
         .select('*')
-        .in('id', squadIds);
+        .in('id', crewIds);
       
-      if (squadsError) throw squadsError;
+      if (crewsError) throw crewsError;
 
-      // Then get events for those squads
-      const squadWithEvents = await Promise.all(
-        (squadsData || []).map(async (squad) => {
-          if (squad.event_id) {
+      // Then get events for those crews
+      const crewWithEvents = await Promise.all(
+        (crewsData || []).map(async (crew) => {
+          if (crew.event_id) {
             const { data: eventData } = await supabaseClient
               .from('events')
               .select('*')
-              .eq('id', squad.event_id)
+              .eq('id', crew.event_id)
               .single();
-            return { ...squad, event: eventData };
+            return { ...crew, event: eventData };
           }
-          return squad;
+          return crew;
         })
       );
       
-      setSquads(squadWithEvents);
+      setCrews(crewWithEvents);
     } catch (error) {
-      console.error('Error loading squads:', error);
-      setSquads([]);
+      console.error('Error loading crews:', error);
+      setCrews([]);
     }
   };
 
- const loadAllSquads = async () => {
+ const loadAllCrews = async () => {
     if (!supabaseClient) return;
     
     try {
-      // First get solo-friendly squads
-      const { data: squadsData, error: squadsError } = await supabaseClient
+      // First get solo-friendly crews
+      const { data: crewsData, error: crewsError } = await supabaseClient
         .from('squads')
         .select('*')
         .eq('is_solo_friendly', true)
         .order('created_at', { ascending: false });
       
-      if (squadsError) throw squadsError;
+      if (crewsError) throw crewsError;
 
-      // Then get events for those squads
-      const squadWithEvents = await Promise.all(
-        (squadsData || []).map(async (squad) => {
-          if (squad.event_id) {
+      // Then get events for those crews
+      const crewWithEvents = await Promise.all(
+        (crewsData || []).map(async (crew) => {
+          if (crew.event_id) {
             const { data: eventData } = await supabaseClient
               .from('events')
               .select('*')
-              .eq('id', squad.event_id)
+              .eq('id', crew.event_id)
               .single();
-            return { ...squad, event: eventData };
+            return { ...crew, event: eventData };
           }
-          return squad;
+          return crew;
         })
       );
       
-      setAllSquads(squadWithEvents);
+      setAllCrews(crewWithEvents);
     } catch (error) {
-      console.error('Error loading all squads:', error);
-      setAllSquads([]);
+      console.error('Error loading all crews:', error);
+      setAllCrews([]);
     }
   };
 
@@ -15676,20 +15759,23 @@ const loadSquads = async (userId) => {
           )}
           {currentTab === 'crew' && mode === 'crew' && (
             <CrewTab 
-              squads={squads} 
-              onCreateSquad={() => setShowCreateSquad(true)}
-              onSquadClick={(squad) => {
-                setSelectedSquad(squad);
-                setShowSquadDetail(true);
+              crews={crews} 
+              allCrews={allCrews.filter(c => !blockedUserIds.has(c.created_by))}
+              userProfile={userProfile}
+              onCreateCrew={() => setShowCreateCrew(true)}
+              onCrewClick={(crew) => {
+                setSelectedCrew(crew);
+                setShowCrewDetail(true);
               }}
+              onRequestJoin={(crew) => handleJoinCrew(crew, true)}
             />
           )}
           {currentTab === 'crew' && mode === 'solo' && (
-            <SoloFriendlySquadsView 
-              squads={allSquads} 
-              onSquadClick={(squad) => {
-                setSelectedSquad(squad);
-                setShowSquadDetail(true);
+            <SoloFriendlyCrewsView 
+              crews={allCrews} 
+              onCrewClick={(crew) => {
+                setSelectedCrew(crew);
+                setShowCrewDetail(true);
               }}
               userProfile={userProfile}
             />
@@ -15801,6 +15887,50 @@ const loadSquads = async (userId) => {
           />
         )}
 
+        {/* Patch D — Crew invitee voting page (no auth required) */}
+        {crewInviteeToken && (
+          <CrewInviteeVotePage
+            token={crewInviteeToken}
+            supabaseClient={supabaseClient}
+            onClose={() => {
+              setCrewInviteeToken(null);
+              try {
+                window.history.pushState({}, '', '/');
+              } catch { /* fail silent */ }
+            }}
+            onSignupCta={(phone) => {
+              setCrewInviteeToken(null);
+              try {
+                window.history.pushState({}, '', '/');
+              } catch { /* fail silent */ }
+              // future: prefill auth screen with phone — for now just close
+            }}
+          />
+        )}
+
+        {/* Patch D — Report user modal */}
+        {reportTarget && (
+          <ReportUserModal
+            targetUser={reportTarget}
+            contextType={reportContext?.type || null}
+            contextId={reportContext?.id || null}
+            supabaseClient={supabaseClient}
+            userProfile={userProfile}
+            onClose={() => { setReportTarget(null); setReportContext(null); }}
+            showToast={showToast}
+          />
+        )}
+
+        {/* Patch D — Blocked users list (settings) */}
+        {showBlockedUsers && (
+          <BlockedUsersList
+            supabaseClient={supabaseClient}
+            userProfile={userProfile}
+            onClose={() => setShowBlockedUsers(false)}
+            showToast={showToast}
+          />
+        )}
+
         {/* Patch E.2 — Stories opened directly from a Discover-feed indicator */}
         {feedCarouselStories && feedCarouselStories.length > 0 && (
           <StoryCarousel
@@ -15811,43 +15941,44 @@ const loadSquads = async (userId) => {
           />
         )}
 
-        {showCreateSquad && (
-          <CreateSquadModal
-            onClose={() => setShowCreateSquad(false)}
-            onCreate={handleCreateSquad}
+        {showCreateCrew && (
+          <CreateCrewModal
+            onClose={() => setShowCreateCrew(false)}
+            onCreate={handleCreateCrew}
             userProfile={userProfile}
             events={allEvents}
           />
         )}
 
-        {showSquadDetail && selectedSquad && (
-          <SquadDetailModal
-            squad={selectedSquad}
-            onClose={() => setShowSquadDetail(false)}
-            onJoin={handleJoinSquad}
-            onLeave={handleLeaveSquad}
+        {showCrewDetail && selectedCrew && (
+          <CrewDetailModal
+            crew={selectedCrew}
+            onClose={() => setShowCrewDetail(false)}
+            onJoin={handleJoinCrew}
+            onLeave={handleLeaveCrew}
             onVote={handleVote}
             userProfile={userProfile}
-            isMember={selectedSquad.members?.some(m => m.id === userProfile.id) || squads.some(s => s.id === selectedSquad.id)}
+            isMember={selectedCrew.members?.some(m => m.id === userProfile.id) || crews.some(s => s.id === selectedCrew.id)}
             onEventClick={(event) => {
-              setShowSquadDetail(false);
+              setShowCrewDetail(false);
               handleEventClick(event);
             }}
-            onEdit={handleEditSquad}
-            onDelete={handleDeleteSquad}
-            onMute={handleMuteSquad}
-            onOpenChat={(squad) => {
-              setShowSquadDetail(false);
-              setShowSquadChat(squad);
+            onEdit={handleEditCrew}
+            onDelete={handleDeleteCrew}
+            onMute={handleMuteCrew}
+            onReportUser={(user) => {
+              setReportTarget(user);
+              setReportContext({ type: 'crew', id: selectedCrew.id });
             }}
+            onBlockUser={handleBlockUser}
           />
         )}
 
-        {showEditSquad && (
-          <EditSquadModal
-            squad={showEditSquad}
-            onClose={() => setShowEditSquad(null)}
-            onSave={handleSaveSquadEdit}
+        {showEditCrew && (
+          <EditCrewModal
+            crew={showEditCrew}
+            onClose={() => setShowEditCrew(null)}
+            onSave={handleSaveCrewEdit}
           />
         )}
 
@@ -16053,6 +16184,10 @@ const loadSquads = async (userId) => {
               setShowSettings(false);
               setShowNotificationPrefs(true);
             }}
+            onOpenBlockedUsers={() => {
+              setShowSettings(false);
+              setShowBlockedUsers(true);
+            }}
             onUpdateProfile={async (updates) => {
               if (!supabaseClient || !userProfile?.id) return;
               try {
@@ -16155,18 +16290,6 @@ const loadSquads = async (userId) => {
             darkMode={darkMode}
             userProfile={userProfile}
             supabaseClient={supabaseClient}
-          />
-        )}
-
-        {/* Squad Chat Modal */}
-        {showSquadChat && (
-          <SquadChat
-            squad={showSquadChat}
-            userProfile={userProfile}
-            darkMode={darkMode}
-            onClose={() => setShowSquadChat(null)}
-            supabaseClient={supabaseClient}
-            showToast={showToast}
           />
         )}
 
