@@ -566,19 +566,75 @@ const generateInviteToken = () => {
   return Math.random().toString(36).slice(2, 14) + Math.random().toString(36).slice(2, 14);
 };
 
+// Patch D — Friendly date formatter for SMS.
+// "2026-05-09" → "Saturday May 9" (or "today" / "tomorrow" if applicable).
+const formatSmsDate = (dateStr) => {
+  if (!dateStr) return '';
+  try {
+    // Parse as local time by appending T00:00:00 (avoids UTC-shift "off-by-one-day" bug)
+    const d = new Date(`${dateStr}T00:00:00`);
+    if (isNaN(d.getTime())) return '';
+    const today = new Date(); today.setHours(0,0,0,0);
+    const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+    if (d.getTime() === today.getTime()) return 'tonight';
+    if (d.getTime() === tomorrow.getTime()) return 'tomorrow';
+    // Within the next week: just say the weekday
+    const sevenOut = new Date(today); sevenOut.setDate(today.getDate() + 7);
+    if (d < sevenOut) {
+      return d.toLocaleDateString('en-US', { weekday: 'long' });
+    }
+    // Further out: "Saturday May 9"
+    return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  } catch { return ''; }
+};
+
+// Patch D — Friendly time formatter for SMS.
+// "17:00" → "5pm". "17:30" → "5:30pm". "09:00" → "9am".
+const formatSmsTime = (timeStr) => {
+  if (!timeStr) return '';
+  try {
+    const [h, m] = timeStr.split(':').map(Number);
+    if (isNaN(h)) return '';
+    const period = h >= 12 ? 'pm' : 'am';
+    const hour12 = h % 12 === 0 ? 12 : h % 12;
+    const minutes = (m && m !== 0) ? `:${String(m).padStart(2, '0')}` : '';
+    return `${hour12}${minutes}${period}`;
+  } catch { return ''; }
+};
+
 // Patch D — Build the SMS body that the crew creator's phone will send to invitees.
+// Patch D.1 — Conversational copy. Reads like a friend texting, not a database row.
 // Returns plain-text suitable for `sms:` URL.
 const buildCrewInviteSmsBody = (crew, event, token) => {
   const link = `${window.location?.origin || 'https://crewq-app.vercel.app'}/crew/${token}`;
-  const dateLine = event?.date ? ` on ${event.date}${event.time ? ` at ${event.time}` : ''}` : '';
-  return `${crew?.name || 'Join my crew'} — ${event?.name || 'an event'}${dateLine}. Tap to vote: ${link}`;
+  const eventName = event?.name || 'something';
+  const venuePart = event?.venue ? ` at ${event.venue}` : '';
+  const datePart = formatSmsDate(event?.date);
+  const timePart = formatSmsTime(event?.time);
+  // Compose the "when": "tomorrow at 5pm" / "Saturday at 9pm" / "tonight at 7pm"
+  let whenPart = '';
+  if (datePart && timePart) whenPart = ` ${datePart} at ${timePart}`;
+  else if (datePart) whenPart = ` ${datePart}`;
+  else if (timePart) whenPart = ` at ${timePart}`;
+  return `Hey — ${eventName}${venuePart}${whenPart}. You in? ${link}`;
 };
 
 // Patch D — Compose group SMS body for post-decision native handoff.
+// Patch D.1 — Conversational copy with friendly time format.
 const buildPostDecisionSmsBody = (crew, event) => {
-  const dateLine = event?.date ? `\n${event.date}${event.time ? ` at ${event.time}` : ''}` : '';
-  const venueLine = event?.venue ? `\n📍 ${event.venue}${event.address ? `, ${event.address}` : ''}` : '';
-  return `🎉 We're locked in for ${event?.name || 'the event'}!${dateLine}${venueLine}\n\nLet's go!`;
+  const eventName = event?.name || 'the event';
+  const venuePart = event?.venue ? ` at ${event.venue}` : '';
+  const datePart = formatSmsDate(event?.date);
+  const timePart = formatSmsTime(event?.time);
+  // Capitalize "tonight"/"tomorrow" when they're at the start of a line
+  const capitalizedDate = (datePart === 'tonight' || datePart === 'tomorrow')
+    ? datePart.charAt(0).toUpperCase() + datePart.slice(1)
+    : datePart;
+  let whenPart = '';
+  if (capitalizedDate && timePart) whenPart = `\n${capitalizedDate} at ${timePart}`;
+  else if (capitalizedDate) whenPart = `\n${capitalizedDate}`;
+  const addressLine = event?.address ? `\n📍 ${event.address}` : '';
+  return `🎉 We're locked in — ${eventName}${venuePart}!${whenPart}${addressLine}\n\nSee you there.`;
 };
 
 // Patch D — Compute auto-lock timestamp = event_date - 2 hours.
