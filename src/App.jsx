@@ -502,6 +502,36 @@ const uploadStoryImage = async (supabaseClient, file, venueId) => {
   return data.publicUrl;
 };
 
+// Patch E.2 — Upload a venue photo (gallery, cover, logo, menu image) to the same `venue-stories` bucket.
+// Uses a `gallery/` path prefix to keep these conceptually separate from story uploads.
+// Single helper covers all venue-owned imagery (cover/logo/gallery/menu).
+const VENUE_PHOTO_KIND_PREFIX = {
+  gallery: 'gallery',
+  cover: 'cover',
+  logo: 'logo',
+  menu: 'menu',
+};
+const uploadVenuePhoto = async (supabaseClient, file, venueId, kind = 'gallery') => {
+  if (!supabaseClient) throw new Error('No Supabase client');
+  if (!file) throw new Error('No file provided');
+  if (file.size > STORY_MAX_UPLOAD_BYTES) {
+    throw new Error(`Image is too large (max ${Math.round(STORY_MAX_UPLOAD_BYTES / 1024 / 1024)}MB)`);
+  }
+  const ext = (file.name?.split('.').pop() || 'jpg').toLowerCase();
+  const safeExt = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'].includes(ext) ? ext : 'jpg';
+  const prefix = VENUE_PHOTO_KIND_PREFIX[kind] || 'gallery';
+  const filename = `${prefix}/${venueId || 'unknown'}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${safeExt}`;
+  const { error: upErr } = await supabaseClient.storage
+    .from('venue-stories')
+    .upload(filename, file, { cacheControl: '3600', upsert: false, contentType: file.type || 'image/jpeg' });
+  if (upErr) throw upErr;
+  const { data } = supabaseClient.storage.from('venue-stories').getPublicUrl(filename);
+  if (!data?.publicUrl) throw new Error('Could not resolve public URL');
+  return data.publicUrl;
+};
+
+const VENUE_GALLERY_MAX = 10; // Patch E.2 — max photos per venue gallery
+
 // Patch E.1 — Format a "posted X ago" relative timestamp.
 const formatStoryAge = (createdAt) => {
   if (!createdAt) return '';
@@ -5148,6 +5178,8 @@ function EventFeedCard({
   isRegularHere, // Patch E — true if user has 3+ check-ins at this venue
   onVenueTap,    // Patch E — tap venue name → open venue page (skips card open)
   isFreshThisWeek, // Patch E — recurring events updated within last 7 days
+  storiesForVenue = [], // Patch E.2 — active stories at this event's venue (for feed-card indicator)
+  onStoryTap,    // Patch E.2 — tap the story indicator → open carousel directly from feed
 }) {
   const cardRef = useRef(null);
   // Track total ms this card has been ≥50% visible
@@ -5306,13 +5338,44 @@ function EventFeedCard({
             {event.name}
           </h2>
           {/* Patch E — venue line is tappable separately from the card open */}
-          <button
-            onClick={(e) => { e.stopPropagation(); onVenueTap && onVenueTap(event); }}
-            className="text-sm text-white/90 flex items-center gap-1.5 hover:underline text-left"
-          >
-            <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
-            <span className="truncate">{event.venue}{event.neighborhood ? ` · ${event.neighborhood}` : ''}</span>
-          </button>
+          {/* Patch E.2 — story indicator sits next to venue name when active stories exist */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={(e) => { e.stopPropagation(); onVenueTap && onVenueTap(event); }}
+              className="text-sm text-white/90 flex items-center gap-1.5 hover:underline text-left flex-1 min-w-0"
+            >
+              <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
+              <span className="truncate">{event.venue}{event.neighborhood ? ` · ${event.neighborhood}` : ''}</span>
+            </button>
+            {storiesForVenue.length > 0 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onStoryTap && onStoryTap(event, storiesForVenue); }}
+                className="flex-shrink-0 relative"
+                aria-label={`${storiesForVenue.length} story${storiesForVenue.length > 1 ? 'ies' : ''} from this venue`}
+                title="Tap to view stories"
+              >
+                <span
+                  className="block w-7 h-7 rounded-full p-[1.5px]"
+                  style={{
+                    background: 'linear-gradient(135deg, #f59e0b 0%, #ec4899 50%, #8b5cf6 100%)',
+                  }}
+                >
+                  <span className="block w-full h-full rounded-full overflow-hidden bg-black p-[1px]">
+                    <img
+                      src={storiesForVenue[0].image_url}
+                      alt=""
+                      className="w-full h-full rounded-full object-cover"
+                    />
+                  </span>
+                </span>
+                {storiesForVenue.length > 1 && (
+                  <span className="absolute -top-1 -right-1 bg-violet-500 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center leading-none">
+                    {storiesForVenue.length > 9 ? '9+' : storiesForVenue.length}
+                  </span>
+                )}
+              </button>
+            )}
+          </div>
           {/* Pills row */}
           <div className="flex flex-wrap items-center gap-1.5">
             {isFree ? (
@@ -5504,7 +5567,7 @@ function StoryCarousel({ stories, venueName, startIndex = 0, onClose }) {
         <img
           src={story.image_url}
           alt=""
-          className="max-w-full max-h-full object-contain"
+          className="absolute inset-0 w-full h-full object-cover"
           draggable={false}
         />
       </div>
@@ -5525,10 +5588,11 @@ function StoryCarousel({ stories, venueName, startIndex = 0, onClose }) {
         />
       </div>
 
-      {/* Body caption — bottom overlay */}
+      {/* Patch E.2 — Caption: now overlaid on image, sits above bottom safe area, gradient fades up.
+         Uses object-cover above so image fills viewport — caption lives ON the image, not below it. */}
       {story.body && (
-        <div className="absolute bottom-0 inset-x-0 z-20 pt-16 pb-6 px-4 bg-gradient-to-t from-black/80 to-transparent pointer-events-none">
-          <p className="text-white text-sm leading-relaxed" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
+        <div className="absolute bottom-0 inset-x-0 z-20 pt-24 pb-12 px-5 bg-gradient-to-t from-black/90 via-black/50 to-transparent pointer-events-none">
+          <p className="text-white text-base leading-relaxed font-medium" style={{ textShadow: '0 2px 6px rgba(0,0,0,0.9)' }}>
             {story.body}
           </p>
         </div>
@@ -5592,7 +5656,7 @@ function VenuePage({
   const isRegular = userCheckinCount >= 3;
   const hoursList = formatVenueHours(venue.hours);
   const hasSocial = venue.instagram || venue.facebook || venue.twitter;
-  const hasContact = venue.phone || venue.email || venue.website;
+  const hasContact = venue.phone || venue.email || venue.website || venue.menu_url;
   const photos = Array.isArray(venue.photos) ? venue.photos.filter(Boolean) : [];
 
   // Format an Instagram handle (strip @ if present, build profile URL)
@@ -5810,6 +5874,17 @@ function VenuePage({
                 <Globe className="w-3.5 h-3.5" />Website
               </a>
             )}
+            {/* Patch E.2 — Menu link */}
+            {venue.menu_url && (
+              <a
+                href={venue.menu_url.startsWith('http') ? venue.menu_url : `https://${venue.menu_url}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold ${darkMode ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-white border border-amber-200 hover:bg-amber-50 text-zinc-700'} transition`}
+              >
+                <UtensilsCrossed className="w-3.5 h-3.5" />Menu
+              </a>
+            )}
             {venue.phone && (
               <a
                 href={`tel:${venue.phone.replace(/[^\d+]/g, '')}`}
@@ -5856,6 +5931,21 @@ function VenuePage({
                 <ExternalLink className="w-3.5 h-3.5" />Twitter
               </a>
             )}
+          </div>
+        )}
+
+        {/* Patch E.2 — Menu image (additive: only renders if uploaded) */}
+        {venue.menu_image_url && (
+          <div className="mb-6">
+            <h2 className={`text-lg font-bold mb-3 ${darkMode ? 'text-white' : 'text-zinc-900'}`}>Menu</h2>
+            <a
+              href={venue.menu_image_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block rounded-2xl overflow-hidden"
+            >
+              <img src={venue.menu_image_url} alt="Menu" className="w-full max-h-96 object-contain bg-black" />
+            </a>
           </div>
         )}
 
@@ -6171,6 +6261,384 @@ function StoryComposer({ venue, supabaseClient, userProfile, onClose, onCreated,
             className="flex-1 py-3 bg-violet-500 text-white rounded-lg font-semibold hover:bg-violet-600 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {submitting ? 'Posting…' : 'Post story'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Patch E.2 — Bespoke venue editing surface for business portal users.
+// Venue can edit everything except name + verified status. 10-photo gallery with reorder.
+// Cover image, logo, description, hours, contact, social handles, menu URL + menu image.
+// Edits go live immediately (no admin review queue).
+function EditMyVenue({ venue, supabaseClient, onClose, onSaved, showToast }) {
+  const [form, setForm] = useState(() => ({
+    description: venue.description || '',
+    address: venue.address || '',
+    phone: venue.phone || '',
+    email: venue.email || '',
+    website: venue.website || '',
+    instagram: venue.instagram || '',
+    facebook: venue.facebook || '',
+    twitter: venue.twitter || '',
+    cover_image_url: venue.cover_image_url || '',
+    logo_url: venue.logo_url || '',
+    menu_url: venue.menu_url || '',
+    menu_image_url: venue.menu_image_url || '',
+    photos: Array.isArray(venue.photos) ? venue.photos.filter(Boolean) : [],
+    hours: venue.hours && typeof venue.hours === 'object' ? { ...venue.hours } : {},
+    verification_requested: !!venue.verification_requested,
+  }));
+  const [saving, setSaving] = useState(false);
+  const [uploadingKind, setUploadingKind] = useState(null); // 'cover' | 'logo' | 'gallery' | 'menu' | null
+
+  const setField = (key, val) => setForm(f => ({ ...f, [key]: val }));
+  const setHour = (day, val) => setForm(f => ({ ...f, hours: { ...f.hours, [day]: val } }));
+
+  const days = [['mon','Mon'],['tue','Tue'],['wed','Wed'],['thu','Thu'],['fri','Fri'],['sat','Sat'],['sun','Sun']];
+
+  const handleSingleUpload = async (e, kind) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setUploadingKind(kind);
+    try {
+      const url = await uploadVenuePhoto(supabaseClient, f, venue.id, kind);
+      if (kind === 'cover') setField('cover_image_url', url);
+      else if (kind === 'logo') setField('logo_url', url);
+      else if (kind === 'menu') setField('menu_image_url', url);
+      showToast?.(`${kind} updated`, 'success');
+    } catch (err) {
+      console.error(`${kind} upload failed:`, err);
+      showToast?.(`Couldn't upload ${kind}: ${err?.message || 'unknown error'}`, 'error');
+    } finally {
+      setUploadingKind(null);
+      e.target.value = ''; // reset input
+    }
+  };
+
+  const handleGalleryUpload = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const remaining = VENUE_GALLERY_MAX - form.photos.length;
+    if (remaining <= 0) {
+      showToast?.(`Gallery is full (max ${VENUE_GALLERY_MAX})`, 'error');
+      e.target.value = '';
+      return;
+    }
+    const toUpload = files.slice(0, remaining);
+    if (files.length > remaining) {
+      showToast?.(`Only ${remaining} more photo${remaining > 1 ? 's' : ''} allowed`, 'error');
+    }
+    setUploadingKind('gallery');
+    try {
+      const urls = [];
+      for (const f of toUpload) {
+        const url = await uploadVenuePhoto(supabaseClient, f, venue.id, 'gallery');
+        urls.push(url);
+      }
+      setForm(f => ({ ...f, photos: [...f.photos, ...urls] }));
+      showToast?.(`${urls.length} photo${urls.length > 1 ? 's' : ''} added`, 'success');
+    } catch (err) {
+      console.error('Gallery upload failed:', err);
+      showToast?.(`Couldn't upload: ${err?.message || 'unknown error'}`, 'error');
+    } finally {
+      setUploadingKind(null);
+      e.target.value = '';
+    }
+  };
+
+  const movePhoto = (idx, dir) => {
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= form.photos.length) return;
+    const next = [...form.photos];
+    [next[idx], next[newIdx]] = [next[newIdx], next[idx]];
+    setField('photos', next);
+  };
+  const removePhoto = (idx) => {
+    setField('photos', form.photos.filter((_, i) => i !== idx));
+  };
+
+  const requestVerification = () => {
+    setField('verification_requested', true);
+    showToast?.('Verification requested. Save changes to submit.', 'success');
+  };
+
+  const handleSave = async () => {
+    if (!supabaseClient || !venue?.id) return;
+    setSaving(true);
+    try {
+      const payload = {
+        description: form.description,
+        address: form.address,
+        phone: form.phone,
+        email: form.email,
+        website: form.website,
+        instagram: form.instagram,
+        facebook: form.facebook,
+        twitter: form.twitter,
+        cover_image_url: form.cover_image_url,
+        logo_url: form.logo_url,
+        menu_url: form.menu_url,
+        menu_image_url: form.menu_image_url,
+        photos: form.photos,
+        hours: form.hours,
+        verification_requested: form.verification_requested,
+      };
+      const { data, error } = await supabaseClient
+        .from('establishments')
+        .update(payload)
+        .eq('id', venue.id)
+        .select()
+        .single();
+      if (error) throw error;
+      showToast?.('Saved! Changes are live.', 'success');
+      if (onSaved) onSaved(data);
+      onClose && onClose();
+    } catch (err) {
+      console.error('Save venue failed:', err);
+      showToast?.(`Save failed: ${err?.message || 'unknown error'}`, 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/85 flex items-end sm:items-center justify-center sm:p-4">
+      <div className="bg-slate-900 rounded-t-3xl sm:rounded-3xl w-full sm:max-w-2xl max-h-[95vh] flex flex-col">
+        <div className="p-4 border-b border-slate-700 flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-white">Edit your venue page</h2>
+            <p className="text-xs text-slate-400">{venue.name} · changes go live immediately</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="w-6 h-6" /></button>
+        </div>
+
+        <div className="overflow-y-auto p-5 space-y-6">
+
+          {/* Locked fields explainer */}
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-3 text-xs text-slate-400">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-slate-300">🔒 Locked:</span>
+              <span><span className="text-white font-semibold">Name</span> ({venue.name})</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-slate-300">🔒 Locked:</span>
+              <span>
+                Verification
+                {venue.verified ? (
+                  <span className="ml-1 inline-flex items-center gap-1 text-violet-300"><CheckCircle className="w-3 h-3" />Verified CrewQ Venue</span>
+                ) : form.verification_requested ? (
+                  <span className="ml-1 text-amber-400">— Pending review</span>
+                ) : (
+                  <button
+                    onClick={requestVerification}
+                    className="ml-2 text-violet-400 hover:text-violet-300 underline"
+                  >
+                    Request verification
+                  </button>
+                )}
+              </span>
+            </div>
+            <p className="mt-2 text-[11px] text-slate-500">For name changes or verification, contact CrewQ support.</p>
+          </div>
+
+          {/* Cover image */}
+          <section>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Cover image</h3>
+            <p className="text-xs text-slate-500 mb-2">16:9 hero shown at the top of your venue page</p>
+            {form.cover_image_url ? (
+              <div className="relative">
+                <img src={form.cover_image_url} alt="" className="w-full aspect-video object-cover rounded-xl" />
+                <label className="absolute bottom-2 right-2 px-3 py-1.5 bg-black/70 text-white text-xs rounded-lg cursor-pointer hover:bg-black/90">
+                  <input type="file" accept="image/*" onChange={(e) => handleSingleUpload(e, 'cover')} className="hidden" disabled={uploadingKind} />
+                  {uploadingKind === 'cover' ? 'Uploading…' : 'Replace'}
+                </label>
+              </div>
+            ) : (
+              <label className="block w-full aspect-video rounded-xl border-2 border-dashed border-slate-700 hover:border-violet-500 transition cursor-pointer flex items-center justify-center text-slate-400">
+                <input type="file" accept="image/*" onChange={(e) => handleSingleUpload(e, 'cover')} className="hidden" disabled={uploadingKind} />
+                <div className="text-center">
+                  <Camera className="w-10 h-10 mx-auto mb-2" />
+                  <p className="text-sm font-semibold">{uploadingKind === 'cover' ? 'Uploading…' : 'Upload cover'}</p>
+                </div>
+              </label>
+            )}
+          </section>
+
+          {/* Logo */}
+          <section>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Logo</h3>
+            <p className="text-xs text-slate-500 mb-2">Square; appears as a small badge on your page</p>
+            <div className="flex items-center gap-3">
+              {form.logo_url ? (
+                <img src={form.logo_url} alt="" className="w-20 h-20 rounded-2xl object-cover bg-slate-800" />
+              ) : (
+                <div className="w-20 h-20 rounded-2xl border-2 border-dashed border-slate-700 flex items-center justify-center text-slate-500">
+                  <Building2 className="w-8 h-8" />
+                </div>
+              )}
+              <label className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm rounded-lg cursor-pointer">
+                <input type="file" accept="image/*" onChange={(e) => handleSingleUpload(e, 'logo')} className="hidden" disabled={uploadingKind} />
+                {uploadingKind === 'logo' ? 'Uploading…' : (form.logo_url ? 'Replace' : 'Upload')}
+              </label>
+              {form.logo_url && (
+                <button onClick={() => setField('logo_url', '')} className="text-slate-400 hover:text-red-400 text-sm">Remove</button>
+              )}
+            </div>
+          </section>
+
+          {/* Description */}
+          <section>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">About</h3>
+            <textarea
+              rows={4}
+              value={form.description}
+              onChange={(e) => setField('description', e.target.value)}
+              placeholder="Tell users about your venue's vibe, what makes it special…"
+              className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm"
+            />
+          </section>
+
+          {/* Photo gallery */}
+          <section>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Photo gallery</h3>
+              <span className="text-xs text-slate-500">{form.photos.length} / {VENUE_GALLERY_MAX}</span>
+            </div>
+            {form.photos.length > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
+                {form.photos.map((url, idx) => (
+                  <div key={`${url}-${idx}`} className="relative group">
+                    <img src={url} alt="" className="w-full aspect-square object-cover rounded-lg" />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition rounded-lg flex items-end justify-between p-1.5">
+                      <div className="flex gap-0.5">
+                        <button
+                          onClick={() => movePhoto(idx, -1)}
+                          disabled={idx === 0}
+                          className="w-7 h-7 bg-black/70 hover:bg-black text-white rounded flex items-center justify-center disabled:opacity-30"
+                          aria-label="Move up"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => movePhoto(idx, 1)}
+                          disabled={idx === form.photos.length - 1}
+                          className="w-7 h-7 bg-black/70 hover:bg-black text-white rounded flex items-center justify-center disabled:opacity-30"
+                          aria-label="Move down"
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => removePhoto(idx)}
+                        className="w-7 h-7 bg-red-500/90 hover:bg-red-500 text-white rounded flex items-center justify-center"
+                        aria-label="Remove"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    {idx === 0 && (
+                      <span className="absolute top-1.5 left-1.5 bg-violet-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">First</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            {form.photos.length < VENUE_GALLERY_MAX && (
+              <label className="block w-full p-4 rounded-xl border-2 border-dashed border-slate-700 hover:border-violet-500 transition cursor-pointer text-center">
+                <input type="file" accept="image/*" multiple onChange={handleGalleryUpload} className="hidden" disabled={uploadingKind} />
+                <Plus className="w-6 h-6 mx-auto text-slate-400 mb-1" />
+                <p className="text-sm font-semibold text-white">{uploadingKind === 'gallery' ? 'Uploading…' : `Add photos (${VENUE_GALLERY_MAX - form.photos.length} left)`}</p>
+                <p className="text-xs text-slate-500">Pick multiple at once</p>
+              </label>
+            )}
+          </section>
+
+          {/* Hours */}
+          <section>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Hours</h3>
+            <div className="space-y-2">
+              {days.map(([key, label]) => (
+                <div key={key} className="flex items-center gap-2">
+                  <span className="w-12 text-sm text-slate-400">{label}</span>
+                  <input
+                    value={form.hours[key] || ''}
+                    onChange={(e) => setHour(key, e.target.value)}
+                    placeholder="11am-10pm (leave empty if closed)"
+                    className="flex-1 px-2 py-1.5 bg-slate-800 border border-slate-700 rounded text-white text-sm"
+                  />
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Address + contact */}
+          <section className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">Address</label>
+              <input value={form.address} onChange={(e) => setField('address', e.target.value)} className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">Phone</label>
+              <input value={form.phone} onChange={(e) => setField('phone', e.target.value)} className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">Email</label>
+              <input value={form.email} onChange={(e) => setField('email', e.target.value)} className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm" />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">Website</label>
+              <input value={form.website} onChange={(e) => setField('website', e.target.value)} placeholder="https://…" className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm" />
+            </div>
+          </section>
+
+          {/* Social */}
+          <section>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Social</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <input value={form.instagram} onChange={(e) => setField('instagram', e.target.value)} placeholder="@instagram" className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm" />
+              <input value={form.facebook} onChange={(e) => setField('facebook', e.target.value)} placeholder="Facebook page" className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm" />
+              <input value={form.twitter} onChange={(e) => setField('twitter', e.target.value)} placeholder="@twitter" className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm" />
+            </div>
+          </section>
+
+          {/* Menu */}
+          <section>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Menu</h3>
+            <div className="space-y-3">
+              <input
+                value={form.menu_url}
+                onChange={(e) => setField('menu_url', e.target.value)}
+                placeholder="Link to your menu (e.g. https://example.com/menu.pdf)"
+                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm"
+              />
+              <div className="flex items-center gap-3">
+                {form.menu_image_url ? (
+                  <img src={form.menu_image_url} alt="menu" className="w-20 h-20 object-cover rounded-lg bg-slate-800" />
+                ) : (
+                  <div className="w-20 h-20 rounded-lg border-2 border-dashed border-slate-700 flex items-center justify-center text-slate-500">
+                    <UtensilsCrossed className="w-7 h-7" />
+                  </div>
+                )}
+                <label className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm rounded-lg cursor-pointer">
+                  <input type="file" accept="image/*" onChange={(e) => handleSingleUpload(e, 'menu')} className="hidden" disabled={uploadingKind} />
+                  {uploadingKind === 'menu' ? 'Uploading…' : (form.menu_image_url ? 'Replace menu image' : 'Upload menu image')}
+                </label>
+                {form.menu_image_url && (
+                  <button onClick={() => setField('menu_image_url', '')} className="text-slate-400 hover:text-red-400 text-sm">Remove</button>
+                )}
+              </div>
+              <p className="text-xs text-slate-500">A linked PDF works great for full menus; an image works for daily/featured items.</p>
+            </div>
+          </section>
+
+        </div>
+
+        <div className="p-4 border-t border-slate-700 flex gap-2">
+          <button onClick={onClose} className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-lg">Cancel</button>
+          <button onClick={handleSave} disabled={saving || !!uploadingKind} className="flex-1 py-3 bg-violet-500 hover:bg-violet-600 text-white rounded-lg font-semibold disabled:opacity-40">
+            {saving ? 'Saving…' : 'Save & publish'}
           </button>
         </div>
       </div>
@@ -11183,6 +11651,8 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   // Patch E.1 — Story composer (own venue only)
   const [showStoryComposer, setShowStoryComposer] = useState(false);
+  // Patch E.2 — Bespoke venue editor (own venue only)
+  const [showEditMyVenue, setShowEditMyVenue] = useState(false);
   
   // Detect mobile screen and auto-collapse sidebar
   useEffect(() => {
@@ -11837,6 +12307,10 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
                   <div><h1 className="text-2xl font-bold text-white">Dashboard</h1><p className="text-slate-400">{venue?.name}</p></div>
                   <div className="flex gap-2 flex-wrap">
+                    {/* Patch E.2 — Edit venue page */}
+                    <button onClick={() => setShowEditMyVenue(true)} className="flex items-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition">
+                      <Edit2 className="w-4 h-4" />Edit Page
+                    </button>
                     {/* Patch E.1 — Post a story */}
                     <button onClick={() => setShowStoryComposer(true)} className="flex items-center gap-2 px-4 py-2 bg-violet-600/20 text-violet-300 border border-violet-500/40 rounded-lg hover:bg-violet-600/30 transition">
                       <Sparkles className="w-4 h-4" />Post Story
@@ -12310,6 +12784,17 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
         />
       )}
 
+      {/* Patch E.2 — Bespoke venue editor (own venue only) */}
+      {showEditMyVenue && venue && (
+        <EditMyVenue
+          venue={venue}
+          supabaseClient={supabaseClient}
+          onClose={() => setShowEditMyVenue(false)}
+          onSaved={(updated) => setVenue(updated)}
+          showToast={(msg, type) => showToastMsg(msg, type)}
+        />
+      )}
+
       {toast && <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg ${toast.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'} text-white max-w-sm`}>{toast.message}</div>}
     </div>
   );
@@ -12369,6 +12854,11 @@ export default function App() {
   const [postRsvpEvent, setPostRsvpEvent] = useState(null);
   // Patch E — Venue page state. Setting selectedVenuePage opens the public venue profile.
   const [selectedVenuePage, setSelectedVenuePage] = useState(null);
+  // Patch E.2 — Map of venueId → active stories[] for feed indicators (batched, not per-card)
+  const [venueStoriesMap, setVenueStoriesMap] = useState(new Map());
+  // Patch E.2 — Stories opened directly from a feed-card indicator (separate from venue page carousel)
+  const [feedCarouselStories, setFeedCarouselStories] = useState(null);
+  const [feedCarouselVenueName, setFeedCarouselVenueName] = useState('');
   const [allVenues, setAllVenues] = useState([]); // all establishments (loaded once for venue page lookup + regular detection)
   const [attendedEventIds, setAttendedEventIds] = useState([]); // IDs of events the user has checked in to (for regular detection)
   // Patch C2a — JS-measured scroll container height. iOS Safari requires an explicit (not flex-1) height
@@ -14088,6 +14578,41 @@ export default function App() {
     }
   };
 
+  // Patch E.2 — Batched fetch of active stories for ALL venues referenced by current events.
+  // Builds a Map<venueId, stories[]> consumed by EventFeedCard to render the indicator.
+  // One query covers the whole feed; per-card queries would be O(n).
+  // Fails silently if the venue_stories table is missing — no UX breakage.
+  const loadVenueStoriesForFeed = async (eventsList) => {
+    if (!supabaseClient || !eventsList?.length) {
+      setVenueStoriesMap(new Map());
+      return;
+    }
+    // Collect unique venue IDs (establishment_id is authoritative; name fallback for un-linked events)
+    const venueIds = [...new Set(eventsList.map(e => e.establishment_id).filter(Boolean))];
+    if (venueIds.length === 0) {
+      setVenueStoriesMap(new Map());
+      return;
+    }
+    try {
+      const { data, error } = await supabaseClient
+        .from('venue_stories')
+        .select('*')
+        .in('venue_id', venueIds)
+        .gt('expires_at', new Date().toISOString())
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      const map = new Map();
+      for (const story of (data || [])) {
+        if (!map.has(story.venue_id)) map.set(story.venue_id, []);
+        map.get(story.venue_id).push(story);
+      }
+      setVenueStoriesMap(map);
+    } catch (err) {
+      console.warn('loadVenueStoriesForFeed failed:', err?.message);
+      setVenueStoriesMap(new Map());
+    }
+  };
+
   const loadEvents = async (userId = null) => {
     if (!supabaseClient) return;
     
@@ -14112,6 +14637,8 @@ export default function App() {
       
       setEvents(filteredEvents);
       setCurrentIndex(0);
+      // Patch E.2 — Batch-fetch active stories for all unique venues in feed (one query)
+      loadVenueStoriesForFeed(filteredEvents);
     } catch (error) {
       console.error('Error loading events:', error);
     }
@@ -15082,6 +15609,8 @@ const loadSquads = async (userId) => {
                     const sevenDays = 7 * 24 * 60 * 60 * 1000;
                     return Date.now() - updated.getTime() < sevenDays;
                   })();
+                  // Patch E.2 — Pull pre-fetched stories for this venue from the map
+                  const cardStories = (event.establishment_id && venueStoriesMap.get(event.establishment_id)) || [];
                   return (
                     <EventFeedCard
                       key={event.id}
@@ -15093,6 +15622,12 @@ const loadSquads = async (userId) => {
                       cardHeight={feedScrollHeight}
                       isRegularHere={isRegular}
                       isFreshThisWeek={isFresh}
+                      storiesForVenue={cardStories}
+                      onStoryTap={(ev, stories) => {
+                        // Open carousel directly from the feed
+                        setFeedCarouselStories(stories);
+                        setFeedCarouselVenueName(ev.venue || '');
+                      }}
                       onCardTap={(ev) => { handleEventClick(ev); }}
                       onVenueTap={(ev) => { openVenueFromEvent(ev); }}
                       onSave={handleFeedCardSave}
@@ -15265,6 +15800,16 @@ const loadSquads = async (userId) => {
             }}
             darkMode={darkMode}
             supabaseClient={supabaseClient}
+          />
+        )}
+
+        {/* Patch E.2 — Stories opened directly from a Discover-feed indicator */}
+        {feedCarouselStories && feedCarouselStories.length > 0 && (
+          <StoryCarousel
+            stories={feedCarouselStories}
+            venueName={feedCarouselVenueName}
+            startIndex={0}
+            onClose={() => { setFeedCarouselStories(null); setFeedCarouselVenueName(''); }}
           />
         )}
 
