@@ -12997,6 +12997,8 @@ export default function App() {
   const [feedScrollHeight, setFeedScrollHeight] = useState(null);
   const topBarRef = useRef(null);
   const bottomNavRef = useRef(null);
+  // Patch D.1-fix3 — Ref to the discover feed scroll container so handleFeedCardSave can advance to next card.
+  const discoverFeedRef = useRef(null);
 
   useEffect(() => {
     const measure = () => {
@@ -15048,7 +15050,9 @@ const loadCrews = async (userId) => {
         } catch (e) { /* unique-constraint or table-missing, fail silent */ }
       }
       logInteraction(event.id, 'saved');
-      showToast('💜 Saved to your list', 'success');
+      showToast('💜 Saved — find it in your Events tab', 'success');
+      // Patch D.1-fix4 — Card auto-disappears via getVibeFilteredEvents filter.
+      // CSS scroll-snap re-snaps to the next card naturally (same mechanic as pass).
     }
   };
 
@@ -15298,6 +15302,13 @@ const loadCrews = async (userId) => {
     // No more "_seen" filter — every other event stays in the feed across sessions.
     if (passedEventIds.size > 0) {
       filtered = filtered.filter(e => !passedEventIds.has(e.id));
+    }
+
+    // Patch D.1-fix4 — Filter out events the user already saved (heart).
+    // Saved = "yes I'm interested, I'll deal with it later" — same disappear-from-feed
+    // behavior as pass, but routed to the Events tab → Saved view for RSVP.
+    if (savedEventIds.size > 0) {
+      filtered = filtered.filter(e => !savedEventIds.has(e.id));
     }
 
     // Patch B — Free-text search
@@ -15704,6 +15715,7 @@ const loadCrews = async (userId) => {
 
         {/* Scrollable Content Area */}
         <div
+          ref={discoverFeedRef}
           className={`overflow-y-auto overflow-x-hidden -webkit-overflow-scrolling-touch ${currentTab === 'discover' ? 'discover-feed-snap scrollbar-hide' : 'flex-1 pb-20 sm:pb-24'}`}
           style={currentTab === 'discover' && feedScrollHeight ? { height: `${feedScrollHeight}px` } : undefined}
         >
