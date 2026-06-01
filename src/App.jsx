@@ -671,6 +671,258 @@ const formatStoryAge = (createdAt) => {
   return `${days}d ago`;
 };
 
+// ========== Patch Q — Standing offers, recurring events, Quick Add ==========
+// Day-of-week helpers (Sunday=0). Always parse YYYY-MM-DD as local time to avoid UTC-shift bugs.
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const WEEKDAY_NAMES_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// Local-time-safe weekday from a YYYY-MM-DD date string. Returns 0–6 (Sun–Sat), or null if invalid.
+const getWeekdayFromDateStr = (dateStr) => {
+  if (!dateStr) return null;
+  try {
+    const d = new Date(`${dateStr}T00:00:00`);
+    if (isNaN(d.getTime())) return null;
+    return d.getDay();
+  } catch {
+    return null;
+  }
+};
+
+// Add N weeks to a YYYY-MM-DD date, return YYYY-MM-DD. Local-time-safe.
+const addWeeksToDateStr = (dateStr, weeks) => {
+  if (!dateStr) return dateStr;
+  try {
+    const d = new Date(`${dateStr}T00:00:00`);
+    if (isNaN(d.getTime())) return dateStr;
+    d.setDate(d.getDate() + weeks * 7);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  } catch {
+    return dateStr;
+  }
+};
+
+// Format HH:MM (24h) into 12h display like "5:30 PM". Returns '' for invalid.
+const formatTime12h = (timeStr) => {
+  if (!timeStr) return '';
+  const m = /^(\d{1,2}):(\d{2})/.exec(timeStr);
+  if (!m) return '';
+  let h = parseInt(m[1], 10);
+  const min = m[2];
+  if (isNaN(h)) return '';
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12;
+  if (h === 0) h = 12;
+  return `${h}:${min} ${ampm}`;
+};
+
+// Add a fixed offset (minutes) to a HH:MM string, return HH:MM. Wraps past midnight.
+const addMinutesToTimeStr = (timeStr, minutes) => {
+  if (!timeStr) return timeStr;
+  const m = /^(\d{1,2}):(\d{2})/.exec(timeStr);
+  if (!m) return timeStr;
+  const total = (parseInt(m[1], 10) * 60 + parseInt(m[2], 10) + minutes) % (24 * 60);
+  const wrapped = (total + 24 * 60) % (24 * 60);
+  const hh = String(Math.floor(wrapped / 60)).padStart(2, '0');
+  const mm = String(wrapped % 60).padStart(2, '0');
+  return `${hh}:${mm}`;
+};
+
+// PATCH Q SCHEMA CONSTANTS — confirmed migrated in Supabase prior to this patch.
+const PATCH_Q_RECURRENCE_COUNT = 12;          // weekly occurrences generated per "Recurring" toggle
+const PATCH_Q_FEED_MIN_BEFORE_FILL = 10;      // Discover feed threshold for appending standing offers
+const PATCH_Q_FEED_FILL_MAX = 5;              // Max standing offers appended to feed at the tail
+const PATCH_Q_DEFAULT_DURATION_MIN = 120;     // Default end_time = start_time + 2h when omitted
+
+// Group a list of standing-offer events by weekday, taking the nearest-future
+// occurrence per (recurrence chain × weekday). Returns an array of:
+//   { weekday: 0..6, weekdayLabel: 'Tuesday', items: [event, ...] } sorted weekday asc, time asc.
+// Used by the venue page "Weekly deals" section.
+const groupStandingOffersByDay = (eventsList) => {
+  if (!Array.isArray(eventsList) || eventsList.length === 0) return [];
+  const todayStr = new Date().toISOString().slice(0, 10);
+  // Dedupe by recurrence chain key. For events without a parent, use their own id.
+  // Pick the nearest-future row per chain so the displayed date isn't in the past.
+  const byChain = new Map();
+  for (const ev of eventsList) {
+    if (!ev?.is_standing_offer) continue;
+    if (!ev.date || ev.date < todayStr) continue; // skip past occurrences
+    const chainKey = ev.recurrence_parent_id || ev.id;
+    const existing = byChain.get(chainKey);
+    if (!existing || (ev.date || '') < (existing.date || '')) {
+      byChain.set(chainKey, ev);
+    }
+  }
+  // Bucket by weekday
+  const buckets = new Map();
+  for (const ev of byChain.values()) {
+    const wd = getWeekdayFromDateStr(ev.date);
+    if (wd === null) continue;
+    if (!buckets.has(wd)) buckets.set(wd, []);
+    buckets.get(wd).push(ev);
+  }
+  const result = [];
+  for (let wd = 0; wd < 7; wd++) {
+    const items = buckets.get(wd);
+    if (!items || items.length === 0) continue;
+    items.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    result.push({ weekday: wd, weekdayLabel: WEEKDAY_NAMES[wd], items });
+  }
+  return result;
+};
+
+// Patch Q — Pick standing-offer events to append to the Discover feed when the
+// real-event list is thin. Dedupes by recurrence chain (one per weekly deal),
+// returns up to PATCH_Q_FEED_FILL_MAX nearest-future occurrences.
+const pickFeedFillStandingOffers = (eventsList, excludeIds = new Set()) => {
+  if (!Array.isArray(eventsList) || eventsList.length === 0) return [];
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const byChain = new Map();
+  for (const ev of eventsList) {
+    if (!ev?.is_standing_offer) continue;
+    if (!ev.id || excludeIds.has(ev.id)) continue;
+    if (!ev.date || ev.date < todayStr) continue;
+    const chainKey = ev.recurrence_parent_id || ev.id;
+    const existing = byChain.get(chainKey);
+    if (!existing || (ev.date || '') < (existing.date || '')) {
+      byChain.set(chainKey, ev);
+    }
+  }
+  return Array.from(byChain.values())
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+    .slice(0, PATCH_Q_FEED_FILL_MAX);
+};
+
+// ========== Patch R — Venue data model overhaul ==========
+// Full catalog of venue types. Single canonical list used by AdminPortal and BusinessPortal
+// (both previously had their own truncated lists; those locals now alias to this).
+// id values are the persisted strings in establishments.venue_type — DO NOT rename existing
+// ids ('bar', 'restaurant', 'club', 'lounge', 'brewery', 'rooftop', 'sports_bar', 'wine_bar', 'other')
+// without a data migration. New entries can be added freely.
+const VENUE_TYPES_CATALOG = [
+  { id: 'bar',           label: 'Bar',           icon: '🍺' },
+  { id: 'restaurant',    label: 'Restaurant',    icon: '🍽️' },
+  { id: 'club',          label: 'Nightclub',     icon: '🎵' },
+  { id: 'lounge',        label: 'Lounge',        icon: '🛋️' },
+  { id: 'brewery',       label: 'Brewery',       icon: '🍻' },
+  { id: 'taproom',       label: 'Taproom',       icon: '🚰' },
+  { id: 'wine_bar',      label: 'Wine Bar',      icon: '🍷' },
+  { id: 'cocktail_bar',  label: 'Cocktail Bar',  icon: '🍸' },
+  { id: 'speakeasy',     label: 'Speakeasy',     icon: '🗝️' },
+  { id: 'rooftop',       label: 'Rooftop',       icon: '🌃' },
+  { id: 'patio_bar',     label: 'Patio Bar',     icon: '🌳' },
+  { id: 'sports_bar',    label: 'Sports Bar',    icon: '⚽' },
+  { id: 'dive_bar',      label: 'Dive Bar',      icon: '🍷' },
+  { id: 'coffee_shop',   label: 'Coffee Shop',   icon: '☕' },
+  { id: 'cafe',          label: 'Cafe',          icon: '🥐' },
+  { id: 'music_venue',   label: 'Music Venue',   icon: '🎤' },
+  { id: 'comedy_club',   label: 'Comedy Club',   icon: '🎭' },
+  { id: 'hookah_lounge', label: 'Hookah Lounge', icon: '💨' },
+  { id: 'tea_house',     label: 'Tea House',     icon: '🍵' },
+  { id: 'other',         label: 'Other',         icon: '🏢' },
+];
+
+// Lookup helper — returns the catalog entry or null.
+const getVenueTypeMeta = (id) => VENUE_TYPES_CATALOG.find(t => t.id === id) || null;
+
+// Vibe tags catalog. A venue can have many. Used by:
+//   • Venue page tag chip row
+//   • Vibe matching in Discover feed (compounds with event.tags)
+//   • Future awards (Patch Y/Z) — "best patio in Deep Ellum", etc.
+// id values persist in establishments.vibe_tags jsonb array.
+const VIBE_TAGS_CATALOG = [
+  { id: 'dog-friendly',         label: 'Dog-friendly',          icon: '🐕' },
+  { id: 'patio',                label: 'Patio',                 icon: '🌳' },
+  { id: 'rooftop',              label: 'Rooftop',               icon: '🌃' },
+  { id: 'dive',                 label: 'Dive',                  icon: '🍻' },
+  { id: 'upscale',              label: 'Upscale',               icon: '✨' },
+  { id: 'live-music',           label: 'Live music',            icon: '🎵' },
+  { id: 'dancing',              label: 'Dancing',               icon: '💃' },
+  { id: 'quiet',                label: 'Quiet',                 icon: '🤫' },
+  { id: 'loud',                 label: 'Loud',                  icon: '🔊' },
+  { id: 'intimate',             label: 'Intimate',              icon: '🕯️' },
+  { id: 'craft-cocktails',      label: 'Craft cocktails',       icon: '🍸' },
+  { id: 'cheap-drinks',         label: 'Cheap drinks',          icon: '💵' },
+  { id: 'late-night',           label: 'Late-night',            icon: '🌙' },
+  { id: 'brunch',               label: 'Brunch',                icon: '🥞' },
+  { id: 'outdoor-seating',      label: 'Outdoor seating',       icon: '☀️' },
+  { id: 'private-rooms',        label: 'Private rooms',         icon: '🚪' },
+  { id: 'view',                 label: 'View',                  icon: '👀' },
+  { id: '21+-after-10pm',       label: '21+ after 10pm',        icon: '🔞' },
+  { id: 'happy-hour-daily',     label: 'Daily happy hour',      icon: '🍹' },
+  { id: 'kid-friendly',         label: 'Kid-friendly',          icon: '👶' },
+  { id: 'wheelchair-accessible',label: 'Wheelchair accessible', icon: '♿' },
+];
+
+const getVibeTagMeta = (id) => VIBE_TAGS_CATALOG.find(t => t.id === id) || null;
+
+// Patch R — Is a venue currently in happy hour? Reads venue_happy_hours rows.
+// `hhRows` is the array of rows for this venue (caller filters by venue_id).
+// Returns the matching row if any, else null. Used by:
+//   • VenuePage "Now" badge
+//   • Discover feed "Now" toggle (Patch S — happy hours layer)
+const isVenueInHappyHourNow = (hhRows, now = new Date()) => {
+  if (!Array.isArray(hhRows) || hhRows.length === 0) return null;
+  const wd = now.getDay(); // 0=Sun..6=Sat — matches venue_happy_hours.day_of_week
+  const minutesNow = now.getHours() * 60 + now.getMinutes();
+  for (const r of hhRows) {
+    if (r.day_of_week !== wd) continue;
+    const startMin = (() => {
+      const m = /^(\d{1,2}):(\d{2})/.exec(r.start_time || '');
+      return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : null;
+    })();
+    const endMin = (() => {
+      const m = /^(\d{1,2}):(\d{2})/.exec(r.end_time || '');
+      return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : null;
+    })();
+    if (startMin == null || endMin == null) continue;
+    // Handle late-night happy hours that wrap past midnight (end < start).
+    if (endMin < startMin) {
+      if (minutesNow >= startMin || minutesNow < endMin) return r;
+    } else {
+      if (minutesNow >= startMin && minutesNow < endMin) return r;
+    }
+  }
+  return null;
+};
+
+// Patch R — Group happy hour rows by weekday for venue page display.
+// Returns array of { weekday, weekdayLabel, items } sorted Sun→Sat starting from today.
+const groupHappyHoursByDay = (hhRows) => {
+  if (!Array.isArray(hhRows) || hhRows.length === 0) return [];
+  const buckets = new Map();
+  for (const r of hhRows) {
+    const wd = r.day_of_week;
+    if (wd == null || wd < 0 || wd > 6) continue;
+    if (!buckets.has(wd)) buckets.set(wd, []);
+    buckets.get(wd).push(r);
+  }
+  const today = new Date().getDay();
+  const order = [];
+  for (let i = 0; i < 7; i++) order.push((today + i) % 7);
+  const result = [];
+  for (const wd of order) {
+    const items = buckets.get(wd);
+    if (!items || items.length === 0) continue;
+    items.sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
+    result.push({ weekday: wd, weekdayLabel: WEEKDAY_NAMES[wd], items });
+  }
+  return result;
+};
+
+// Patch R — Is a venue 21+ after a given time? Reads establishments.age_gate_after_time.
+// Returns boolean. Used to surface "🔞 21+ after 10pm" badge on venue pages/cards.
+const isVenue21PlusAfterNow = (venue, now = new Date()) => {
+  if (!venue?.age_gate_after_time) return false;
+  const m = /^(\d{1,2}):(\d{2})/.exec(venue.age_gate_after_time);
+  if (!m) return false;
+  const gateMin = parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  return nowMin >= gateMin;
+};
+
 
 const EVENT_TEMPLATES = [
   {
@@ -4842,6 +5094,387 @@ function EventSuggestionModal({ onClose, userProfile, supabaseClient, userBadges
   );
 }
 
+// Patch Q — Mobile-first "Quick Add" event creation modal.
+// Designed for on-site capture (admin or venue owner standing at the bar). One screen,
+// venue search picks an existing establishment (inheriting address / neighborhood / coords /
+// default category), 30-min step time picker, standing-offer vs real-event toggle, weekly
+// recurring toggle that fans out into PATCH_Q_RECURRENCE_COUNT linked rows.
+//
+// Props:
+//   onClose()                    — dismiss the modal
+//   onCreated(insertedRows[])    — fires after a successful insert with the rows created
+//   establishments               — array of venue objects to search through
+//   supabaseClient               — required, used for direct insert (so we can chain parent → children)
+//   showToast(msg, type)         — toast helper
+//   defaultStatus                — 'live' (admin) | 'pending' (business). Status applied to all inserted rows.
+//   lockedVenue                  — optional. If present, venue search is hidden and this venue is used.
+function QuickAddEventModal({
+  onClose,
+  onCreated,
+  establishments = [],
+  supabaseClient,
+  showToast,
+  defaultStatus = 'live',
+  lockedVenue = null,
+}) {
+  // ---- Form state ----
+  const [venueSearch, setVenueSearch] = useState('');
+  const [selectedVenue, setSelectedVenue] = useState(lockedVenue);
+  const [name, setName] = useState('');
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [time, setTime] = useState('19:00');
+  const [coverCharge, setCoverCharge] = useState('');
+  const [description, setDescription] = useState('');
+  const [isStandingOffer, setIsStandingOffer] = useState(false);
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [venueDropdownOpen, setVenueDropdownOpen] = useState(false);
+
+  // Venue autocomplete: filter approved (or all) venues by case-insensitive substring on name.
+  // Skip filter UI entirely when lockedVenue is set.
+  const approvedVenues = establishments.filter(v => !v.status || v.status === 'approved');
+  const filteredVenues = !venueSearch.trim()
+    ? approvedVenues.slice(0, 8)
+    : approvedVenues.filter(v => (v.name || '').toLowerCase().includes(venueSearch.toLowerCase())).slice(0, 8);
+
+  const pickVenue = (venue) => {
+    setSelectedVenue(venue);
+    setVenueSearch('');
+    setVenueDropdownOpen(false);
+  };
+
+  const clearVenue = () => {
+    if (lockedVenue) return; // can't clear in business portal mode
+    setSelectedVenue(null);
+    setVenueSearch('');
+  };
+
+  // Disambiguating weekday hint for the date input. Helps the user confirm "Tuesday May 12".
+  const dateWeekdayHint = (() => {
+    const wd = getWeekdayFromDateStr(date);
+    if (wd === null) return '';
+    return WEEKDAY_NAMES[wd];
+  })();
+
+  // Submit handler — builds payload, optionally fans out into 12 weekly rows.
+  // Parent row gets recurrence_parent_id = null; children reference parent.id.
+  const handleSubmit = async () => {
+    if (submitting) return;
+    if (!selectedVenue?.id) {
+      showToast?.('Pick a venue', 'error');
+      return;
+    }
+    if (!name.trim()) {
+      showToast?.('Event name required', 'error');
+      return;
+    }
+    if (!date) {
+      showToast?.('Pick a date', 'error');
+      return;
+    }
+    if (!time) {
+      showToast?.('Pick a start time', 'error');
+      return;
+    }
+    if (!supabaseClient) {
+      showToast?.('No DB connection', 'error');
+      return;
+    }
+
+    setSubmitting(true);
+
+    // Inherit defaults from the chosen venue.
+    const venueCategory = selectedVenue.default_event_category
+      || (isStandingOffer ? 'happy-hour' : 'nightlife');
+    const venueImage = selectedVenue.cover_image_url || selectedVenue.image_url || null;
+
+    const baseRow = {
+      name: name.trim(),
+      venue: selectedVenue.name,
+      establishment_id: selectedVenue.id,
+      neighborhood: selectedVenue.neighborhood || null,
+      address: selectedVenue.address || null,
+      latitude: selectedVenue.latitude ?? null,
+      longitude: selectedVenue.longitude ?? null,
+      category: venueCategory,
+      type: 'Event',
+      time,
+      end_time: addMinutesToTimeStr(time, PATCH_Q_DEFAULT_DURATION_MIN),
+      description: description.trim() || null,
+      cover_charge: coverCharge ? parseFloat(coverCharge) : 0,
+      image_url: venueImage,
+      status: defaultStatus,
+      is_standing_offer: !!isStandingOffer,
+      recurring: !!isRecurring,
+      recurrence_pattern: isRecurring ? 'weekly' : null,
+      age_tag: '21+',
+      age_restriction: '21+',
+      views: 0,
+      rsvps: 0,
+      checkins: 0,
+    };
+
+    try {
+      const inserted = [];
+
+      // Insert parent first to get its id, then chain children.
+      const parentPayload = { ...baseRow, date, recurrence_parent_id: null };
+      const { data: parent, error: parentErr } = await supabaseClient
+        .from('events')
+        .insert([parentPayload])
+        .select()
+        .single();
+      if (parentErr) throw parentErr;
+      inserted.push(parent);
+
+      if (isRecurring && parent?.id) {
+        const childRows = [];
+        for (let i = 1; i < PATCH_Q_RECURRENCE_COUNT; i++) {
+          childRows.push({
+            ...baseRow,
+            date: addWeeksToDateStr(date, i),
+            recurrence_parent_id: parent.id,
+          });
+        }
+        if (childRows.length > 0) {
+          const { data: children, error: childErr } = await supabaseClient
+            .from('events')
+            .insert(childRows)
+            .select();
+          if (childErr) throw childErr;
+          if (Array.isArray(children)) inserted.push(...children);
+        }
+      }
+
+      onCreated?.(inserted);
+      const offerWord = isStandingOffer ? 'Standing offer' : 'Event';
+      if (isRecurring) {
+        showToast?.(`✨ ${offerWord} added — ${inserted.length} weekly occurrences created`, 'success');
+      } else {
+        showToast?.(`✨ ${offerWord} added`, 'success');
+      }
+      onClose?.();
+    } catch (err) {
+      console.error('QuickAdd insert failed:', err);
+      const msg = err?.message || err?.hint || 'Insert failed';
+      showToast?.(`Create failed: ${msg}`, 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/85 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="bg-zinc-900 w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl border border-zinc-800 max-h-[92vh] overflow-y-auto">
+        {/* Header */}
+        <div className="sticky top-0 bg-zinc-900 border-b border-zinc-800 px-4 py-3 flex items-center justify-between z-10">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">⚡</span>
+            <h2 className="text-lg font-bold text-white">Quick Add</h2>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-zinc-800 rounded-lg">
+            <X className="w-5 h-5 text-zinc-400" />
+          </button>
+        </div>
+
+        <div className="p-4 space-y-5">
+          {/* Venue — the only field that really matters. Locked or searchable. */}
+          <div>
+            <label className="block text-xs font-semibold text-zinc-400 mb-2 uppercase tracking-wide">Venue *</label>
+            {selectedVenue ? (
+              <div className="flex items-center gap-3 p-3 bg-violet-500/10 border border-violet-500/40 rounded-xl">
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center flex-shrink-0">
+                  <Building2 className="w-5 h-5 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-semibold truncate">{selectedVenue.name}</p>
+                  <p className="text-zinc-400 text-xs truncate">{selectedVenue.neighborhood || selectedVenue.address || '—'}</p>
+                </div>
+                {!lockedVenue && (
+                  <button onClick={clearVenue} className="p-1 hover:bg-zinc-800 rounded-lg" aria-label="Change venue">
+                    <X className="w-4 h-4 text-zinc-400" />
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+                <input
+                  type="text"
+                  value={venueSearch}
+                  onChange={e => { setVenueSearch(e.target.value); setVenueDropdownOpen(true); }}
+                  onFocus={() => setVenueDropdownOpen(true)}
+                  placeholder="Search venues..."
+                  className="w-full pl-10 pr-3 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white text-base focus:border-violet-500 outline-none"
+                />
+                {venueDropdownOpen && filteredVenues.length > 0 && (
+                  <div className="absolute z-20 mt-1 w-full bg-zinc-800 border border-zinc-700 rounded-xl shadow-2xl max-h-60 overflow-y-auto">
+                    {filteredVenues.map(v => (
+                      <button
+                        key={v.id}
+                        onClick={() => pickVenue(v)}
+                        className="w-full px-3 py-2 text-left hover:bg-zinc-700 border-b border-zinc-700/50 last:border-0"
+                      >
+                        <p className="text-white text-sm font-medium truncate">{v.name}</p>
+                        <p className="text-zinc-500 text-xs truncate">{v.neighborhood || v.address || '—'}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {venueDropdownOpen && venueSearch.trim() && filteredVenues.length === 0 && (
+                  <div className="absolute z-20 mt-1 w-full bg-zinc-800 border border-zinc-700 rounded-xl p-3">
+                    <p className="text-zinc-400 text-sm">No venues match. Add the venue first, then create the event.</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Event name */}
+          <div>
+            <label className="block text-xs font-semibold text-zinc-400 mb-2 uppercase tracking-wide">Event name *</label>
+            <input
+              type="text"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder={isStandingOffer ? 'e.g. Tequila Tuesday' : 'e.g. Live Music Night'}
+              className="w-full px-3 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white text-base focus:border-violet-500 outline-none"
+            />
+          </div>
+
+          {/* Date + Time (mobile-friendly, 30-min step) */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-zinc-400 mb-2 uppercase tracking-wide">Date *</label>
+              <input
+                type="date"
+                value={date}
+                onChange={e => setDate(e.target.value)}
+                className="w-full px-3 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white text-base focus:border-violet-500 outline-none"
+              />
+              {dateWeekdayHint && (
+                <p className="mt-1 text-[11px] text-zinc-500">{dateWeekdayHint}</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-zinc-400 mb-2 uppercase tracking-wide">Start *</label>
+              <input
+                type="time"
+                value={time}
+                step="1800"
+                onChange={e => setTime(e.target.value)}
+                className="w-full px-3 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white text-base focus:border-violet-500 outline-none"
+              />
+              {time && (
+                <p className="mt-1 text-[11px] text-zinc-500">{formatTime12h(time)}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Standing offer vs real event — single toggle */}
+          <div>
+            <label className="block text-xs font-semibold text-zinc-400 mb-2 uppercase tracking-wide">Type *</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setIsStandingOffer(false)}
+                className={`p-3 rounded-xl border-2 text-left transition ${!isStandingOffer ? 'border-violet-500 bg-violet-500/15' : 'border-zinc-700 bg-zinc-800'}`}
+              >
+                <p className="text-sm font-semibold text-white">🎉 Real event</p>
+                <p className="text-[11px] text-zinc-400 mt-0.5">Trivia, concert, theme night</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsStandingOffer(true)}
+                className={`p-3 rounded-xl border-2 text-left transition ${isStandingOffer ? 'border-orange-500 bg-orange-500/15' : 'border-zinc-700 bg-zinc-800'}`}
+              >
+                <p className="text-sm font-semibold text-white">🍻 Standing offer</p>
+                <p className="text-[11px] text-zinc-400 mt-0.5">Happy hour, weekly deal</p>
+              </button>
+            </div>
+            {isStandingOffer && (
+              <p className="mt-2 text-[11px] text-orange-300/80">Standing offers stay off Discover by default and surface on the venue page under "Weekly deals."</p>
+            )}
+          </div>
+
+          {/* Weekly recurring */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setIsRecurring(v => !v)}
+              className={`w-full p-3 rounded-xl border-2 text-left flex items-center gap-3 transition ${isRecurring ? 'border-violet-500 bg-violet-500/15' : 'border-zinc-700 bg-zinc-800'}`}
+            >
+              <div className={`w-10 h-6 rounded-full relative transition ${isRecurring ? 'bg-violet-500' : 'bg-zinc-700'}`}>
+                <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition ${isRecurring ? 'left-[18px]' : 'left-0.5'}`} />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-white">Repeat weekly</p>
+                <p className="text-[11px] text-zinc-400">
+                  {isRecurring
+                    ? `Creates ${PATCH_Q_RECURRENCE_COUNT} occurrences (every ${dateWeekdayHint || 'week'})`
+                    : 'One-time only'}
+                </p>
+              </div>
+            </button>
+          </div>
+
+          {/* Optional: cover charge + description (collapsed by default to keep screen short) */}
+          <details className="bg-zinc-800/50 rounded-xl border border-zinc-700">
+            <summary className="px-3 py-2 text-sm text-zinc-300 cursor-pointer select-none">
+              Optional details
+            </summary>
+            <div className="px-3 pb-3 pt-1 space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 mb-1.5 uppercase tracking-wide">Cover charge</label>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  value={coverCharge}
+                  onChange={e => setCoverCharge(e.target.value)}
+                  placeholder="0"
+                  className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-white text-sm focus:border-violet-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 mb-1.5 uppercase tracking-wide">Description</label>
+                <textarea
+                  value={description}
+                  onChange={e => setDescription(e.target.value)}
+                  rows={2}
+                  placeholder="Anything worth knowing?"
+                  className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-white text-sm focus:border-violet-500 outline-none resize-none"
+                />
+              </div>
+            </div>
+          </details>
+        </div>
+
+        {/* Sticky footer with submit */}
+        <div className="sticky bottom-0 bg-zinc-900 border-t border-zinc-800 px-4 py-3 flex gap-2">
+          <button
+            onClick={onClose}
+            disabled={submitting}
+            className="px-4 py-3 border border-zinc-700 text-zinc-300 rounded-xl font-semibold disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={submitting || !selectedVenue || !name.trim() || !date || !time}
+            className="flex-1 px-4 py-3 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-xl font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {submitting
+              ? 'Adding...'
+              : isRecurring
+                ? `Add ${PATCH_Q_RECURRENCE_COUNT}× weekly`
+                : 'Add event'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Patch B — Vertical-scroll TikTok-style card for the Discover feed.
 // Patch C — Full-viewport: image fills the entire card, content overlays bottom with gradient.
 // Card itself is tappable (opens detail). Save + Pass are corner icons. RSVP lives in detail view.
@@ -5101,6 +5734,12 @@ function EventFeedCard({
                 ✨ Fresh this week
               </span>
             )}
+            {/* Patch Q — Standing offer indicator. Shown when a weekly deal is appended to the feed (low-event fill). */}
+            {event?.is_standing_offer && (
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-orange-500/25 text-orange-200 border border-orange-400/40 backdrop-blur">
+                🍻 Weekly
+              </span>
+            )}
           </div>
           {/* Single-line description preview */}
           {shortDesc && (
@@ -5285,6 +5924,10 @@ function StoryCarousel({ stories, venueName, startIndex = 0, onClose }) {
 function VenuePage({
   venue,
   upcomingEvents = [],
+  weeklyOffers = [], // Patch Q — standing-offer events grouped/rendered separately from upcomingEvents
+  happyHoursForVenue = [], // Patch R — rows from venue_happy_hours for this venue
+  otherBrandLocations = [], // Patch R — sibling locations sharing parent_brand_id (or under this venue if it's the parent)
+  onOtherLocationTap, // Patch R — (venueRow) => void, opens the tapped location's page
   userCheckinCount = 0,
   onClose,
   onEventClick,
@@ -5337,7 +5980,7 @@ function VenuePage({
   const isRegular = userCheckinCount >= 3;
   const hoursList = formatVenueHours(venue.hours);
   const hasSocial = venue.instagram || venue.facebook || venue.twitter;
-  const hasContact = venue.phone || venue.email || venue.website || venue.menu_url;
+  const hasContact = venue.phone || venue.website || venue.menu_url; // Patch R — email no longer displayed in UI
   const photos = Array.isArray(venue.photos) ? venue.photos.filter(Boolean) : [];
 
   // Format an Instagram handle (strip @ if present, build profile URL)
@@ -5427,7 +6070,8 @@ function VenuePage({
               )}
             </div>
             <p className={`text-sm mt-1 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
-              {[venue.venue_type, venue.neighborhood].filter(Boolean).join(' · ')}
+              {/* Patch R — Use catalog label (humanized) instead of raw id; neighborhood removed from UI. */}
+              {getVenueTypeMeta(venue.venue_type)?.label || venue.venue_type || ''}
             </p>
           </div>
         </div>
@@ -5574,14 +6218,9 @@ function VenuePage({
                 <Phone className="w-3.5 h-3.5" />Call
               </a>
             )}
-            {venue.email && (
-              <a
-                href={`mailto:${venue.email}`}
-                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold ${darkMode ? 'bg-zinc-800 hover:bg-zinc-700 text-white' : 'bg-white border border-amber-200 hover:bg-amber-50 text-zinc-700'} transition`}
-              >
-                <Mail className="w-3.5 h-3.5" />Email
-              </a>
-            )}
+            {/* Patch R — email contact chip removed. Users contact venues by phone only.
+                The email column still exists in DB and is used for venue owner authentication,
+                but it's never displayed to end users. */}
             {igUrl && (
               <a
                 href={igUrl}
@@ -5629,6 +6268,164 @@ function VenuePage({
             </a>
           </div>
         )}
+
+        {/* Patch R — Vibe tags chip row. Shown when venue has any tags set. */}
+        {Array.isArray(venue.vibe_tags) && venue.vibe_tags.length > 0 && (
+          <div className="mb-5 flex flex-wrap gap-2">
+            {venue.vibe_tags.map(tagId => {
+              const meta = getVibeTagMeta(tagId);
+              if (!meta) return null;
+              return (
+                <span
+                  key={tagId}
+                  className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold ${darkMode ? 'bg-violet-500/15 text-violet-200 border border-violet-500/30' : 'bg-orange-100 text-orange-800 border border-orange-200'}`}
+                >
+                  <span>{meta.icon}</span>{meta.label}
+                </span>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Patch R — Age gate banner. Shown if venue.age_gate_after_time is set. */}
+        {venue.age_gate_after_time && (
+          <div className={`mb-5 p-3 rounded-xl flex items-center gap-2 ${darkMode ? 'bg-amber-500/10 border border-amber-500/30 text-amber-200' : 'bg-amber-100 border border-amber-300 text-amber-900'}`}>
+            <span className="text-lg">🔞</span>
+            <p className="text-sm font-semibold">
+              21+ after {formatTime12h(venue.age_gate_after_time)}
+            </p>
+          </div>
+        )}
+
+        {/* Patch R — Happy hours, grouped by weekday starting today. */}
+        {(() => {
+          const happyGrouped = groupHappyHoursByDay(happyHoursForVenue);
+          if (happyGrouped.length === 0) return null;
+          const activeNow = isVenueInHappyHourNow(happyHoursForVenue);
+          return (
+            <div className="mb-6">
+              <h2 className={`text-lg font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
+                <span>🍹 Happy hours</span>
+                {activeNow && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500 text-white">
+                    HAPPENING NOW
+                  </span>
+                )}
+              </h2>
+              <div className="space-y-3">
+                {happyGrouped.map(({ weekday, weekdayLabel, items }) => (
+                  <div key={weekday}>
+                    <p className={`text-xs font-bold uppercase tracking-wider mb-1.5 ${darkMode ? 'text-orange-300/80' : 'text-orange-700/80'}`}>
+                      {weekdayLabel}s
+                    </p>
+                    <div className="space-y-2">
+                      {items.map(row => (
+                        <div
+                          key={row.id || `${weekday}-${row.start_time}`}
+                          className={`p-3 rounded-xl ${darkMode ? 'bg-zinc-900 border border-orange-500/20' : 'bg-white border border-orange-200'}`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
+                                {formatTime12h(row.start_time)} – {formatTime12h(row.end_time)}
+                                {row.discount_summary && (
+                                  <span className={`ml-2 text-xs font-bold ${darkMode ? 'text-orange-300' : 'text-orange-700'}`}>
+                                    {row.discount_summary}
+                                  </span>
+                                )}
+                              </p>
+                              {row.description && (
+                                <p className={`text-xs mt-0.5 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                                  {row.description}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Patch R — Other locations under the same brand. */}
+        {Array.isArray(otherBrandLocations) && otherBrandLocations.length > 0 && (
+          <div className="mb-6">
+            <h2 className={`text-lg font-bold mb-3 ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
+              Other locations
+            </h2>
+            <div className="space-y-2">
+              {otherBrandLocations.map(loc => (
+                <button
+                  key={loc.id}
+                  onClick={() => onOtherLocationTap && onOtherLocationTap(loc)}
+                  className={`w-full p-3 rounded-xl flex items-center gap-3 text-left transition ${darkMode ? 'bg-zinc-900 border border-zinc-800 hover:border-zinc-700' : 'bg-white border border-amber-200 hover:border-amber-300'}`}
+                >
+                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center flex-shrink-0">
+                    <Building2 className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`font-semibold truncate ${darkMode ? 'text-white' : 'text-zinc-900'}`}>{loc.name}</p>
+                    <p className={`text-xs truncate ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                      {loc.address || loc.neighborhood || '—'}
+                    </p>
+                  </div>
+                  <ChevronRight className={`w-5 h-5 flex-shrink-0 ${darkMode ? 'text-zinc-600' : 'text-zinc-400'}`} />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Patch Q — Weekly deals: standing-offer events grouped by day of week.
+            Shown only when this venue actually has standing offers; never blocks the upcoming-events block. */}
+        {(() => {
+          const grouped = groupStandingOffersByDay(weeklyOffers);
+          if (grouped.length === 0) return null;
+          return (
+            <div className="mb-6">
+              <h2 className={`text-lg font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
+                <span>🍻 Weekly deals</span>
+                <span className={`text-xs font-normal ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>
+                  ({grouped.reduce((n, g) => n + g.items.length, 0)})
+                </span>
+              </h2>
+              <div className="space-y-3">
+                {grouped.map(({ weekday, weekdayLabel, items }) => (
+                  <div key={weekday}>
+                    <p className={`text-xs font-bold uppercase tracking-wider mb-1.5 ${darkMode ? 'text-orange-300/80' : 'text-orange-700/80'}`}>
+                      {weekdayLabel}s
+                    </p>
+                    <div className="space-y-2">
+                      {items.map(ev => (
+                        <button
+                          key={ev.id}
+                          onClick={() => onEventClick && onEventClick(ev)}
+                          className={`w-full p-3 rounded-xl flex items-center gap-3 text-left transition ${darkMode ? 'bg-zinc-900 border border-orange-500/20 hover:border-orange-500/40' : 'bg-white border border-orange-200 hover:border-orange-300'}`}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className={`font-semibold truncate ${darkMode ? 'text-white' : 'text-zinc-900'}`}>{ev.name}</p>
+                            <p className={`text-xs ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                              Every {weekdayLabel} · {ev.time ? `${(ev.time || '').slice(0,5)}` : '—'}
+                              {ev.end_time ? ` – ${(ev.end_time || '').slice(0,5)}` : ''}
+                            </p>
+                            {ev.drink_specials && (
+                              <p className={`text-xs mt-0.5 truncate ${darkMode ? 'text-orange-300/80' : 'text-orange-700/80'}`}>{ev.drink_specials}</p>
+                            )}
+                          </div>
+                          <ChevronRight className={`w-5 h-5 flex-shrink-0 ${darkMode ? 'text-zinc-600' : 'text-zinc-400'}`} />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Upcoming events — always shown (even if empty) */}
         <div className="mb-6">
@@ -5970,6 +6767,248 @@ function StoryComposer({ venue, supabaseClient, userProfile, onClose, onCreated,
 // Venue can edit everything except name + verified status. 10-photo gallery with reorder.
 // Cover image, logo, description, hours, contact, social handles, menu URL + menu image.
 // Edits go live immediately (no admin review queue).
+// Patch R — Reusable editor for vibe tags, age gate, parent brand, happy hours.
+// Used by AdminPortal (CreateVenueForm, EditVenueModal) and BusinessPortal (EditMyVenue,
+// onboarding step). Keeps the data-entry UX consistent across surfaces.
+//
+// Props:
+//   vibeTags:      string[] current selection (e.g. ['patio', 'dog-friendly'])
+//   onVibeTagsChange(string[])
+//   ageGateAfterTime: string | null  ('HH:MM' or null)
+//   onAgeGateChange(value: string | null)
+//   parentBrandId: string | null
+//   onParentBrandChange(value: string | null)
+//   brandOptions: array of { id, name } — venues that can serve as the parent brand
+//   happyHours: array of { id?, day_of_week, start_time, end_time, description, discount_summary }
+//               id is present for rows already in DB, absent for new local rows
+//   onHappyHoursChange(rows)
+//   darkMode (optional, defaults true) — for the business portal which uses slate theme
+function VenueAttributesEditor({
+  vibeTags = [],
+  onVibeTagsChange,
+  ageGateAfterTime = null,
+  onAgeGateChange,
+  parentBrandId = null,
+  onParentBrandChange,
+  brandOptions = [],
+  happyHours = [],
+  onHappyHoursChange,
+  darkMode = true,
+}) {
+  const toggleVibe = (id) => {
+    const set = new Set(vibeTags);
+    if (set.has(id)) set.delete(id); else set.add(id);
+    onVibeTagsChange?.(Array.from(set));
+  };
+
+  const updateHappyHour = (idx, patch) => {
+    const next = happyHours.map((r, i) => i === idx ? { ...r, ...patch } : r);
+    onHappyHoursChange?.(next);
+  };
+
+  const addHappyHour = () => {
+    onHappyHoursChange?.([
+      ...happyHours,
+      // New rows get no `id` — caller inserts them on save.
+      { day_of_week: 5, start_time: '16:00', end_time: '19:00', description: '', discount_summary: '' },
+    ]);
+  };
+
+  const removeHappyHour = (idx) => {
+    onHappyHoursChange?.(happyHours.filter((_, i) => i !== idx));
+  };
+
+  // Theme classes — dark = admin (zinc/gray), light = business (slate).
+  // Both are dark-mode UIs; the difference is only the palette used in those portals.
+  const T = darkMode
+    ? {
+        section: 'bg-zinc-800 border border-zinc-700',
+        chip: 'border-zinc-600 bg-zinc-700/40 text-zinc-300',
+        chipActive: 'border-violet-500 bg-violet-500/20 text-violet-200',
+        input: 'bg-zinc-900 border border-zinc-700 text-white',
+        label: 'text-zinc-400',
+        sub: 'text-zinc-500',
+        button: 'border border-zinc-600 text-zinc-300 hover:bg-zinc-700',
+        buttonPrimary: 'bg-violet-500 text-white hover:bg-violet-600',
+        danger: 'text-red-400 hover:bg-red-500/10',
+      }
+    : {
+        section: 'bg-slate-800 border border-slate-700',
+        chip: 'border-slate-600 bg-slate-700/40 text-slate-300',
+        chipActive: 'border-orange-500 bg-orange-500/20 text-orange-200',
+        input: 'bg-slate-700 border border-slate-600 text-white',
+        label: 'text-slate-400',
+        sub: 'text-slate-500',
+        button: 'border border-slate-600 text-slate-300 hover:bg-slate-700',
+        buttonPrimary: 'bg-orange-500 text-white hover:bg-orange-600',
+        danger: 'text-red-400 hover:bg-red-500/10',
+      };
+
+  return (
+    <div className="space-y-6">
+      {/* Parent brand selector (multi-location support) */}
+      {Array.isArray(brandOptions) && (
+        <div className={`p-4 rounded-xl ${T.section}`}>
+          <label className={`block text-sm font-semibold mb-2 ${T.label}`}>Part of a brand?</label>
+          <p className={`text-xs ${T.sub} mb-2`}>
+            For chains with multiple locations. Each location stays its own venue; the brand link groups them on the venue page.
+          </p>
+          <select
+            value={parentBrandId || ''}
+            onChange={e => onParentBrandChange?.(e.target.value || null)}
+            className={`w-full px-3 py-2 rounded-lg ${T.input}`}
+          >
+            <option value="">— Standalone venue —</option>
+            {brandOptions.map(b => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* Vibe tags */}
+      <div className={`p-4 rounded-xl ${T.section}`}>
+        <label className={`block text-sm font-semibold mb-2 ${T.label}`}>Vibe tags</label>
+        <p className={`text-xs ${T.sub} mb-3`}>
+          Pick all that fit. Drives vibe-matching in Discover and future awards.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {VIBE_TAGS_CATALOG.map(tag => {
+            const active = vibeTags.includes(tag.id);
+            return (
+              <button
+                key={tag.id}
+                type="button"
+                onClick={() => toggleVibe(tag.id)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border-2 transition ${active ? T.chipActive : T.chip}`}
+              >
+                <span className="mr-1">{tag.icon}</span>{tag.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 21+ after X time */}
+      <div className={`p-4 rounded-xl ${T.section}`}>
+        <label className={`block text-sm font-semibold mb-2 ${T.label}`}>21+ after time</label>
+        <p className={`text-xs ${T.sub} mb-2`}>
+          If this venue becomes 21+ only after a certain hour, set it. Leave blank if not applicable.
+        </p>
+        <div className="flex items-center gap-2">
+          <input
+            type="time"
+            value={ageGateAfterTime || ''}
+            onChange={e => onAgeGateChange?.(e.target.value || null)}
+            step="900"
+            className={`px-3 py-2 rounded-lg ${T.input}`}
+          />
+          {ageGateAfterTime && (
+            <button
+              type="button"
+              onClick={() => onAgeGateChange?.(null)}
+              className={`text-xs px-2 py-1 rounded ${T.danger}`}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Happy hours */}
+      <div className={`p-4 rounded-xl ${T.section}`}>
+        <div className="flex items-center justify-between mb-2">
+          <label className={`block text-sm font-semibold ${T.label}`}>Happy hours</label>
+          <button
+            type="button"
+            onClick={addHappyHour}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${T.buttonPrimary}`}
+          >
+            + Add window
+          </button>
+        </div>
+        <p className={`text-xs ${T.sub} mb-3`}>
+          One row per weekday window. A venue can have multiple per day (e.g. lunch + evening). Drives the "Now" view in Discover.
+        </p>
+        {happyHours.length === 0 ? (
+          <p className={`text-xs ${T.sub} italic`}>No happy hours set.</p>
+        ) : (
+          <div className="space-y-3">
+            {happyHours.map((row, idx) => (
+              <div key={row.id || `new-${idx}`} className={`p-3 rounded-lg ${T.input}`}>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+                  <div>
+                    <label className={`block text-[10px] uppercase tracking-wide mb-1 ${T.sub}`}>Day</label>
+                    <select
+                      value={row.day_of_week}
+                      onChange={e => updateHappyHour(idx, { day_of_week: parseInt(e.target.value, 10) })}
+                      className={`w-full px-2 py-1.5 rounded text-sm ${T.input}`}
+                    >
+                      {WEEKDAY_NAMES.map((name, i) => (
+                        <option key={i} value={i}>{name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={`block text-[10px] uppercase tracking-wide mb-1 ${T.sub}`}>Start</label>
+                    <input
+                      type="time"
+                      value={row.start_time || ''}
+                      onChange={e => updateHappyHour(idx, { start_time: e.target.value })}
+                      step="900"
+                      className={`w-full px-2 py-1.5 rounded text-sm ${T.input}`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-[10px] uppercase tracking-wide mb-1 ${T.sub}`}>End</label>
+                    <input
+                      type="time"
+                      value={row.end_time || ''}
+                      onChange={e => updateHappyHour(idx, { end_time: e.target.value })}
+                      step="900"
+                      className={`w-full px-2 py-1.5 rounded text-sm ${T.input}`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-[10px] uppercase tracking-wide mb-1 ${T.sub}`}>Discount</label>
+                    <input
+                      type="text"
+                      value={row.discount_summary || ''}
+                      onChange={e => updateHappyHour(idx, { discount_summary: e.target.value })}
+                      placeholder="50% off"
+                      className={`w-full px-2 py-1.5 rounded text-sm ${T.input}`}
+                    />
+                  </div>
+                </div>
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <label className={`block text-[10px] uppercase tracking-wide mb-1 ${T.sub}`}>Description</label>
+                    <input
+                      type="text"
+                      value={row.description || ''}
+                      onChange={e => updateHappyHour(idx, { description: e.target.value })}
+                      placeholder="Half-off all drafts and well drinks"
+                      className={`w-full px-2 py-1.5 rounded text-sm ${T.input}`}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeHappyHour(idx)}
+                    className={`px-2 py-1.5 rounded text-xs ${T.danger}`}
+                    aria-label="Remove happy hour"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function EditMyVenue({ venue, supabaseClient, onClose, onSaved, showToast }) {
   const [form, setForm] = useState(() => ({
     description: venue.description || '',
@@ -5987,9 +7026,37 @@ function EditMyVenue({ venue, supabaseClient, onClose, onSaved, showToast }) {
     photos: Array.isArray(venue.photos) ? venue.photos.filter(Boolean) : [],
     hours: venue.hours && typeof venue.hours === 'object' ? { ...venue.hours } : {},
     verification_requested: !!venue.verification_requested,
+    // Patch R — new venue attributes
+    vibe_tags: Array.isArray(venue.vibe_tags) ? venue.vibe_tags : [],
+    age_gate_after_time: venue.age_gate_after_time || null,
   }));
   const [saving, setSaving] = useState(false);
   const [uploadingKind, setUploadingKind] = useState(null); // 'cover' | 'logo' | 'gallery' | 'menu' | null
+  // Patch R — Happy hours editor state (loaded from venue_happy_hours).
+  const [localHappyHours, setLocalHappyHours] = useState([]);
+  const [hhLoaded, setHhLoaded] = useState(false);
+
+  // Patch R — Load existing happy hours on mount.
+  useEffect(() => {
+    if (!venue?.id || !supabaseClient || hhLoaded) return;
+    (async () => {
+      try {
+        const { data, error } = await supabaseClient
+          .from('venue_happy_hours')
+          .select('*')
+          .eq('venue_id', venue.id)
+          .order('day_of_week', { ascending: true });
+        if (error) throw error;
+        setLocalHappyHours(data || []);
+      } catch (err) {
+        console.warn('happy hours load failed:', err?.message);
+        setLocalHappyHours([]);
+      } finally {
+        setHhLoaded(true);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [venue?.id]);
 
   const setField = (key, val) => setForm(f => ({ ...f, [key]: val }));
   const setHour = (day, val) => setForm(f => ({ ...f, hours: { ...f.hours, [day]: val } }));
@@ -6082,6 +7149,9 @@ function EditMyVenue({ venue, supabaseClient, onClose, onSaved, showToast }) {
         photos: form.photos,
         hours: form.hours,
         verification_requested: form.verification_requested,
+        // Patch R — persist new venue attributes
+        vibe_tags: form.vibe_tags || [],
+        age_gate_after_time: form.age_gate_after_time || null,
       };
       const { data, error } = await supabaseClient
         .from('establishments')
@@ -6090,6 +7160,27 @@ function EditMyVenue({ venue, supabaseClient, onClose, onSaved, showToast }) {
         .select()
         .single();
       if (error) throw error;
+
+      // Patch R — Reconcile happy hours: delete-then-insert pattern.
+      try {
+        await supabaseClient.from('venue_happy_hours').delete().eq('venue_id', venue.id);
+        if (localHappyHours.length > 0) {
+          const hhPayload = localHappyHours.map(r => ({
+            venue_id: venue.id,
+            day_of_week: r.day_of_week,
+            start_time: r.start_time,
+            end_time: r.end_time,
+            description: r.description || null,
+            discount_summary: r.discount_summary || null,
+          }));
+          const { error: hhErr } = await supabaseClient.from('venue_happy_hours').insert(hhPayload);
+          if (hhErr) throw hhErr;
+        }
+      } catch (hhErr) {
+        console.warn('Happy hour save failed:', hhErr);
+        showToast?.(`Saved venue, but happy hours failed: ${hhErr.message || 'unknown'}`, 'error');
+      }
+
       showToast?.('Saved! Changes are live.', 'success');
       if (onSaved) onSaved(data);
       onClose && onClose();
@@ -6329,6 +7420,24 @@ function EditMyVenue({ venue, supabaseClient, onClose, onSaved, showToast }) {
               </div>
               <p className="text-xs text-slate-500">A linked PDF works great for full menus; an image works for daily/featured items.</p>
             </div>
+          </section>
+
+          {/* Patch R — Vibe tags, age gate, happy hours editor. Business owner can't change parent_brand_id (admin-only),
+              so brandOptions is intentionally omitted here. */}
+          <section>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Vibes &amp; deals</h3>
+            <VenueAttributesEditor
+              vibeTags={form.vibe_tags || []}
+              onVibeTagsChange={(tags) => setField('vibe_tags', tags)}
+              ageGateAfterTime={form.age_gate_after_time || null}
+              onAgeGateChange={(val) => setField('age_gate_after_time', val)}
+              parentBrandId={null}
+              onParentBrandChange={() => {}}
+              brandOptions={null}
+              happyHours={localHappyHours}
+              onHappyHoursChange={setLocalHappyHours}
+              darkMode={false}
+            />
           </section>
 
         </div>
@@ -9745,14 +10854,10 @@ function GoogleOnboardingModal({ pendingUser, onComplete }) {
 // Features: Clickable stats, Edit modals, User analytics, Detailed views
 // ============================================
 
-const BUSINESS_VENUE_TYPES = [
-  { id: 'bar', label: 'Bar', icon: '🍺' },
-  { id: 'restaurant', label: 'Restaurant', icon: '🍽️' },
-  { id: 'club', label: 'Nightclub', icon: '🎵' },
-  { id: 'lounge', label: 'Lounge', icon: '🛋️' },
-  { id: 'brewery', label: 'Brewery', icon: '🍻' },
-  { id: 'rooftop', label: 'Rooftop', icon: '🌃' },
-];
+// Patch R — BUSINESS_VENUE_TYPES is now an alias for the full catalog. The old
+// 6-item list was insufficient for the venue type expansion. Existing lookups
+// (icons, labels) keep working because the catalog uses the same id values.
+const BUSINESS_VENUE_TYPES = VENUE_TYPES_CATALOG;
 
 const BUSINESS_EVENT_CATEGORIES = [
   { id: 'nightlife', name: 'Nightlife', icon: '🌙' },
@@ -9803,6 +10908,10 @@ function AdminPortal({ onClose, userEmail }) {
   // Patch E.1 — Admin story composer (any venue)
   const [storyComposerVenue, setStoryComposerVenue] = useState(null);
 
+  // Patch Q — Mobile-first Quick Add modal + edit-series prompt
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [seriesEditPrompt, setSeriesEditPrompt] = useState(null); // { event } when user taps a series row
+
   useEffect(() => { loadData(); }, []);
 
   // Auto-refresh every 60 seconds, but only on dashboard view (not during editing)
@@ -9829,6 +10938,21 @@ function AdminPortal({ onClose, userEmail }) {
   };
 
   const showToastMsg = (msg, type = 'success') => { setToast({ message: msg, type }); setTimeout(() => setToast(null), 3000); };
+
+  // Patch Q — Open an event for editing, with series detection.
+  // If the event is part of a weekly recurring series (has a parent OR has at least one child),
+  // route through the series-edit prompt so the user can pick scope. Otherwise go straight to
+  // the edit modal as before.
+  const openEventForEdit = (e) => {
+    if (!e) return;
+    const isChild = !!e.recurrence_parent_id;
+    const isParent = !e.recurrence_parent_id && events.some(other => other.recurrence_parent_id === e.id);
+    if (isChild || isParent) {
+      setSeriesEditPrompt({ event: e });
+    } else {
+      setEditingEvent(e);
+    }
+  };
 
   const totalViews = events.reduce((sum, e) => sum + (e.views || 0), 0);
   const totalRsvps = events.reduce((sum, e) => sum + (e.rsvps || 0), 0);
@@ -9921,7 +11045,84 @@ function AdminPortal({ onClose, userEmail }) {
 
   const handleUpdateEvent = async (id, updates) => {
     try {
-      const { data, error } = await supabaseClient.from('events').update(updates).eq('id', id).select().single();
+      // Patch Q — Series scope. If the editingEvent carries `_seriesScope: 'future'`,
+      // also update all later occurrences in the same chain (excluding earlier ones).
+      // For 'single' scope (or no scope), behavior is unchanged from before.
+      const scope = editingEvent?._seriesScope;
+      const seriesPivot = editingEvent;
+
+      // Strip Patch Q UI-only marker before sending to Supabase.
+      const sanitized = { ...updates };
+      delete sanitized._seriesScope;
+
+      if (scope === 'future' && seriesPivot) {
+        // Determine chain key: parent's id if this row IS a parent (recurrence_parent_id null),
+        // else the row's recurrence_parent_id.
+        const chainKey = seriesPivot.recurrence_parent_id || seriesPivot.id;
+        const pivotDate = seriesPivot.date || sanitized.date || '';
+
+        // Date-shape fields (date, recurrence_parent_id) are NEVER bulk-applied across the series —
+        // each row needs its own week's date. Strip them before the bulk update.
+        const bulkUpdates = { ...sanitized };
+        delete bulkUpdates.date;
+        delete bulkUpdates.recurrence_parent_id;
+
+        // 1) Update the pivot row itself with the full sanitized payload (may include a new date).
+        const { data: pivotData, error: pivotErr } = await supabaseClient
+          .from('events')
+          .update(sanitized)
+          .eq('id', id)
+          .select()
+          .single();
+        if (pivotErr) throw pivotErr;
+
+        // 2) Update later occurrences in the chain (parent + siblings) with content-only fields.
+        // Match rows whose chain matches and whose date is strictly after the pivot date.
+        // The chain consists of: the parent row (id === chainKey) AND any children (recurrence_parent_id === chainKey).
+        // Supabase doesn't support OR-with-multiple-cols cleanly in one call here, so we run two updates.
+        let updatedChildren = [];
+        if (Object.keys(bulkUpdates).length > 0 && pivotDate) {
+          // Children with recurrence_parent_id === chainKey AND date > pivotDate AND id !== pivot id
+          const { data: childRows, error: childErr } = await supabaseClient
+            .from('events')
+            .update(bulkUpdates)
+            .eq('recurrence_parent_id', chainKey)
+            .gt('date', pivotDate)
+            .neq('id', id)
+            .select();
+          if (childErr) throw childErr;
+          if (Array.isArray(childRows)) updatedChildren = childRows;
+
+          // If the pivot is a CHILD and the parent's date is > pivotDate (rare but possible if
+          // the parent was edited to a later date), also update the parent row.
+          if (seriesPivot.recurrence_parent_id) {
+            const parentRow = events.find(ev => ev.id === chainKey);
+            if (parentRow && (parentRow.date || '') > pivotDate) {
+              const { data: parentData, error: parentErr } = await supabaseClient
+                .from('events')
+                .update(bulkUpdates)
+                .eq('id', chainKey)
+                .select()
+                .single();
+              if (parentErr) throw parentErr;
+              if (parentData) updatedChildren.push(parentData);
+            }
+          }
+        }
+
+        // Merge results into local state.
+        const updatedById = new Map();
+        if (pivotData) updatedById.set(pivotData.id, pivotData);
+        for (const r of updatedChildren) updatedById.set(r.id, r);
+        setEvents(events.map(ev => updatedById.get(ev.id) || ev));
+        showToastMsg(`Series updated — ${updatedById.size} occurrence${updatedById.size === 1 ? '' : 's'}`);
+        setEditingEvent(null);
+        if (selectedEvent?.id === id && pivotData) setSelectedEvent(pivotData);
+        return;
+      }
+
+      // Single-event path (legacy default).
+      const { data, error } = await supabaseClient.from('events').update(sanitized).eq('id', id).select().single();
       if (error) throw error;
       setEvents(events.map(e => e.id === id ? data : e));
       showToastMsg('Event updated!');
@@ -10620,7 +11821,7 @@ function AdminPortal({ onClose, userEmail }) {
         <div className="flex items-center gap-4">
           <button onClick={() => { setSelectedEvent(null); setCurrentView('events'); }} className="p-2 hover:bg-gray-800 rounded-lg"><ChevronLeft className="w-5 h-5 text-gray-400" /></button>
           <div className="flex-1"><h1 className="text-xl font-bold text-white truncate">{e.name}</h1></div>
-          <button onClick={() => setEditingEvent(e)} className="p-2 hover:bg-gray-800 rounded-lg"><Edit2 className="w-5 h-5 text-blue-400" /></button>
+          <button onClick={() => openEventForEdit(e)} className="p-2 hover:bg-gray-800 rounded-lg"><Edit2 className="w-5 h-5 text-blue-400" /></button>
         </div>
         <div className="bg-gradient-to-br from-violet-600 to-purple-700 rounded-xl p-6">
           <div className="flex items-center gap-4 mb-4">
@@ -10647,7 +11848,7 @@ function AdminPortal({ onClose, userEmail }) {
           {e.description && <div><p className="text-gray-500 text-sm">Description</p><p className="text-white text-sm">{e.description}</p></div>}
         </div>
         <div className="flex gap-3">
-          <button onClick={() => setEditingEvent(e)} className="flex-1 px-4 py-3 bg-blue-500 text-white rounded-xl font-semibold">Edit</button>
+          <button onClick={() => openEventForEdit(e)} className="flex-1 px-4 py-3 bg-blue-500 text-white rounded-xl font-semibold">Edit</button>
           <button onClick={() => handleDeleteEvent(e.id)} className="px-4 py-3 bg-red-500/20 text-red-400 rounded-xl font-semibold">Delete</button>
         </div>
       </div>
@@ -10712,11 +11913,79 @@ function AdminPortal({ onClose, userEmail }) {
   // ========== EDIT MODALS ==========
   const EditVenueModal = () => {
     const [form, setForm] = useState(editingVenue || {});
+    // Patch R — Local copy of happy hours for editing. Loaded on open.
+    const [localHappyHours, setLocalHappyHours] = useState([]);
+    const [hhLoaded, setHhLoaded] = useState(false);
+    const [savingVenue, setSavingVenue] = useState(false);
+
+    useEffect(() => {
+      if (!editingVenue?.id || !supabaseClient || hhLoaded) return;
+      (async () => {
+        try {
+          const { data, error } = await supabaseClient
+            .from('venue_happy_hours')
+            .select('*')
+            .eq('venue_id', editingVenue.id)
+            .order('day_of_week', { ascending: true });
+          if (error) throw error;
+          setLocalHappyHours(data || []);
+        } catch (err) {
+          console.warn('happy hours load failed:', err?.message);
+          setLocalHappyHours([]);
+        } finally {
+          setHhLoaded(true);
+        }
+      })();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editingVenue?.id]);
+
     if (!editingVenue) return null;
     // Patch E — Hours editor: convert form.hours jsonb into individual day fields
     const hoursVal = form.hours && typeof form.hours === 'object' ? form.hours : {};
     const setHours = (day, val) => setForm({ ...form, hours: { ...hoursVal, [day]: val } });
     const days = [['mon','Mon'],['tue','Tue'],['wed','Wed'],['thu','Thu'],['fri','Fri'],['sat','Sat'],['sun','Sun']];
+
+    // Patch R — Brand options (any other venue can be parent).
+    const brandOptions = [...establishments]
+      .filter(v => v.id !== editingVenue.id) // can't parent itself
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+      .map(v => ({ id: v.id, name: v.name }));
+
+    // Patch R — Save handler: update venue row + reconcile happy hours.
+    const saveVenue = async () => {
+      if (savingVenue) return;
+      setSavingVenue(true);
+      try {
+        // 1) Update the venue row (form already has vibe_tags / age_gate_after_time / parent_brand_id).
+        await handleUpdateVenue(editingVenue.id, form);
+
+        // 2) Reconcile happy_hours: delete existing for this venue, re-insert from local state.
+        // Simple-and-correct approach (small row counts, no FK ripple beyond this table).
+        if (supabaseClient) {
+          await supabaseClient.from('venue_happy_hours').delete().eq('venue_id', editingVenue.id);
+          if (localHappyHours.length > 0) {
+            const payload = localHappyHours.map(r => ({
+              venue_id: editingVenue.id,
+              day_of_week: r.day_of_week,
+              start_time: r.start_time,
+              end_time: r.end_time,
+              description: r.description || null,
+              discount_summary: r.discount_summary || null,
+            }));
+            const { error: hhErr } = await supabaseClient.from('venue_happy_hours').insert(payload);
+            if (hhErr) {
+              console.warn('happy hours save failed:', hhErr);
+              showToastMsg(`Venue saved, happy hours failed: ${hhErr.message}`, 'error');
+            }
+          }
+          // Refresh the in-memory cache so VenuePage reflects changes immediately.
+          setVenueHappyHoursCache(prev => ({ ...prev, [editingVenue.id]: localHappyHours }));
+        }
+      } finally {
+        setSavingVenue(false);
+      }
+    };
+
     return (
       <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
         <div className="bg-gray-800 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -10727,10 +11996,10 @@ function AdminPortal({ onClose, userEmail }) {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div><label className="block text-sm text-gray-400 mb-1">Name</label><input value={form.name || ''} onChange={e => setForm({...form, name: e.target.value, slug: form.slug || buildVenueSlug(e.target.value, form.neighborhood)})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" /></div>
               <div><label className="block text-sm text-gray-400 mb-1">Slug (URL)</label><input value={form.slug || ''} onChange={e => setForm({...form, slug: e.target.value})} placeholder="auto-generated from name" className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm font-mono" /></div>
-              <div><label className="block text-sm text-gray-400 mb-1">Neighborhood</label><select value={form.neighborhood || ''} onChange={e => setForm({...form, neighborhood: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"><option value="">Select...</option>{DALLAS_NEIGHBORHOODS.map(n => <option key={n.id} value={n.name}>{n.name}</option>)}</select></div>
-              <div><label className="block text-sm text-gray-400 mb-1">Type</label><select value={form.venue_type || ''} onChange={e => setForm({...form, venue_type: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"><option value="">Select...</option>{BUSINESS_VENUE_TYPES.map(t => <option key={t.id} value={t.id}>{t.icon} {t.label}</option>)}</select></div>
+              <div className="sm:col-span-2"><label className="block text-sm text-gray-400 mb-1">Type</label><select value={form.venue_type || ''} onChange={e => setForm({...form, venue_type: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"><option value="">Select...</option>{VENUE_TYPES_CATALOG.map(t => <option key={t.id} value={t.id}>{t.icon} {t.label}</option>)}</select></div>
               <div className="sm:col-span-2"><label className="block text-sm text-gray-400 mb-1">Address</label><input value={form.address || ''} onChange={e => setForm({...form, address: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" /></div>
               <div className="sm:col-span-2"><label className="block text-sm text-gray-400 mb-1">Description</label><textarea rows={3} value={form.description || ''} onChange={e => setForm({...form, description: e.target.value})} placeholder="Tell users about this venue's vibe, what makes it special…" className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm" /></div>
+              {/* Patch R — neighborhood select removed from UI. Column stays in DB for legacy data. */}
             </div>
 
             {/* Imagery */}
@@ -10740,10 +12009,9 @@ function AdminPortal({ onClose, userEmail }) {
               <div><label className="block text-sm text-gray-400 mb-1">Logo URL (square)</label><input value={form.logo_url || ''} onChange={e => setForm({...form, logo_url: e.target.value})} placeholder="https://..." className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm" /></div>
             </div>
 
-            {/* Contact + Social */}
+            {/* Contact + Social — Patch R: email field removed from UI (still in DB for auth) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div><label className="block text-sm text-gray-400 mb-1">Phone</label><input value={form.phone || ''} onChange={e => setForm({...form, phone: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" /></div>
-              <div><label className="block text-sm text-gray-400 mb-1">Email</label><input value={form.email || ''} onChange={e => setForm({...form, email: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" /></div>
               <div><label className="block text-sm text-gray-400 mb-1">Website</label><input value={form.website || ''} onChange={e => setForm({...form, website: e.target.value})} placeholder="https://..." className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm" /></div>
               <div><label className="block text-sm text-gray-400 mb-1">Instagram (handle or URL)</label><input value={form.instagram || ''} onChange={e => setForm({...form, instagram: e.target.value})} placeholder="@blackfriarpub" className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm" /></div>
               <div><label className="block text-sm text-gray-400 mb-1">Facebook</label><input value={form.facebook || ''} onChange={e => setForm({...form, facebook: e.target.value})} placeholder="page name or full URL" className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm" /></div>
@@ -10769,6 +12037,20 @@ function AdminPortal({ onClose, userEmail }) {
               <p className="text-xs text-slate-500 mt-2">Leave a day empty if closed.</p>
             </div>
 
+            {/* Patch R — Vibe tags, age gate, parent brand, happy hours */}
+            <VenueAttributesEditor
+              vibeTags={Array.isArray(form.vibe_tags) ? form.vibe_tags : []}
+              onVibeTagsChange={(tags) => setForm({...form, vibe_tags: tags})}
+              ageGateAfterTime={form.age_gate_after_time || null}
+              onAgeGateChange={(val) => setForm({...form, age_gate_after_time: val})}
+              parentBrandId={form.parent_brand_id || null}
+              onParentBrandChange={(val) => setForm({...form, parent_brand_id: val})}
+              brandOptions={brandOptions}
+              happyHours={localHappyHours}
+              onHappyHoursChange={setLocalHappyHours}
+              darkMode={true}
+            />
+
             {/* Status + verified */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div><label className="block text-sm text-gray-400 mb-1">Status</label><select value={form.status || 'pending'} onChange={e => setForm({...form, status: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"><option value="pending">Pending</option><option value="approved">Approved</option><option value="suspended">Suspended</option></select></div>
@@ -10779,7 +12061,12 @@ function AdminPortal({ onClose, userEmail }) {
             </div>
 
           </div>
-          <div className="p-4 border-t border-gray-700 flex gap-3"><button onClick={() => setEditingVenue(null)} className="flex-1 px-4 py-2 border border-gray-600 text-gray-400 rounded-lg">Cancel</button><button onClick={() => handleUpdateVenue(editingVenue.id, form)} className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg font-semibold">Save</button></div>
+          <div className="p-4 border-t border-gray-700 flex gap-3">
+            <button onClick={() => setEditingVenue(null)} disabled={savingVenue} className="flex-1 px-4 py-2 border border-gray-600 text-gray-400 rounded-lg disabled:opacity-50">Cancel</button>
+            <button onClick={saveVenue} disabled={savingVenue} className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg font-semibold disabled:opacity-50">
+              {savingVenue ? 'Saving...' : 'Save'}
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -10788,10 +12075,24 @@ function AdminPortal({ onClose, userEmail }) {
   const EditEventModal = () => {
     const [form, setForm] = useState(editingEvent || {});
     if (!editingEvent) return null;
+    // Patch Q — Series-scope banner: show context when editing a series occurrence.
+    const seriesScope = editingEvent._seriesScope;
     return (
       <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
         <div className="bg-gray-800 rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
           <div className="p-4 border-b border-gray-700 flex justify-between"><h2 className="text-lg font-bold text-white">Edit Event</h2><button onClick={() => setEditingEvent(null)}><X className="w-5 h-5 text-gray-400" /></button></div>
+          {seriesScope === 'future' && (
+            <div className="mx-4 mt-4 p-3 bg-violet-500/15 border border-violet-500/40 rounded-lg">
+              <p className="text-xs font-semibold text-violet-200">Editing this + all future occurrences</p>
+              <p className="text-[11px] text-violet-300/70 mt-0.5">Date changes only apply to this row. Other content fields fan out to later weeks.</p>
+            </div>
+          )}
+          {seriesScope === 'single' && (
+            <div className="mx-4 mt-4 p-3 bg-zinc-700/40 border border-zinc-600 rounded-lg">
+              <p className="text-xs font-semibold text-zinc-200">Editing this occurrence only</p>
+              <p className="text-[11px] text-zinc-400 mt-0.5">Other weeks in the series stay unchanged.</p>
+            </div>
+          )}
           <div className="p-4 space-y-4">
             <div><label className="block text-sm text-gray-400 mb-1">Name</label><input value={form.name || ''} onChange={e => setForm({...form, name: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" /></div>
             <div><label className="block text-sm text-gray-400 mb-1">Venue</label><input value={form.venue || ''} onChange={e => setForm({...form, venue: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" /></div>
@@ -10811,31 +12112,169 @@ function AdminPortal({ onClose, userEmail }) {
   };
 
   // ========== CREATE VENUE ==========
+  // Patch R — Overhauled. Drops neighborhood + email from UI. Adds vibe tags, age gate,
+  // parent brand selector, and happy hour rows. Persists happy hours after venue insert.
   const CreateVenueForm = () => {
     const [venueType, setVenueType] = useState('');
-    const [neighborhood, setNeighborhood] = useState('');
     const [name, setName] = useState('');
     const [address, setAddress] = useState('');
     const [phone, setPhone] = useState('');
-    const [email, setEmail] = useState('');
-    const handleSubmit = () => {
-      if (!name || !neighborhood || !venueType) { showToastMsg('Fill required fields', 'error'); return; }
-      handleCreateVenue({ name, neighborhood, venue_type: venueType, address, phone, email, status: 'approved' });
+    const [vibeTagsLocal, setVibeTagsLocal] = useState([]);
+    const [ageGateLocal, setAgeGateLocal] = useState(null);
+    const [parentBrandLocal, setParentBrandLocal] = useState(null);
+    const [happyHoursLocal, setHappyHoursLocal] = useState([]);
+    const [submitting, setSubmitting] = useState(false);
+
+    // Brand options: any existing venue can serve as a parent. Sorted by name.
+    const brandOptions = [...establishments]
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+      .map(v => ({ id: v.id, name: v.name }));
+
+    const handleSubmit = async () => {
+      if (submitting) return;
+      if (!name || !venueType) { showToastMsg('Fill required fields (name, type)', 'error'); return; }
+      setSubmitting(true);
+      try {
+        // 1) Insert the establishment.
+        const venuePayload = {
+          name,
+          venue_type: venueType,
+          address,
+          phone,
+          status: 'approved',
+          vibe_tags: vibeTagsLocal,
+          age_gate_after_time: ageGateLocal,
+          parent_brand_id: parentBrandLocal,
+        };
+        const { data: venueRow, error: venueErr } = await supabaseClient
+          .from('establishments')
+          .insert([venuePayload])
+          .select()
+          .single();
+        if (venueErr) throw venueErr;
+
+        // 2) Insert any happy hours, attached to the new venue id.
+        if (happyHoursLocal.length > 0 && venueRow?.id) {
+          const hhPayload = happyHoursLocal.map(r => ({
+            venue_id: venueRow.id,
+            day_of_week: r.day_of_week,
+            start_time: r.start_time,
+            end_time: r.end_time,
+            description: r.description || null,
+            discount_summary: r.discount_summary || null,
+          }));
+          const { error: hhErr } = await supabaseClient
+            .from('venue_happy_hours')
+            .insert(hhPayload);
+          if (hhErr) {
+            // Non-fatal — surface error but don't blow up the whole flow.
+            console.warn('Happy hour insert failed:', hhErr);
+            showToastMsg(`Venue created, but happy hours failed: ${hhErr.message}`, 'error');
+          }
+        }
+
+        setEstablishments(prev => [venueRow, ...prev]);
+        showToastMsg(`✨ "${name}" created`, 'success');
+        setCurrentView('venues');
+      } catch (err) {
+        console.error('Create venue failed:', err);
+        const msg = err?.message || err?.hint || 'Error creating venue';
+        showToastMsg(`Create failed: ${msg}`, 'error');
+      } finally {
+        setSubmitting(false);
+      }
     };
+
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-4"><button onClick={() => setCurrentView('dashboard')} className="p-2 hover:bg-gray-800 rounded-lg"><ChevronLeft className="w-5 h-5 text-gray-400" /></button><div><h1 className="text-xl font-bold text-white">Add Venue</h1></div></div>
-        <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 space-y-4">
-          <div><label className="block text-sm text-gray-400 mb-2">Name *</label><input value={name} onChange={e => setName(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="Venue name" /></div>
-          <div><label className="block text-sm text-gray-400 mb-2">Type *</label><div className="grid grid-cols-3 gap-2">{BUSINESS_VENUE_TYPES.map(t => (<button key={t.id} type="button" onClick={() => setVenueType(t.id)} className={`p-3 rounded-xl border-2 text-center ${venueType === t.id ? 'border-blue-500 bg-blue-500/20' : 'border-gray-600'}`}><span className="text-lg">{t.icon}</span><p className="text-xs text-white mt-1">{t.label}</p></button>))}</div></div>
-          <div><label className="block text-sm text-gray-400 mb-2">Neighborhood *</label><select value={neighborhood} onChange={e => setNeighborhood(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white"><option value="">Select...</option>{DALLAS_NEIGHBORHOODS.map(n => <option key={n.id} value={n.name}>{n.name}</option>)}</select></div>
-          <div><label className="block text-sm text-gray-400 mb-2">Address</label><input value={address} onChange={e => setAddress(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" placeholder="123 Main St" /></div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className="block text-sm text-gray-400 mb-2">Phone</label><input value={phone} onChange={e => setPhone(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" /></div>
-            <div><label className="block text-sm text-gray-400 mb-2">Email</label><input value={email} onChange={e => setEmail(e.target.value)} className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white" /></div>
-          </div>
+        <div className="flex items-center gap-4">
+          <button onClick={() => setCurrentView('dashboard')} className="p-2 hover:bg-gray-800 rounded-lg">
+            <ChevronLeft className="w-5 h-5 text-gray-400" />
+          </button>
+          <div><h1 className="text-xl font-bold text-white">Add Venue</h1></div>
         </div>
-        <div className="flex gap-3"><button onClick={() => setCurrentView('dashboard')} className="flex-1 px-4 py-3 border border-gray-600 text-gray-400 rounded-xl">Cancel</button><button onClick={handleSubmit} className="flex-1 px-4 py-3 bg-blue-500 text-white rounded-xl font-semibold">Create</button></div>
+
+        <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 space-y-4">
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">Name *</label>
+            <input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white"
+              placeholder="Venue name"
+            />
+          </div>
+
+          {/* Patch R — Full-catalog type picker. Grid of 20 types. */}
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">Type *</label>
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+              {VENUE_TYPES_CATALOG.map(t => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setVenueType(t.id)}
+                  className={`p-3 rounded-xl border-2 text-center transition ${venueType === t.id ? 'border-blue-500 bg-blue-500/20' : 'border-gray-600 hover:border-gray-500'}`}
+                >
+                  <span className="text-lg">{t.icon}</span>
+                  <p className="text-xs text-white mt-1">{t.label}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">Address</label>
+            <input
+              value={address}
+              onChange={e => setAddress(e.target.value)}
+              className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white"
+              placeholder="123 Main St, Dallas, TX 75201"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">Phone</label>
+            <input
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl text-white"
+              placeholder="(214) 555-1234"
+            />
+          </div>
+          {/* Patch R — email field removed from UI. Existing column kept in DB for venue-owner auth. */}
+          {/* Patch R — neighborhood removed from UI. Address + lat/lng are the source of truth; derived if needed at query time. */}
+        </div>
+
+        <VenueAttributesEditor
+          vibeTags={vibeTagsLocal}
+          onVibeTagsChange={setVibeTagsLocal}
+          ageGateAfterTime={ageGateLocal}
+          onAgeGateChange={setAgeGateLocal}
+          parentBrandId={parentBrandLocal}
+          onParentBrandChange={setParentBrandLocal}
+          brandOptions={brandOptions}
+          happyHours={happyHoursLocal}
+          onHappyHoursChange={setHappyHoursLocal}
+          darkMode={true}
+        />
+
+        <div className="flex gap-3">
+          <button
+            onClick={() => setCurrentView('dashboard')}
+            disabled={submitting}
+            className="flex-1 px-4 py-3 border border-gray-600 text-gray-400 rounded-xl disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={submitting || !name || !venueType}
+            className="flex-1 px-4 py-3 bg-blue-500 text-white rounded-xl font-semibold disabled:opacity-40"
+          >
+            {submitting ? 'Creating...' : 'Create'}
+          </button>
+        </div>
       </div>
     );
   };
@@ -11475,6 +12914,14 @@ function AdminPortal({ onClose, userEmail }) {
           >
             <MapPin className="w-4 h-4" />Geocode missing
           </button>
+          {/* Patch Q — Mobile-first Quick Add (admin) */}
+          <button
+            onClick={() => setShowQuickAdd(true)}
+            className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-lg hover:from-violet-600 hover:to-purple-700 transition text-sm font-semibold"
+            title="Mobile-first quick add"
+          >
+            <Zap className="w-4 h-4" />Quick Add
+          </button>
           <button onClick={() => setCurrentView('create-event')} className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-xl text-sm"><Plus className="w-4 h-4" />Create</button>
         </div>
       </div>
@@ -11545,6 +12992,64 @@ function AdminPortal({ onClose, userEmail }) {
       </div>
       {editingVenue && <EditVenueModal />}
       {editingEvent && <EditEventModal />}
+      {/* Patch Q — Quick Add modal (admin path; events go straight live) */}
+      {showQuickAdd && (
+        <QuickAddEventModal
+          establishments={establishments}
+          supabaseClient={supabaseClient}
+          showToast={showToastMsg}
+          defaultStatus="live"
+          onClose={() => setShowQuickAdd(false)}
+          onCreated={(rows) => {
+            // Prepend newly inserted rows so the admin sees them immediately.
+            if (Array.isArray(rows) && rows.length > 0) {
+              setEvents(prev => [...rows, ...prev]);
+            }
+          }}
+        />
+      )}
+      {/* Patch Q — Series-edit prompt. Shown when a user taps an event that's part of a
+          weekly recurring series, so they can choose "this occurrence" or "this + all future". */}
+      {seriesEditPrompt?.event && (
+        <div className="fixed inset-0 z-[70] bg-black/85 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 rounded-2xl border border-zinc-800 w-full max-w-sm">
+            <div className="p-5 border-b border-zinc-800">
+              <h3 className="text-lg font-bold text-white">Edit recurring event</h3>
+              <p className="text-sm text-zinc-400 mt-1">"{seriesEditPrompt.event.name}" is part of a weekly series.</p>
+            </div>
+            <div className="p-3 space-y-2">
+              <button
+                onClick={() => {
+                  setEditingEvent({ ...seriesEditPrompt.event, _seriesScope: 'single' });
+                  setSeriesEditPrompt(null);
+                }}
+                className="w-full p-3 rounded-xl border border-zinc-700 hover:border-violet-500 text-left transition"
+              >
+                <p className="text-sm font-semibold text-white">Edit this occurrence only</p>
+                <p className="text-xs text-zinc-400 mt-0.5">Other weeks stay unchanged.</p>
+              </button>
+              <button
+                onClick={() => {
+                  setEditingEvent({ ...seriesEditPrompt.event, _seriesScope: 'future' });
+                  setSeriesEditPrompt(null);
+                }}
+                className="w-full p-3 rounded-xl border border-zinc-700 hover:border-violet-500 text-left transition"
+              >
+                <p className="text-sm font-semibold text-white">Edit this + all future occurrences</p>
+                <p className="text-xs text-zinc-400 mt-0.5">Past weeks stay unchanged.</p>
+              </button>
+            </div>
+            <div className="p-3 border-t border-zinc-800">
+              <button
+                onClick={() => setSeriesEditPrompt(null)}
+                className="w-full py-2.5 text-sm text-zinc-400 hover:text-white"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Patch C2b — Bulk-paste modal */}
       {showBulkPaste && (
         <div className="fixed inset-0 bg-black bg-opacity-80 z-50 flex items-center justify-center p-4">
@@ -11795,6 +13300,10 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
   const [showStoryComposer, setShowStoryComposer] = useState(false);
   // Patch E.2 — Bespoke venue editor (own venue only)
   const [showEditMyVenue, setShowEditMyVenue] = useState(false);
+
+  // Patch Q — Mobile-first Quick Add modal + edit-series prompt
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [seriesEditPrompt, setSeriesEditPrompt] = useState(null);
   
   // Detect mobile screen and auto-collapse sidebar
   useEffect(() => {
@@ -11818,6 +13327,19 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
   const [venueWebsite, setVenueWebsite] = useState('');
   const [venueSupportEmail, setVenueSupportEmail] = useState('');
   const [venueDescription, setVenueDescription] = useState('');
+
+  // Patch R — Multi-location onboarding flow.
+  // mode 'single' → existing 3-step flow, one venue inserted.
+  // mode 'brand'  → user enters the brand profile once, then adds N locations.
+  // pendingLocations is the in-memory list of locations the user has staged before submitting.
+  const [onboardingMode, setOnboardingMode] = useState(null); // null until user picks
+  const [pendingLocations, setPendingLocations] = useState([]); // array of { name, address, phone, vibe_tags, age_gate_after_time }
+  const [locDraft, setLocDraft] = useState({ name: '', address: '', phone: '', vibe_tags: [], age_gate_after_time: null });
+
+  // Patch R — Onboarding venue attributes (shared between single + brand parent venue).
+  const [onboardingVibeTags, setOnboardingVibeTags] = useState([]);
+  const [onboardingAgeGate, setOnboardingAgeGate] = useState(null);
+  const [onboardingHappyHours, setOnboardingHappyHours] = useState([]);
   
   // Auth state - individual variables
   const [authMode, setAuthMode] = useState('login');
@@ -11854,17 +13376,9 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
   const [editingEvent, setEditingEvent] = useState(null);
 
   // Constants
-  const VENUE_TYPES = [
-    { id: 'bar', label: 'Bar', icon: '🍺' },
-    { id: 'restaurant', label: 'Restaurant', icon: '🍽️' },
-    { id: 'club', label: 'Nightclub', icon: '🎵' },
-    { id: 'lounge', label: 'Lounge', icon: '🛋️' },
-    { id: 'brewery', label: 'Brewery', icon: '🍻' },
-    { id: 'rooftop', label: 'Rooftop', icon: '🌃' },
-    { id: 'sports_bar', label: 'Sports Bar', icon: '⚽' },
-    { id: 'wine_bar', label: 'Wine Bar', icon: '🍷' },
-    { id: 'other', label: 'Other', icon: '🏢' },
-  ];
+  // Patch R — Use the module-level VENUE_TYPES_CATALOG so business + admin stay in sync.
+  // Old local list was a partial subset.
+  const VENUE_TYPES = VENUE_TYPES_CATALOG;
 
   const EVENT_CATEGORIES = [
     { id: 'nightlife', name: 'Nightlife', icon: '🌙' },
@@ -12042,52 +13556,130 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
   };
 
   // Onboarding: Complete
+  // Patch R — Onboarding completion. Two flows:
+  //   • 'single': insert one venue with all Patch R fields. owner_id set on that venue.
+  //   • 'brand':  insert parent brand FIRST (no address — it's the brand wrapper), then
+  //               insert each location with parent_brand_id pointing to the parent.
+  //               owner_id is set on the parent so the user can edit the whole brand.
+  //               Each location inherits the user as a co-owner via establishment_users.establishment_id
+  //               (pointing at the parent brand — locations are reachable through getOtherBrandLocations).
+  // Happy hours from the onboarding editor get attached to the primary venue (single) or
+  // to the parent brand (brand mode) — venue owners can fan them out later per location.
   const handleOnboardingComplete = async () => {
-    if (!venueName || !venueAddress || !venuePhone || !venueSupportEmail) {
+    if (!venueName || !venuePhone || !venueSupportEmail) {
       showToastMsg('Please fill in all required fields', 'error');
       return;
     }
-    
+    if (onboardingMode === 'single' && !venueAddress) {
+      showToastMsg('Please add an address', 'error');
+      return;
+    }
+    if (onboardingMode === 'brand' && pendingLocations.length === 0) {
+      showToastMsg('Add at least one location to your brand', 'error');
+      return;
+    }
+
     setLoading(true);
-    
+
     try {
-      const { data: venueData, error: venueError } = await supabaseClient
-        .from('establishments')
-        .insert([{
-          name: venueName,
+      let primaryVenue = null;
+
+      if (onboardingMode === 'brand') {
+        // 1) Insert parent brand row. Brand has no specific address — it's an umbrella.
+        const { data: brandRow, error: brandErr } = await supabaseClient
+          .from('establishments')
+          .insert([{
+            name: venueName,
+            venue_type: venueType,
+            phone: venuePhone,
+            website: venueWebsite,
+            support_email: venueSupportEmail,
+            description: venueDescription,
+            owner_id: businessUser.id,
+            status: 'approved',
+            vibe_tags: onboardingVibeTags,
+            age_gate_after_time: onboardingAgeGate,
+            parent_brand_id: null,
+          }])
+          .select()
+          .single();
+        if (brandErr) throw brandErr;
+        primaryVenue = brandRow;
+
+        // 2) Insert each location, linked via parent_brand_id.
+        const locPayloads = pendingLocations.map(loc => ({
+          name: loc.name || venueName,
           venue_type: venueType,
-          neighborhood: venueNeighborhood,
-          address: venueAddress,
-          phone: venuePhone,
-          website: venueWebsite,
+          address: loc.address,
+          phone: loc.phone || venuePhone,
           support_email: venueSupportEmail,
           description: venueDescription,
           owner_id: businessUser.id,
-          status: 'approved'
-        }])
-        .select()
-        .single();
-      
-      if (venueError) {
-        console.error('Venue creation error:', venueError);
-        throw venueError;
+          status: 'approved',
+          vibe_tags: Array.isArray(loc.vibe_tags) && loc.vibe_tags.length > 0 ? loc.vibe_tags : onboardingVibeTags,
+          age_gate_after_time: loc.age_gate_after_time || onboardingAgeGate,
+          parent_brand_id: brandRow.id,
+        }));
+        const { error: locErr } = await supabaseClient
+          .from('establishments')
+          .insert(locPayloads);
+        if (locErr) throw locErr;
+      } else {
+        // 'single' mode (default) — one venue, no parent.
+        const { data: venueData, error: venueError } = await supabaseClient
+          .from('establishments')
+          .insert([{
+            name: venueName,
+            venue_type: venueType,
+            address: venueAddress,
+            phone: venuePhone,
+            website: venueWebsite,
+            support_email: venueSupportEmail,
+            description: venueDescription,
+            owner_id: businessUser.id,
+            status: 'approved',
+            vibe_tags: onboardingVibeTags,
+            age_gate_after_time: onboardingAgeGate,
+            parent_brand_id: null,
+          }])
+          .select()
+          .single();
+        if (venueError) throw venueError;
+        primaryVenue = venueData;
       }
-      
+
+      // 3) Attach happy hours to the primary venue (single venue or brand parent).
+      if (onboardingHappyHours.length > 0 && primaryVenue?.id) {
+        const hhPayload = onboardingHappyHours.map(r => ({
+          venue_id: primaryVenue.id,
+          day_of_week: r.day_of_week,
+          start_time: r.start_time,
+          end_time: r.end_time,
+          description: r.description || null,
+          discount_summary: r.discount_summary || null,
+        }));
+        const { error: hhErr } = await supabaseClient.from('venue_happy_hours').insert(hhPayload);
+        if (hhErr) {
+          console.warn('Onboarding happy hours failed:', hhErr);
+          showToastMsg(`Set up complete, but happy hours failed: ${hhErr.message}`, 'error');
+        }
+      }
+
       const { error: updateError } = await supabaseClient
         .from('establishment_users')
-        .update({ 
+        .update({
           onboarding_complete: true,
-          establishment_id: venueData.id 
+          establishment_id: primaryVenue.id,
         })
         .eq('id', businessUser.id);
-      
-      if (updateError) {
-        console.error('User update error:', updateError);
-      }
-      
-      setVenue(venueData);
-      setBusinessUser({ ...businessUser, onboarding_complete: true, establishment_id: venueData.id });
-      showToastMsg('🎉 You\'re all set! Start creating events.');
+      if (updateError) console.error('User update error:', updateError);
+
+      setVenue(primaryVenue);
+      setBusinessUser({ ...businessUser, onboarding_complete: true, establishment_id: primaryVenue.id });
+      const msg = onboardingMode === 'brand'
+        ? `🎉 Brand created with ${pendingLocations.length} location${pendingLocations.length === 1 ? '' : 's'}!`
+        : "🎉 You're all set! Start creating events.";
+      showToastMsg(msg);
       setCurrentView('dashboard');
     } catch (err) {
       console.error('Onboarding error:', err);
@@ -12280,54 +13872,99 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
   }
 
   // ONBOARDING VIEW
+  // Patch R — Reworked. Step 0 is a mode picker (single venue vs brand with multiple locations).
+  // Single mode: 3 steps. Brand mode: 4 steps (extra step for adding locations).
   if (currentView === 'onboarding' || !businessUser?.onboarding_complete) {
+    const isBrand = onboardingMode === 'brand';
+    const totalSteps = isBrand ? 5 : 4;
+
+    // Step 0: mode picker
+    // Step 1: basic info (name, type)
+    // Step 2: contact (phone, website) + address (single) OR locations list (brand)
+    // Step 3: vibes + happy hours (shared across the brand or for the single venue)
+    // Step 4: support email + description + submit
+    const addLocation = () => {
+      if (!locDraft.name && !locDraft.address) {
+        showToastMsg('Add at least a name or address', 'error');
+        return;
+      }
+      setPendingLocations(prev => [...prev, { ...locDraft }]);
+      setLocDraft({ name: '', address: '', phone: '', vibe_tags: [], age_gate_after_time: null });
+    };
+    const removeLocation = (idx) => {
+      setPendingLocations(prev => prev.filter((_, i) => i !== idx));
+    };
+
     return (
-      <div className="fixed inset-0 z-50 bg-slate-900 flex items-center justify-center p-4">
-        <div className="w-full max-w-lg">
-          <div className="bg-slate-800 rounded-2xl p-8 shadow-2xl border border-slate-700">
+      <div className="fixed inset-0 z-50 bg-slate-900 flex items-center justify-center p-4 overflow-y-auto">
+        <div className="w-full max-w-lg my-8">
+          <div className="bg-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl border border-slate-700">
             <div className="text-center mb-6">
               <h1 className="text-2xl font-bold text-white">Set Up Your Venue</h1>
               <p className="text-slate-400 mt-2">Complete your profile to start creating events</p>
             </div>
-            
+
             <div className="flex gap-2 mb-8">
-              {[0, 1, 2].map(i => (<div key={i} className={`flex-1 h-1 rounded-full ${onboardingStep >= i ? 'bg-orange-500' : 'bg-slate-700'}`} />))}
+              {Array.from({ length: totalSteps }).map((_, i) => (
+                <div key={i} className={`flex-1 h-1 rounded-full ${onboardingStep >= i ? 'bg-orange-500' : 'bg-slate-700'}`} />
+              ))}
             </div>
 
+            {/* Step 0 — Mode picker */}
             {onboardingStep === 0 && (
               <div className="space-y-4">
-                <h2 className="text-lg font-semibold text-white">Basic Information</h2>
-                <div>
-                  <label className="block text-sm text-slate-400 mb-1">Venue Name <span className="text-red-400">*</span></label>
-                  <input type="text" value={venueName} onChange={e => setVenueName(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" placeholder="The Rustic" />
-                </div>
-                <div>
-                  <label className="block text-sm text-slate-400 mb-1">Venue Type</label>
-                  <select value={venueType} onChange={e => setVenueType(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none">
-                    <option value="">Select type...</option>
-                    {VENUE_TYPES.map(t => <option key={t.id} value={t.id}>{t.icon} {t.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm text-slate-400 mb-1">Neighborhood</label>
-                  <select value={venueNeighborhood} onChange={e => setVenueNeighborhood(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none">
-                    <option value="">Select neighborhood...</option>
-                    {DALLAS_NEIGHBORHOODS.map(n => <option key={n.id} value={n.name}>{n.name}</option>)}
-                  </select>
-                </div>
-                <button onClick={() => setOnboardingStep(1)} disabled={!venueName} className="w-full py-3 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition disabled:opacity-50">Continue</button>
+                <h2 className="text-lg font-semibold text-white">What are you setting up?</h2>
+                <button
+                  type="button"
+                  onClick={() => { setOnboardingMode('single'); setOnboardingStep(1); }}
+                  className={`w-full p-4 rounded-xl border-2 text-left transition ${onboardingMode === 'single' ? 'border-orange-500 bg-orange-500/15' : 'border-slate-700 hover:border-slate-600 bg-slate-700/40'}`}
+                >
+                  <p className="text-base font-semibold text-white">🏠 A single venue</p>
+                  <p className="text-xs text-slate-400 mt-1">One bar, restaurant, or other spot. Most common.</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setOnboardingMode('brand'); setOnboardingStep(1); }}
+                  className={`w-full p-4 rounded-xl border-2 text-left transition ${onboardingMode === 'brand' ? 'border-orange-500 bg-orange-500/15' : 'border-slate-700 hover:border-slate-600 bg-slate-700/40'}`}
+                >
+                  <p className="text-base font-semibold text-white">🏢 A brand with multiple locations</p>
+                  <p className="text-xs text-slate-400 mt-1">Add the brand once, then each location with its own address, deals, and vibe.</p>
+                </button>
               </div>
             )}
 
+            {/* Step 1 — Basic info (shared). Patch R: neighborhood dropped from UI. */}
             {onboardingStep === 1 && (
               <div className="space-y-4">
-                <h2 className="text-lg font-semibold text-white">Contact Details</h2>
+                <h2 className="text-lg font-semibold text-white">{isBrand ? 'Brand info' : 'Basic information'}</h2>
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">{isBrand ? 'Brand name' : 'Venue name'} <span className="text-red-400">*</span></label>
+                  <input type="text" value={venueName} onChange={e => setVenueName(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" placeholder={isBrand ? "Katy Trail Ice House" : "The Rustic"} />
+                </div>
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">{isBrand ? 'Primary type' : 'Venue type'}</label>
+                  <select value={venueType} onChange={e => setVenueType(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none">
+                    <option value="">Select type...</option>
+                    {VENUE_TYPES_CATALOG.map(t => <option key={t.id} value={t.id}>{t.icon} {t.label}</option>)}
+                  </select>
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => setOnboardingStep(0)} className="flex-1 py-3 border border-slate-600 text-slate-400 rounded-lg hover:bg-slate-700 transition">Back</button>
+                  <button onClick={() => setOnboardingStep(2)} disabled={!venueName} className="flex-1 py-3 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition disabled:opacity-50">Continue</button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 2 — Contact + Address (single) OR Locations list (brand) */}
+            {onboardingStep === 2 && !isBrand && (
+              <div className="space-y-4">
+                <h2 className="text-lg font-semibold text-white">Contact details</h2>
                 <div>
                   <label className="block text-sm text-slate-400 mb-1">Address <span className="text-red-400">*</span></label>
                   <input type="text" value={venueAddress} onChange={e => setVenueAddress(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" placeholder="123 Main St, Dallas, TX 75201" />
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Phone Number <span className="text-red-400">*</span></label>
+                  <label className="block text-sm text-slate-400 mb-1">Phone number <span className="text-red-400">*</span></label>
                   <input type="tel" value={venuePhone} onChange={e => setVenuePhone(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" placeholder="(214) 555-1234" />
                 </div>
                 <div>
@@ -12335,17 +13972,121 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
                   <input type="url" value={venueWebsite} onChange={e => setVenueWebsite(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" placeholder="https://yourvenue.com" />
                 </div>
                 <div className="flex gap-3">
-                  <button onClick={() => setOnboardingStep(0)} className="flex-1 py-3 border border-slate-600 text-slate-400 rounded-lg hover:bg-slate-700 transition">Back</button>
-                  <button onClick={() => setOnboardingStep(2)} disabled={!venueAddress || !venuePhone} className="flex-1 py-3 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition disabled:opacity-50">Continue</button>
+                  <button onClick={() => setOnboardingStep(1)} className="flex-1 py-3 border border-slate-600 text-slate-400 rounded-lg hover:bg-slate-700 transition">Back</button>
+                  <button onClick={() => setOnboardingStep(3)} disabled={!venueAddress || !venuePhone} className="flex-1 py-3 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition disabled:opacity-50">Continue</button>
                 </div>
               </div>
             )}
 
-            {onboardingStep === 2 && (
+            {onboardingStep === 2 && isBrand && (
               <div className="space-y-4">
-                <h2 className="text-lg font-semibold text-white">Support & Description</h2>
+                <h2 className="text-lg font-semibold text-white">Brand contact</h2>
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Support Email <span className="text-red-400">*</span></label>
+                  <label className="block text-sm text-slate-400 mb-1">Main phone <span className="text-red-400">*</span></label>
+                  <input type="tel" value={venuePhone} onChange={e => setVenuePhone(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" placeholder="(214) 555-1234" />
+                </div>
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">Website</label>
+                  <input type="url" value={venueWebsite} onChange={e => setVenueWebsite(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" placeholder="https://yourbrand.com" />
+                </div>
+
+                <div className="border-t border-slate-700 pt-4">
+                  <h3 className="text-sm font-semibold text-white mb-2">Locations</h3>
+                  <p className="text-xs text-slate-400 mb-3">Add each location. They can override phone, vibe tags, and 21+ time.</p>
+
+                  {pendingLocations.length > 0 && (
+                    <div className="space-y-2 mb-3">
+                      {pendingLocations.map((loc, idx) => (
+                        <div key={idx} className="flex items-center gap-2 p-2 bg-slate-700/40 border border-slate-600 rounded-lg">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-white truncate">{loc.name || venueName}</p>
+                            <p className="text-xs text-slate-400 truncate">{loc.address}</p>
+                          </div>
+                          <button onClick={() => removeLocation(idx)} className="text-red-400 hover:bg-red-500/10 p-1 rounded" aria-label="Remove location">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="bg-slate-700/30 border border-slate-600 rounded-lg p-3 space-y-2">
+                    <input
+                      type="text"
+                      value={locDraft.name}
+                      onChange={e => setLocDraft({ ...locDraft, name: e.target.value })}
+                      placeholder={`Location name (defaults to "${venueName}")`}
+                      className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm placeholder-slate-500"
+                    />
+                    <input
+                      type="text"
+                      value={locDraft.address}
+                      onChange={e => setLocDraft({ ...locDraft, address: e.target.value })}
+                      placeholder="Address *"
+                      className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm placeholder-slate-500"
+                    />
+                    <input
+                      type="tel"
+                      value={locDraft.phone}
+                      onChange={e => setLocDraft({ ...locDraft, phone: e.target.value })}
+                      placeholder="Location phone (optional — defaults to brand phone)"
+                      className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm placeholder-slate-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={addLocation}
+                      disabled={!locDraft.address}
+                      className="w-full py-2 bg-orange-500/20 border border-orange-500/40 text-orange-300 text-sm font-semibold rounded hover:bg-orange-500/30 disabled:opacity-40"
+                    >
+                      + Add location
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button onClick={() => setOnboardingStep(1)} className="flex-1 py-3 border border-slate-600 text-slate-400 rounded-lg hover:bg-slate-700 transition">Back</button>
+                  <button onClick={() => setOnboardingStep(3)} disabled={!venuePhone || pendingLocations.length === 0} className="flex-1 py-3 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition disabled:opacity-50">
+                    Continue ({pendingLocations.length})
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 3 — Vibe tags, age gate, happy hours */}
+            {onboardingStep === 3 && (
+              <div className="space-y-4">
+                <h2 className="text-lg font-semibold text-white">Vibes &amp; deals</h2>
+                <p className="text-xs text-slate-400">
+                  {isBrand
+                    ? 'Set defaults at the brand level — each location can override later.'
+                    : 'Set your vibe tags and weekly happy hours. You can edit anytime.'}
+                </p>
+                <VenueAttributesEditor
+                  vibeTags={onboardingVibeTags}
+                  onVibeTagsChange={setOnboardingVibeTags}
+                  ageGateAfterTime={onboardingAgeGate}
+                  onAgeGateChange={setOnboardingAgeGate}
+                  parentBrandId={null}
+                  onParentBrandChange={() => {}}
+                  brandOptions={null}
+                  happyHours={onboardingHappyHours}
+                  onHappyHoursChange={setOnboardingHappyHours}
+                  darkMode={false}
+                />
+                <div className="flex gap-3 pt-2">
+                  <button onClick={() => setOnboardingStep(2)} className="flex-1 py-3 border border-slate-600 text-slate-400 rounded-lg hover:bg-slate-700 transition">Back</button>
+                  <button onClick={() => setOnboardingStep(4)} className="flex-1 py-3 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition">Continue</button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 4 — Support + Description + submit */}
+            {onboardingStep === 4 && (
+              <div className="space-y-4">
+                <h2 className="text-lg font-semibold text-white">Support &amp; description</h2>
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">Support email <span className="text-red-400">*</span></label>
+                  <p className="text-xs text-slate-500 mb-1">For us to reach you about your account. Not shown to end users.</p>
                   <input type="email" value={venueSupportEmail} onChange={e => setVenueSupportEmail(e.target.value)} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none" placeholder="support@yourvenue.com" />
                 </div>
                 <div>
@@ -12353,7 +14094,7 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
                   <textarea value={venueDescription} onChange={e => setVenueDescription(e.target.value)} rows={3} className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:border-orange-500 outline-none resize-none" placeholder="Tell customers about your venue..." />
                 </div>
                 <div className="flex gap-3">
-                  <button onClick={() => setOnboardingStep(1)} className="flex-1 py-3 border border-slate-600 text-slate-400 rounded-lg hover:bg-slate-700 transition">Back</button>
+                  <button onClick={() => setOnboardingStep(3)} className="flex-1 py-3 border border-slate-600 text-slate-400 rounded-lg hover:bg-slate-700 transition">Back</button>
                   <button onClick={handleOnboardingComplete} disabled={!venueSupportEmail || loading} className="flex-1 py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-semibold rounded-lg hover:from-orange-600 hover:to-amber-600 transition disabled:opacity-50">
                     {loading ? 'Setting up...' : 'Complete Setup'}
                   </button>
@@ -12493,13 +14234,33 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
               <div className="space-y-6">
                 <div className="flex items-center justify-between flex-wrap gap-3">
                   <div><h1 className="text-2xl font-bold text-white">Events</h1><p className="text-slate-400">{events.length} total</p></div>
-                  <button onClick={() => setCurrentView('create-event')} className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"><Plus className="w-4 h-4" />Create</button>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Patch Q — Mobile-first Quick Add (business) */}
+                    <button
+                      onClick={() => setShowQuickAdd(true)}
+                      className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-lg hover:from-violet-600 hover:to-purple-700 transition text-sm font-semibold"
+                      title="Mobile-first quick add"
+                    >
+                      <Zap className="w-4 h-4" />Quick Add
+                    </button>
+                    <button onClick={() => setCurrentView('create-event')} className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"><Plus className="w-4 h-4" />Create</button>
+                  </div>
                 </div>
                 <div className="bg-slate-800 rounded-xl border border-slate-700">
                   {events.map(event => (
                     <button 
                       key={event.id} 
-                      onClick={() => { setEditingEvent(event); setCurrentView('edit-event'); }}
+                      onClick={() => {
+                        // Patch Q — Series detection: route through prompt if part of a weekly series.
+                        const isChild = !!event.recurrence_parent_id;
+                        const isParent = !event.recurrence_parent_id && events.some(o => o.recurrence_parent_id === event.id);
+                        if (isChild || isParent) {
+                          setSeriesEditPrompt({ event });
+                        } else {
+                          setEditingEvent(event);
+                          setCurrentView('edit-event');
+                        }
+                      }}
                       className="w-full p-4 border-b border-slate-700 last:border-0 flex items-center gap-4 hover:bg-slate-750 transition text-left"
                     >
                       <Calendar className="w-6 h-6 text-slate-400" />
@@ -12646,6 +14407,20 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
                   </div>
                 </div>
                 
+                {/* Patch Q — Series-scope banner (business). */}
+                {editingEvent._seriesScope === 'future' && (
+                  <div className="p-3 bg-violet-500/15 border border-violet-500/40 rounded-xl">
+                    <p className="text-xs font-semibold text-violet-200">Editing this + all future occurrences</p>
+                    <p className="text-[11px] text-violet-300/70 mt-0.5">Date changes only apply to this row. Other content fields fan out to later weeks.</p>
+                  </div>
+                )}
+                {editingEvent._seriesScope === 'single' && (
+                  <div className="p-3 bg-slate-700/40 border border-slate-600 rounded-xl">
+                    <p className="text-xs font-semibold text-slate-200">Editing this occurrence only</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Other weeks in the series stay unchanged.</p>
+                  </div>
+                )}
+
                 <div className="flex gap-3">
                   <button 
                     onClick={() => { setEditingEvent(null); setCurrentView('events'); }} 
@@ -12656,23 +14431,94 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
                   <button 
                     onClick={async () => {
                       try {
+                        // Patch Q — Series scope. 'future' fans out content fields to later occurrences.
+                        const scope = editingEvent._seriesScope;
+                        const singleUpdate = {
+                          name: editingEvent.name,
+                          date: editingEvent.date,
+                          time: editingEvent.time,
+                          description: editingEvent.description,
+                          drink_specials: editingEvent.drink_specials,
+                          image_url: editingEvent.image_url,
+                        };
+
+                        if (scope === 'future') {
+                          // Update pivot row with everything.
+                          const { error: pivotErr } = await supabaseClient
+                            .from('events')
+                            .update(singleUpdate)
+                            .eq('id', editingEvent.id);
+                          if (pivotErr) throw pivotErr;
+
+                          // Fan out content-only (no date) to later children + parent.
+                          const bulkUpdate = { ...singleUpdate };
+                          delete bulkUpdate.date;
+
+                          const chainKey = editingEvent.recurrence_parent_id || editingEvent.id;
+                          const pivotDate = editingEvent.date || '';
+                          let totalUpdated = 1;
+
+                          if (pivotDate) {
+                            const { data: childRows, error: childErr } = await supabaseClient
+                              .from('events')
+                              .update(bulkUpdate)
+                              .eq('recurrence_parent_id', chainKey)
+                              .gt('date', pivotDate)
+                              .neq('id', editingEvent.id)
+                              .select();
+                            if (childErr) throw childErr;
+                            if (Array.isArray(childRows)) totalUpdated += childRows.length;
+
+                            // If editing a child whose parent is in the future, update the parent too.
+                            if (editingEvent.recurrence_parent_id) {
+                              const parentRow = events.find(ev => ev.id === chainKey);
+                              if (parentRow && (parentRow.date || '') > pivotDate) {
+                                const { error: parentErr } = await supabaseClient
+                                  .from('events')
+                                  .update(bulkUpdate)
+                                  .eq('id', chainKey);
+                                if (parentErr) throw parentErr;
+                                totalUpdated += 1;
+                              }
+                            }
+                          }
+
+                          // Refresh local state: apply pivot + bulk changes optimistically.
+                          setEvents(events.map(ev => {
+                            if (ev.id === editingEvent.id) return { ...ev, ...singleUpdate };
+                            if (
+                              ev.recurrence_parent_id === chainKey &&
+                              (ev.date || '') > pivotDate &&
+                              ev.id !== editingEvent.id
+                            ) {
+                              return { ...ev, ...bulkUpdate };
+                            }
+                            if (editingEvent.recurrence_parent_id && ev.id === chainKey && (ev.date || '') > pivotDate) {
+                              return { ...ev, ...bulkUpdate };
+                            }
+                            return ev;
+                          }));
+                          showToastMsg(`Series updated — ${totalUpdated} occurrence${totalUpdated === 1 ? '' : 's'}`);
+                          setEditingEvent(null);
+                          setCurrentView('events');
+                          return;
+                        }
+
+                        // Single-event path (default).
                         const { error } = await supabaseClient
                           .from('events')
-                          .update({
-                            name: editingEvent.name,
-                            date: editingEvent.date,
-                            time: editingEvent.time,
-                            description: editingEvent.description,
-                            drink_specials: editingEvent.drink_specials,
-                            image_url: editingEvent.image_url
-                          })
+                          .update(singleUpdate)
                           .eq('id', editingEvent.id);
                         if (error) throw error;
-                        setEvents(events.map(e => e.id === editingEvent.id ? editingEvent : e));
+                        // Strip UI-only marker before persisting in local state.
+                        const localCopy = { ...editingEvent };
+                        delete localCopy._seriesScope;
+                        setEvents(events.map(e => e.id === editingEvent.id ? localCopy : e));
                         showToastMsg('Event updated!');
                         setEditingEvent(null);
                         setCurrentView('events');
                       } catch (err) {
+                        console.error('BusinessPortal update failed:', err);
                         showToastMsg('Failed to update event', 'error');
                       }
                     }}
@@ -12866,7 +14712,7 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
                 <div className="bg-slate-800 rounded-xl border border-slate-700 p-6">
                   <div className="flex items-center gap-4 pb-4 border-b border-slate-700 mb-4">
                     <div className="w-16 h-16 bg-slate-700 rounded-xl flex items-center justify-center text-3xl">{VENUE_TYPES.find(t => t.id === venue.venue_type)?.icon || '🏢'}</div>
-                    <div><h2 className="text-xl font-bold text-white">{venue.name}</h2><p className="text-slate-400">{venue.neighborhood}</p></div>
+                    <div><h2 className="text-xl font-bold text-white">{venue.name}</h2><p className="text-slate-400">{VENUE_TYPES.find(t => t.id === venue.venue_type)?.label || ''}</p></div>
                   </div>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div><p className="text-slate-500">Address</p><p className="text-white">{venue.address || '-'}</p></div>
@@ -12914,6 +14760,67 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
           onSaved={(updated) => setVenue(updated)}
           showToast={(msg, type) => showToastMsg(msg, type)}
         />
+      )}
+
+      {/* Patch Q — Quick Add modal (business path; events default to pending for admin approval) */}
+      {showQuickAdd && venue && (
+        <QuickAddEventModal
+          establishments={[venue]}
+          supabaseClient={supabaseClient}
+          showToast={(msg, type) => showToastMsg(msg, type)}
+          defaultStatus="pending"
+          lockedVenue={venue}
+          onClose={() => setShowQuickAdd(false)}
+          onCreated={(rows) => {
+            if (Array.isArray(rows) && rows.length > 0) {
+              setEvents(prev => [...rows, ...prev]);
+            }
+          }}
+        />
+      )}
+
+      {/* Patch Q — Series-edit prompt (business). Routes to edit-event with `_seriesScope`. */}
+      {seriesEditPrompt?.event && (
+        <div className="fixed inset-0 z-[70] bg-black/85 flex items-center justify-center p-4">
+          <div className="bg-slate-900 rounded-2xl border border-slate-700 w-full max-w-sm">
+            <div className="p-5 border-b border-slate-700">
+              <h3 className="text-lg font-bold text-white">Edit recurring event</h3>
+              <p className="text-sm text-slate-400 mt-1">"{seriesEditPrompt.event.name}" is part of a weekly series.</p>
+            </div>
+            <div className="p-3 space-y-2">
+              <button
+                onClick={() => {
+                  setEditingEvent({ ...seriesEditPrompt.event, _seriesScope: 'single' });
+                  setCurrentView('edit-event');
+                  setSeriesEditPrompt(null);
+                }}
+                className="w-full p-3 rounded-xl border border-slate-700 hover:border-orange-500 text-left transition"
+              >
+                <p className="text-sm font-semibold text-white">Edit this occurrence only</p>
+                <p className="text-xs text-slate-400 mt-0.5">Other weeks stay unchanged.</p>
+              </button>
+              <button
+                onClick={() => {
+                  setEditingEvent({ ...seriesEditPrompt.event, _seriesScope: 'future' });
+                  setCurrentView('edit-event');
+                  setSeriesEditPrompt(null);
+                }}
+                className="w-full p-3 rounded-xl border border-slate-700 hover:border-orange-500 text-left transition"
+              >
+                <p className="text-sm font-semibold text-white">Edit this + all future occurrences</p>
+                <p className="text-xs text-slate-400 mt-0.5">Past weeks stay unchanged.</p>
+              </button>
+            </div>
+            <div className="p-3 border-t border-slate-700">
+              <button
+                onClick={() => setSeriesEditPrompt(null)}
+                className="w-full py-2.5 text-sm text-slate-400 hover:text-white"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {toast && <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg ${toast.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'} text-white max-w-sm`}>{toast.message}</div>}
@@ -13926,6 +15833,8 @@ export default function App() {
       .filter(e => {
         if (e.status && e.status !== 'live' && e.status !== 'approved') return false;
         if (!e.date || e.date < todayStr) return false;
+        // Patch Q — standing offers render in their own "Weekly deals" section, not here.
+        if (e.is_standing_offer) return false;
         // Match on establishment_id first, fall back to venue name
         if (venue.id && e.establishment_id) {
           return String(e.establishment_id) === String(venue.id);
@@ -13934,6 +15843,74 @@ export default function App() {
       })
       .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || ''));
   };
+
+  // Patch Q — Standing-offer events for the venue page "Weekly deals" section.
+  // Returns the full set of standing-offer events for this venue; VenuePage dedupes
+  // by recurrence chain via groupStandingOffersByDay() before rendering.
+  const getWeeklyOffersForVenue = (venue) => {
+    if (!venue) return [];
+    return events.filter(e => {
+      if (!e.is_standing_offer) return false;
+      if (e.status && e.status !== 'live' && e.status !== 'approved') return false;
+      if (venue.id && e.establishment_id) {
+        return String(e.establishment_id) === String(venue.id);
+      }
+      return (e.venue || '').toLowerCase().trim() === (venue.name || '').toLowerCase().trim();
+    });
+  };
+
+  // Patch R — Sibling locations: other venues sharing this venue's parent_brand_id, OR
+  // if this venue IS the parent of a brand, return its children. Excludes the venue itself.
+  const getOtherBrandLocations = (venue) => {
+    if (!venue || !Array.isArray(establishments)) return [];
+    // Case 1: this venue is itself a parent brand — return its children.
+    const children = establishments.filter(e =>
+      e.parent_brand_id && String(e.parent_brand_id) === String(venue.id) && e.id !== venue.id
+    );
+    if (children.length > 0) return children;
+    // Case 2: this venue is a child of a brand — return its siblings (same parent).
+    if (venue.parent_brand_id) {
+      return establishments.filter(e =>
+        String(e.parent_brand_id) === String(venue.parent_brand_id) && String(e.id) !== String(venue.id)
+      );
+    }
+    return [];
+  };
+
+  // Patch R — venue_happy_hours cache (loaded on demand when a venue page opens).
+  // Keyed by venue id; value is the array of rows. Loaded lazily so we don't hit the
+  // DB for every venue card render.
+  const [venueHappyHoursCache, setVenueHappyHoursCache] = useState({});
+
+  const loadHappyHoursForVenue = async (venueId) => {
+    if (!supabaseClient || !venueId) return [];
+    if (venueHappyHoursCache[venueId]) return venueHappyHoursCache[venueId];
+    try {
+      const { data, error } = await supabaseClient
+        .from('venue_happy_hours')
+        .select('*')
+        .eq('venue_id', venueId)
+        .order('day_of_week', { ascending: true })
+        .order('start_time', { ascending: true });
+      if (error) throw error;
+      const rows = data || [];
+      setVenueHappyHoursCache(prev => ({ ...prev, [venueId]: rows }));
+      return rows;
+    } catch (err) {
+      // Table may not exist if the Patch R migration hasn't run yet — fail silent.
+      console.warn('venue_happy_hours load failed:', err?.message);
+      setVenueHappyHoursCache(prev => ({ ...prev, [venueId]: [] }));
+      return [];
+    }
+  };
+
+  // Auto-load happy hours whenever a venue page is opened. Cache prevents refetch.
+  useEffect(() => {
+    if (selectedVenuePage?.id) {
+      loadHappyHoursForVenue(selectedVenuePage.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedVenuePage?.id]);
 
   // Patch E — User's check-in count at a specific venue (for "you're a regular here" detection).
   // attendedEvents holds full event rows from check-ins; count rows whose venue/establishment matches.
@@ -15298,6 +17275,13 @@ const loadCrews = async (userId) => {
     // Hard filters: status, date window, distance, age
     filtered = applyHardFilters(filtered);
 
+    // Patch Q — Standing offers are NOT real events from a user-discovery POV. They live on
+    // the venue page under "Weekly deals." We exclude them here, then conditionally re-append
+    // up to PATCH_Q_FEED_FILL_MAX at the END of the feed when the real-event pool is thin
+    // (see the append step at the bottom of this function).
+    const standingOfferPool = filtered.filter(e => e?.is_standing_offer);
+    filtered = filtered.filter(e => !e?.is_standing_offer);
+
     // Patch B.2 — Filter out events the user explicitly passed on (X button).
     // No more "_seen" filter — every other event stays in the feed across sessions.
     if (passedEventIds.size > 0) {
@@ -15363,6 +17347,22 @@ const loadCrews = async (userId) => {
       if (scoreDiff !== 0) return scoreDiff;
       return (a.date || '').localeCompare(b.date || '');
     });
+
+    // Patch Q — Low-feed fill. When the real-event pool is below the threshold, append
+    // up to PATCH_Q_FEED_FILL_MAX standing offers at the END so the user has something
+    // to swipe through. Respects passed/saved exclusions and tonight mode for consistency.
+    if (filtered.length < PATCH_Q_FEED_MIN_BEFORE_FILL && standingOfferPool.length > 0) {
+      let candidatePool = standingOfferPool.filter(e =>
+        !passedEventIds.has(e.id) && !savedEventIds.has(e.id)
+      );
+      if (tonightMode) {
+        candidatePool = getTonightEvents(candidatePool);
+      }
+      const fillers = pickFeedFillStandingOffers(candidatePool);
+      if (fillers.length > 0) {
+        filtered = [...filtered, ...fillers];
+      }
+    }
 
     // Patch B.2 — No more daily cap. Show every event that passes all filters.
     // Engagement is now the constraint (passed/RSVP'd events drop out), not an arbitrary count.
@@ -16024,6 +18024,13 @@ const loadCrews = async (userId) => {
           <VenuePage
             venue={selectedVenuePage}
             upcomingEvents={getUpcomingEventsForVenue(selectedVenuePage)}
+            weeklyOffers={getWeeklyOffersForVenue(selectedVenuePage)}
+            happyHoursForVenue={venueHappyHoursCache[selectedVenuePage.id] || []}
+            otherBrandLocations={getOtherBrandLocations(selectedVenuePage)}
+            onOtherLocationTap={(loc) => {
+              // Patch R — Open the tapped sibling location's venue page.
+              setSelectedVenuePage(loc);
+            }}
             userCheckinCount={getUserCheckinCountAtVenue(selectedVenuePage)}
             onClose={closeVenuePage}
             onEventClick={(ev) => {
