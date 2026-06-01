@@ -671,130 +671,6 @@ const formatStoryAge = (createdAt) => {
   return `${days}d ago`;
 };
 
-// ========== Patch Q — Standing offers, recurring events, Quick Add ==========
-// Day-of-week helpers (Sunday=0). Always parse YYYY-MM-DD as local time to avoid UTC-shift bugs.
-const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const WEEKDAY_NAMES_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-// Local-time-safe weekday from a YYYY-MM-DD date string. Returns 0–6 (Sun–Sat), or null if invalid.
-const getWeekdayFromDateStr = (dateStr) => {
-  if (!dateStr) return null;
-  try {
-    const d = new Date(`${dateStr}T00:00:00`);
-    if (isNaN(d.getTime())) return null;
-    return d.getDay();
-  } catch {
-    return null;
-  }
-};
-
-// Add N weeks to a YYYY-MM-DD date, return YYYY-MM-DD. Local-time-safe.
-const addWeeksToDateStr = (dateStr, weeks) => {
-  if (!dateStr) return dateStr;
-  try {
-    const d = new Date(`${dateStr}T00:00:00`);
-    if (isNaN(d.getTime())) return dateStr;
-    d.setDate(d.getDate() + weeks * 7);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
-  } catch {
-    return dateStr;
-  }
-};
-
-// Format HH:MM (24h) into 12h display like "5:30 PM". Returns '' for invalid.
-const formatTime12h = (timeStr) => {
-  if (!timeStr) return '';
-  const m = /^(\d{1,2}):(\d{2})/.exec(timeStr);
-  if (!m) return '';
-  let h = parseInt(m[1], 10);
-  const min = m[2];
-  if (isNaN(h)) return '';
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  h = h % 12;
-  if (h === 0) h = 12;
-  return `${h}:${min} ${ampm}`;
-};
-
-// Add a fixed offset (minutes) to a HH:MM string, return HH:MM. Wraps past midnight.
-const addMinutesToTimeStr = (timeStr, minutes) => {
-  if (!timeStr) return timeStr;
-  const m = /^(\d{1,2}):(\d{2})/.exec(timeStr);
-  if (!m) return timeStr;
-  const total = (parseInt(m[1], 10) * 60 + parseInt(m[2], 10) + minutes) % (24 * 60);
-  const wrapped = (total + 24 * 60) % (24 * 60);
-  const hh = String(Math.floor(wrapped / 60)).padStart(2, '0');
-  const mm = String(wrapped % 60).padStart(2, '0');
-  return `${hh}:${mm}`;
-};
-
-// PATCH Q SCHEMA CONSTANTS — confirmed migrated in Supabase prior to this patch.
-const PATCH_Q_RECURRENCE_COUNT = 12;          // weekly occurrences generated per "Recurring" toggle
-const PATCH_Q_FEED_MIN_BEFORE_FILL = 10;      // Discover feed threshold for appending standing offers
-const PATCH_Q_FEED_FILL_MAX = 5;              // Max standing offers appended to feed at the tail
-const PATCH_Q_DEFAULT_DURATION_MIN = 120;     // Default end_time = start_time + 2h when omitted
-
-// Group a list of standing-offer events by weekday, taking the nearest-future
-// occurrence per (recurrence chain × weekday). Returns an array of:
-//   { weekday: 0..6, weekdayLabel: 'Tuesday', items: [event, ...] } sorted weekday asc, time asc.
-// Used by the venue page "Weekly deals" section.
-const groupStandingOffersByDay = (eventsList) => {
-  if (!Array.isArray(eventsList) || eventsList.length === 0) return [];
-  const todayStr = new Date().toISOString().slice(0, 10);
-  // Dedupe by recurrence chain key. For events without a parent, use their own id.
-  // Pick the nearest-future row per chain so the displayed date isn't in the past.
-  const byChain = new Map();
-  for (const ev of eventsList) {
-    if (!ev?.is_standing_offer) continue;
-    if (!ev.date || ev.date < todayStr) continue; // skip past occurrences
-    const chainKey = ev.recurrence_parent_id || ev.id;
-    const existing = byChain.get(chainKey);
-    if (!existing || (ev.date || '') < (existing.date || '')) {
-      byChain.set(chainKey, ev);
-    }
-  }
-  // Bucket by weekday
-  const buckets = new Map();
-  for (const ev of byChain.values()) {
-    const wd = getWeekdayFromDateStr(ev.date);
-    if (wd === null) continue;
-    if (!buckets.has(wd)) buckets.set(wd, []);
-    buckets.get(wd).push(ev);
-  }
-  const result = [];
-  for (let wd = 0; wd < 7; wd++) {
-    const items = buckets.get(wd);
-    if (!items || items.length === 0) continue;
-    items.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
-    result.push({ weekday: wd, weekdayLabel: WEEKDAY_NAMES[wd], items });
-  }
-  return result;
-};
-
-// Patch Q — Pick standing-offer events to append to the Discover feed when the
-// real-event list is thin. Dedupes by recurrence chain (one per weekly deal),
-// returns up to PATCH_Q_FEED_FILL_MAX nearest-future occurrences.
-const pickFeedFillStandingOffers = (eventsList, excludeIds = new Set()) => {
-  if (!Array.isArray(eventsList) || eventsList.length === 0) return [];
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const byChain = new Map();
-  for (const ev of eventsList) {
-    if (!ev?.is_standing_offer) continue;
-    if (!ev.id || excludeIds.has(ev.id)) continue;
-    if (!ev.date || ev.date < todayStr) continue;
-    const chainKey = ev.recurrence_parent_id || ev.id;
-    const existing = byChain.get(chainKey);
-    if (!existing || (ev.date || '') < (existing.date || '')) {
-      byChain.set(chainKey, ev);
-    }
-  }
-  return Array.from(byChain.values())
-    .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
-    .slice(0, PATCH_Q_FEED_FILL_MAX);
-};
-
 
 const EVENT_TEMPLATES = [
   {
@@ -4966,387 +4842,6 @@ function EventSuggestionModal({ onClose, userProfile, supabaseClient, userBadges
   );
 }
 
-// Patch Q — Mobile-first "Quick Add" event creation modal.
-// Designed for on-site capture (admin or venue owner standing at the bar). One screen,
-// venue search picks an existing establishment (inheriting address / neighborhood / coords /
-// default category), 30-min step time picker, standing-offer vs real-event toggle, weekly
-// recurring toggle that fans out into PATCH_Q_RECURRENCE_COUNT linked rows.
-//
-// Props:
-//   onClose()                    — dismiss the modal
-//   onCreated(insertedRows[])    — fires after a successful insert with the rows created
-//   establishments               — array of venue objects to search through
-//   supabaseClient               — required, used for direct insert (so we can chain parent → children)
-//   showToast(msg, type)         — toast helper
-//   defaultStatus                — 'live' (admin) | 'pending' (business). Status applied to all inserted rows.
-//   lockedVenue                  — optional. If present, venue search is hidden and this venue is used.
-function QuickAddEventModal({
-  onClose,
-  onCreated,
-  establishments = [],
-  supabaseClient,
-  showToast,
-  defaultStatus = 'live',
-  lockedVenue = null,
-}) {
-  // ---- Form state ----
-  const [venueSearch, setVenueSearch] = useState('');
-  const [selectedVenue, setSelectedVenue] = useState(lockedVenue);
-  const [name, setName] = useState('');
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [time, setTime] = useState('19:00');
-  const [coverCharge, setCoverCharge] = useState('');
-  const [description, setDescription] = useState('');
-  const [isStandingOffer, setIsStandingOffer] = useState(false);
-  const [isRecurring, setIsRecurring] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [venueDropdownOpen, setVenueDropdownOpen] = useState(false);
-
-  // Venue autocomplete: filter approved (or all) venues by case-insensitive substring on name.
-  // Skip filter UI entirely when lockedVenue is set.
-  const approvedVenues = establishments.filter(v => !v.status || v.status === 'approved');
-  const filteredVenues = !venueSearch.trim()
-    ? approvedVenues.slice(0, 8)
-    : approvedVenues.filter(v => (v.name || '').toLowerCase().includes(venueSearch.toLowerCase())).slice(0, 8);
-
-  const pickVenue = (venue) => {
-    setSelectedVenue(venue);
-    setVenueSearch('');
-    setVenueDropdownOpen(false);
-  };
-
-  const clearVenue = () => {
-    if (lockedVenue) return; // can't clear in business portal mode
-    setSelectedVenue(null);
-    setVenueSearch('');
-  };
-
-  // Disambiguating weekday hint for the date input. Helps the user confirm "Tuesday May 12".
-  const dateWeekdayHint = (() => {
-    const wd = getWeekdayFromDateStr(date);
-    if (wd === null) return '';
-    return WEEKDAY_NAMES[wd];
-  })();
-
-  // Submit handler — builds payload, optionally fans out into 12 weekly rows.
-  // Parent row gets recurrence_parent_id = null; children reference parent.id.
-  const handleSubmit = async () => {
-    if (submitting) return;
-    if (!selectedVenue?.id) {
-      showToast?.('Pick a venue', 'error');
-      return;
-    }
-    if (!name.trim()) {
-      showToast?.('Event name required', 'error');
-      return;
-    }
-    if (!date) {
-      showToast?.('Pick a date', 'error');
-      return;
-    }
-    if (!time) {
-      showToast?.('Pick a start time', 'error');
-      return;
-    }
-    if (!supabaseClient) {
-      showToast?.('No DB connection', 'error');
-      return;
-    }
-
-    setSubmitting(true);
-
-    // Inherit defaults from the chosen venue.
-    const venueCategory = selectedVenue.default_event_category
-      || (isStandingOffer ? 'happy-hour' : 'nightlife');
-    const venueImage = selectedVenue.cover_image_url || selectedVenue.image_url || null;
-
-    const baseRow = {
-      name: name.trim(),
-      venue: selectedVenue.name,
-      establishment_id: selectedVenue.id,
-      neighborhood: selectedVenue.neighborhood || null,
-      address: selectedVenue.address || null,
-      latitude: selectedVenue.latitude ?? null,
-      longitude: selectedVenue.longitude ?? null,
-      category: venueCategory,
-      type: 'Event',
-      time,
-      end_time: addMinutesToTimeStr(time, PATCH_Q_DEFAULT_DURATION_MIN),
-      description: description.trim() || null,
-      cover_charge: coverCharge ? parseFloat(coverCharge) : 0,
-      image_url: venueImage,
-      status: defaultStatus,
-      is_standing_offer: !!isStandingOffer,
-      recurring: !!isRecurring,
-      recurrence_pattern: isRecurring ? 'weekly' : null,
-      age_tag: '21+',
-      age_restriction: '21+',
-      views: 0,
-      rsvps: 0,
-      checkins: 0,
-    };
-
-    try {
-      const inserted = [];
-
-      // Insert parent first to get its id, then chain children.
-      const parentPayload = { ...baseRow, date, recurrence_parent_id: null };
-      const { data: parent, error: parentErr } = await supabaseClient
-        .from('events')
-        .insert([parentPayload])
-        .select()
-        .single();
-      if (parentErr) throw parentErr;
-      inserted.push(parent);
-
-      if (isRecurring && parent?.id) {
-        const childRows = [];
-        for (let i = 1; i < PATCH_Q_RECURRENCE_COUNT; i++) {
-          childRows.push({
-            ...baseRow,
-            date: addWeeksToDateStr(date, i),
-            recurrence_parent_id: parent.id,
-          });
-        }
-        if (childRows.length > 0) {
-          const { data: children, error: childErr } = await supabaseClient
-            .from('events')
-            .insert(childRows)
-            .select();
-          if (childErr) throw childErr;
-          if (Array.isArray(children)) inserted.push(...children);
-        }
-      }
-
-      onCreated?.(inserted);
-      const offerWord = isStandingOffer ? 'Standing offer' : 'Event';
-      if (isRecurring) {
-        showToast?.(`✨ ${offerWord} added — ${inserted.length} weekly occurrences created`, 'success');
-      } else {
-        showToast?.(`✨ ${offerWord} added`, 'success');
-      }
-      onClose?.();
-    } catch (err) {
-      console.error('QuickAdd insert failed:', err);
-      const msg = err?.message || err?.hint || 'Insert failed';
-      showToast?.(`Create failed: ${msg}`, 'error');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-[60] bg-black/85 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="bg-zinc-900 w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl border border-zinc-800 max-h-[92vh] overflow-y-auto">
-        {/* Header */}
-        <div className="sticky top-0 bg-zinc-900 border-b border-zinc-800 px-4 py-3 flex items-center justify-between z-10">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl">⚡</span>
-            <h2 className="text-lg font-bold text-white">Quick Add</h2>
-          </div>
-          <button onClick={onClose} className="p-2 hover:bg-zinc-800 rounded-lg">
-            <X className="w-5 h-5 text-zinc-400" />
-          </button>
-        </div>
-
-        <div className="p-4 space-y-5">
-          {/* Venue — the only field that really matters. Locked or searchable. */}
-          <div>
-            <label className="block text-xs font-semibold text-zinc-400 mb-2 uppercase tracking-wide">Venue *</label>
-            {selectedVenue ? (
-              <div className="flex items-center gap-3 p-3 bg-violet-500/10 border border-violet-500/40 rounded-xl">
-                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center flex-shrink-0">
-                  <Building2 className="w-5 h-5 text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-white font-semibold truncate">{selectedVenue.name}</p>
-                  <p className="text-zinc-400 text-xs truncate">{selectedVenue.neighborhood || selectedVenue.address || '—'}</p>
-                </div>
-                {!lockedVenue && (
-                  <button onClick={clearVenue} className="p-1 hover:bg-zinc-800 rounded-lg" aria-label="Change venue">
-                    <X className="w-4 h-4 text-zinc-400" />
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
-                <input
-                  type="text"
-                  value={venueSearch}
-                  onChange={e => { setVenueSearch(e.target.value); setVenueDropdownOpen(true); }}
-                  onFocus={() => setVenueDropdownOpen(true)}
-                  placeholder="Search venues..."
-                  className="w-full pl-10 pr-3 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white text-base focus:border-violet-500 outline-none"
-                />
-                {venueDropdownOpen && filteredVenues.length > 0 && (
-                  <div className="absolute z-20 mt-1 w-full bg-zinc-800 border border-zinc-700 rounded-xl shadow-2xl max-h-60 overflow-y-auto">
-                    {filteredVenues.map(v => (
-                      <button
-                        key={v.id}
-                        onClick={() => pickVenue(v)}
-                        className="w-full px-3 py-2 text-left hover:bg-zinc-700 border-b border-zinc-700/50 last:border-0"
-                      >
-                        <p className="text-white text-sm font-medium truncate">{v.name}</p>
-                        <p className="text-zinc-500 text-xs truncate">{v.neighborhood || v.address || '—'}</p>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {venueDropdownOpen && venueSearch.trim() && filteredVenues.length === 0 && (
-                  <div className="absolute z-20 mt-1 w-full bg-zinc-800 border border-zinc-700 rounded-xl p-3">
-                    <p className="text-zinc-400 text-sm">No venues match. Add the venue first, then create the event.</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Event name */}
-          <div>
-            <label className="block text-xs font-semibold text-zinc-400 mb-2 uppercase tracking-wide">Event name *</label>
-            <input
-              type="text"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder={isStandingOffer ? 'e.g. Tequila Tuesday' : 'e.g. Live Music Night'}
-              className="w-full px-3 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white text-base focus:border-violet-500 outline-none"
-            />
-          </div>
-
-          {/* Date + Time (mobile-friendly, 30-min step) */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-zinc-400 mb-2 uppercase tracking-wide">Date *</label>
-              <input
-                type="date"
-                value={date}
-                onChange={e => setDate(e.target.value)}
-                className="w-full px-3 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white text-base focus:border-violet-500 outline-none"
-              />
-              {dateWeekdayHint && (
-                <p className="mt-1 text-[11px] text-zinc-500">{dateWeekdayHint}</p>
-              )}
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-zinc-400 mb-2 uppercase tracking-wide">Start *</label>
-              <input
-                type="time"
-                value={time}
-                step="1800"
-                onChange={e => setTime(e.target.value)}
-                className="w-full px-3 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-white text-base focus:border-violet-500 outline-none"
-              />
-              {time && (
-                <p className="mt-1 text-[11px] text-zinc-500">{formatTime12h(time)}</p>
-              )}
-            </div>
-          </div>
-
-          {/* Standing offer vs real event — single toggle */}
-          <div>
-            <label className="block text-xs font-semibold text-zinc-400 mb-2 uppercase tracking-wide">Type *</label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setIsStandingOffer(false)}
-                className={`p-3 rounded-xl border-2 text-left transition ${!isStandingOffer ? 'border-violet-500 bg-violet-500/15' : 'border-zinc-700 bg-zinc-800'}`}
-              >
-                <p className="text-sm font-semibold text-white">🎉 Real event</p>
-                <p className="text-[11px] text-zinc-400 mt-0.5">Trivia, concert, theme night</p>
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsStandingOffer(true)}
-                className={`p-3 rounded-xl border-2 text-left transition ${isStandingOffer ? 'border-orange-500 bg-orange-500/15' : 'border-zinc-700 bg-zinc-800'}`}
-              >
-                <p className="text-sm font-semibold text-white">🍻 Standing offer</p>
-                <p className="text-[11px] text-zinc-400 mt-0.5">Happy hour, weekly deal</p>
-              </button>
-            </div>
-            {isStandingOffer && (
-              <p className="mt-2 text-[11px] text-orange-300/80">Standing offers stay off Discover by default and surface on the venue page under "Weekly deals."</p>
-            )}
-          </div>
-
-          {/* Weekly recurring */}
-          <div>
-            <button
-              type="button"
-              onClick={() => setIsRecurring(v => !v)}
-              className={`w-full p-3 rounded-xl border-2 text-left flex items-center gap-3 transition ${isRecurring ? 'border-violet-500 bg-violet-500/15' : 'border-zinc-700 bg-zinc-800'}`}
-            >
-              <div className={`w-10 h-6 rounded-full relative transition ${isRecurring ? 'bg-violet-500' : 'bg-zinc-700'}`}>
-                <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition ${isRecurring ? 'left-[18px]' : 'left-0.5'}`} />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-white">Repeat weekly</p>
-                <p className="text-[11px] text-zinc-400">
-                  {isRecurring
-                    ? `Creates ${PATCH_Q_RECURRENCE_COUNT} occurrences (every ${dateWeekdayHint || 'week'})`
-                    : 'One-time only'}
-                </p>
-              </div>
-            </button>
-          </div>
-
-          {/* Optional: cover charge + description (collapsed by default to keep screen short) */}
-          <details className="bg-zinc-800/50 rounded-xl border border-zinc-700">
-            <summary className="px-3 py-2 text-sm text-zinc-300 cursor-pointer select-none">
-              Optional details
-            </summary>
-            <div className="px-3 pb-3 pt-1 space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1.5 uppercase tracking-wide">Cover charge</label>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  value={coverCharge}
-                  onChange={e => setCoverCharge(e.target.value)}
-                  placeholder="0"
-                  className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-white text-sm focus:border-violet-500 outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1.5 uppercase tracking-wide">Description</label>
-                <textarea
-                  value={description}
-                  onChange={e => setDescription(e.target.value)}
-                  rows={2}
-                  placeholder="Anything worth knowing?"
-                  className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-white text-sm focus:border-violet-500 outline-none resize-none"
-                />
-              </div>
-            </div>
-          </details>
-        </div>
-
-        {/* Sticky footer with submit */}
-        <div className="sticky bottom-0 bg-zinc-900 border-t border-zinc-800 px-4 py-3 flex gap-2">
-          <button
-            onClick={onClose}
-            disabled={submitting}
-            className="px-4 py-3 border border-zinc-700 text-zinc-300 rounded-xl font-semibold disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={submitting || !selectedVenue || !name.trim() || !date || !time}
-            className="flex-1 px-4 py-3 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-xl font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {submitting
-              ? 'Adding...'
-              : isRecurring
-                ? `Add ${PATCH_Q_RECURRENCE_COUNT}× weekly`
-                : 'Add event'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // Patch B — Vertical-scroll TikTok-style card for the Discover feed.
 // Patch C — Full-viewport: image fills the entire card, content overlays bottom with gradient.
 // Card itself is tappable (opens detail). Save + Pass are corner icons. RSVP lives in detail view.
@@ -5606,12 +5101,6 @@ function EventFeedCard({
                 ✨ Fresh this week
               </span>
             )}
-            {/* Patch Q — Standing offer indicator. Shown when a weekly deal is appended to the feed (low-event fill). */}
-            {event?.is_standing_offer && (
-              <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-orange-500/25 text-orange-200 border border-orange-400/40 backdrop-blur">
-                🍻 Weekly
-              </span>
-            )}
           </div>
           {/* Single-line description preview */}
           {shortDesc && (
@@ -5796,7 +5285,6 @@ function StoryCarousel({ stories, venueName, startIndex = 0, onClose }) {
 function VenuePage({
   venue,
   upcomingEvents = [],
-  weeklyOffers = [], // Patch Q — standing-offer events grouped/rendered separately from upcomingEvents
   userCheckinCount = 0,
   onClose,
   onEventClick,
@@ -6141,53 +5629,6 @@ function VenuePage({
             </a>
           </div>
         )}
-
-        {/* Patch Q — Weekly deals: standing-offer events grouped by day of week.
-            Shown only when this venue actually has standing offers; never blocks the upcoming-events block. */}
-        {(() => {
-          const grouped = groupStandingOffersByDay(weeklyOffers);
-          if (grouped.length === 0) return null;
-          return (
-            <div className="mb-6">
-              <h2 className={`text-lg font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
-                <span>🍻 Weekly deals</span>
-                <span className={`text-xs font-normal ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>
-                  ({grouped.reduce((n, g) => n + g.items.length, 0)})
-                </span>
-              </h2>
-              <div className="space-y-3">
-                {grouped.map(({ weekday, weekdayLabel, items }) => (
-                  <div key={weekday}>
-                    <p className={`text-xs font-bold uppercase tracking-wider mb-1.5 ${darkMode ? 'text-orange-300/80' : 'text-orange-700/80'}`}>
-                      {weekdayLabel}s
-                    </p>
-                    <div className="space-y-2">
-                      {items.map(ev => (
-                        <button
-                          key={ev.id}
-                          onClick={() => onEventClick && onEventClick(ev)}
-                          className={`w-full p-3 rounded-xl flex items-center gap-3 text-left transition ${darkMode ? 'bg-zinc-900 border border-orange-500/20 hover:border-orange-500/40' : 'bg-white border border-orange-200 hover:border-orange-300'}`}
-                        >
-                          <div className="flex-1 min-w-0">
-                            <p className={`font-semibold truncate ${darkMode ? 'text-white' : 'text-zinc-900'}`}>{ev.name}</p>
-                            <p className={`text-xs ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
-                              Every {weekdayLabel} · {ev.time ? `${(ev.time || '').slice(0,5)}` : '—'}
-                              {ev.end_time ? ` – ${(ev.end_time || '').slice(0,5)}` : ''}
-                            </p>
-                            {ev.drink_specials && (
-                              <p className={`text-xs mt-0.5 truncate ${darkMode ? 'text-orange-300/80' : 'text-orange-700/80'}`}>{ev.drink_specials}</p>
-                            )}
-                          </div>
-                          <ChevronRight className={`w-5 h-5 flex-shrink-0 ${darkMode ? 'text-zinc-600' : 'text-zinc-400'}`} />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })()}
 
         {/* Upcoming events — always shown (even if empty) */}
         <div className="mb-6">
@@ -10362,10 +9803,6 @@ function AdminPortal({ onClose, userEmail }) {
   // Patch E.1 — Admin story composer (any venue)
   const [storyComposerVenue, setStoryComposerVenue] = useState(null);
 
-  // Patch Q — Mobile-first Quick Add modal + edit-series prompt
-  const [showQuickAdd, setShowQuickAdd] = useState(false);
-  const [seriesEditPrompt, setSeriesEditPrompt] = useState(null); // { event } when user taps a series row
-
   useEffect(() => { loadData(); }, []);
 
   // Auto-refresh every 60 seconds, but only on dashboard view (not during editing)
@@ -10392,21 +9829,6 @@ function AdminPortal({ onClose, userEmail }) {
   };
 
   const showToastMsg = (msg, type = 'success') => { setToast({ message: msg, type }); setTimeout(() => setToast(null), 3000); };
-
-  // Patch Q — Open an event for editing, with series detection.
-  // If the event is part of a weekly recurring series (has a parent OR has at least one child),
-  // route through the series-edit prompt so the user can pick scope. Otherwise go straight to
-  // the edit modal as before.
-  const openEventForEdit = (e) => {
-    if (!e) return;
-    const isChild = !!e.recurrence_parent_id;
-    const isParent = !e.recurrence_parent_id && events.some(other => other.recurrence_parent_id === e.id);
-    if (isChild || isParent) {
-      setSeriesEditPrompt({ event: e });
-    } else {
-      setEditingEvent(e);
-    }
-  };
 
   const totalViews = events.reduce((sum, e) => sum + (e.views || 0), 0);
   const totalRsvps = events.reduce((sum, e) => sum + (e.rsvps || 0), 0);
@@ -10499,84 +9921,7 @@ function AdminPortal({ onClose, userEmail }) {
 
   const handleUpdateEvent = async (id, updates) => {
     try {
-      // Patch Q — Series scope. If the editingEvent carries `_seriesScope: 'future'`,
-      // also update all later occurrences in the same chain (excluding earlier ones).
-      // For 'single' scope (or no scope), behavior is unchanged from before.
-      const scope = editingEvent?._seriesScope;
-      const seriesPivot = editingEvent;
-
-      // Strip Patch Q UI-only marker before sending to Supabase.
-      const sanitized = { ...updates };
-      delete sanitized._seriesScope;
-
-      if (scope === 'future' && seriesPivot) {
-        // Determine chain key: parent's id if this row IS a parent (recurrence_parent_id null),
-        // else the row's recurrence_parent_id.
-        const chainKey = seriesPivot.recurrence_parent_id || seriesPivot.id;
-        const pivotDate = seriesPivot.date || sanitized.date || '';
-
-        // Date-shape fields (date, recurrence_parent_id) are NEVER bulk-applied across the series —
-        // each row needs its own week's date. Strip them before the bulk update.
-        const bulkUpdates = { ...sanitized };
-        delete bulkUpdates.date;
-        delete bulkUpdates.recurrence_parent_id;
-
-        // 1) Update the pivot row itself with the full sanitized payload (may include a new date).
-        const { data: pivotData, error: pivotErr } = await supabaseClient
-          .from('events')
-          .update(sanitized)
-          .eq('id', id)
-          .select()
-          .single();
-        if (pivotErr) throw pivotErr;
-
-        // 2) Update later occurrences in the chain (parent + siblings) with content-only fields.
-        // Match rows whose chain matches and whose date is strictly after the pivot date.
-        // The chain consists of: the parent row (id === chainKey) AND any children (recurrence_parent_id === chainKey).
-        // Supabase doesn't support OR-with-multiple-cols cleanly in one call here, so we run two updates.
-        let updatedChildren = [];
-        if (Object.keys(bulkUpdates).length > 0 && pivotDate) {
-          // Children with recurrence_parent_id === chainKey AND date > pivotDate AND id !== pivot id
-          const { data: childRows, error: childErr } = await supabaseClient
-            .from('events')
-            .update(bulkUpdates)
-            .eq('recurrence_parent_id', chainKey)
-            .gt('date', pivotDate)
-            .neq('id', id)
-            .select();
-          if (childErr) throw childErr;
-          if (Array.isArray(childRows)) updatedChildren = childRows;
-
-          // If the pivot is a CHILD and the parent's date is > pivotDate (rare but possible if
-          // the parent was edited to a later date), also update the parent row.
-          if (seriesPivot.recurrence_parent_id) {
-            const parentRow = events.find(ev => ev.id === chainKey);
-            if (parentRow && (parentRow.date || '') > pivotDate) {
-              const { data: parentData, error: parentErr } = await supabaseClient
-                .from('events')
-                .update(bulkUpdates)
-                .eq('id', chainKey)
-                .select()
-                .single();
-              if (parentErr) throw parentErr;
-              if (parentData) updatedChildren.push(parentData);
-            }
-          }
-        }
-
-        // Merge results into local state.
-        const updatedById = new Map();
-        if (pivotData) updatedById.set(pivotData.id, pivotData);
-        for (const r of updatedChildren) updatedById.set(r.id, r);
-        setEvents(events.map(ev => updatedById.get(ev.id) || ev));
-        showToastMsg(`Series updated — ${updatedById.size} occurrence${updatedById.size === 1 ? '' : 's'}`);
-        setEditingEvent(null);
-        if (selectedEvent?.id === id && pivotData) setSelectedEvent(pivotData);
-        return;
-      }
-
-      // Single-event path (legacy default).
-      const { data, error } = await supabaseClient.from('events').update(sanitized).eq('id', id).select().single();
+      const { data, error } = await supabaseClient.from('events').update(updates).eq('id', id).select().single();
       if (error) throw error;
       setEvents(events.map(e => e.id === id ? data : e));
       showToastMsg('Event updated!');
@@ -11275,7 +10620,7 @@ function AdminPortal({ onClose, userEmail }) {
         <div className="flex items-center gap-4">
           <button onClick={() => { setSelectedEvent(null); setCurrentView('events'); }} className="p-2 hover:bg-gray-800 rounded-lg"><ChevronLeft className="w-5 h-5 text-gray-400" /></button>
           <div className="flex-1"><h1 className="text-xl font-bold text-white truncate">{e.name}</h1></div>
-          <button onClick={() => openEventForEdit(e)} className="p-2 hover:bg-gray-800 rounded-lg"><Edit2 className="w-5 h-5 text-blue-400" /></button>
+          <button onClick={() => setEditingEvent(e)} className="p-2 hover:bg-gray-800 rounded-lg"><Edit2 className="w-5 h-5 text-blue-400" /></button>
         </div>
         <div className="bg-gradient-to-br from-violet-600 to-purple-700 rounded-xl p-6">
           <div className="flex items-center gap-4 mb-4">
@@ -11302,7 +10647,7 @@ function AdminPortal({ onClose, userEmail }) {
           {e.description && <div><p className="text-gray-500 text-sm">Description</p><p className="text-white text-sm">{e.description}</p></div>}
         </div>
         <div className="flex gap-3">
-          <button onClick={() => openEventForEdit(e)} className="flex-1 px-4 py-3 bg-blue-500 text-white rounded-xl font-semibold">Edit</button>
+          <button onClick={() => setEditingEvent(e)} className="flex-1 px-4 py-3 bg-blue-500 text-white rounded-xl font-semibold">Edit</button>
           <button onClick={() => handleDeleteEvent(e.id)} className="px-4 py-3 bg-red-500/20 text-red-400 rounded-xl font-semibold">Delete</button>
         </div>
       </div>
@@ -11443,24 +10788,10 @@ function AdminPortal({ onClose, userEmail }) {
   const EditEventModal = () => {
     const [form, setForm] = useState(editingEvent || {});
     if (!editingEvent) return null;
-    // Patch Q — Series-scope banner: show context when editing a series occurrence.
-    const seriesScope = editingEvent._seriesScope;
     return (
       <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
         <div className="bg-gray-800 rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
           <div className="p-4 border-b border-gray-700 flex justify-between"><h2 className="text-lg font-bold text-white">Edit Event</h2><button onClick={() => setEditingEvent(null)}><X className="w-5 h-5 text-gray-400" /></button></div>
-          {seriesScope === 'future' && (
-            <div className="mx-4 mt-4 p-3 bg-violet-500/15 border border-violet-500/40 rounded-lg">
-              <p className="text-xs font-semibold text-violet-200">Editing this + all future occurrences</p>
-              <p className="text-[11px] text-violet-300/70 mt-0.5">Date changes only apply to this row. Other content fields fan out to later weeks.</p>
-            </div>
-          )}
-          {seriesScope === 'single' && (
-            <div className="mx-4 mt-4 p-3 bg-zinc-700/40 border border-zinc-600 rounded-lg">
-              <p className="text-xs font-semibold text-zinc-200">Editing this occurrence only</p>
-              <p className="text-[11px] text-zinc-400 mt-0.5">Other weeks in the series stay unchanged.</p>
-            </div>
-          )}
           <div className="p-4 space-y-4">
             <div><label className="block text-sm text-gray-400 mb-1">Name</label><input value={form.name || ''} onChange={e => setForm({...form, name: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" /></div>
             <div><label className="block text-sm text-gray-400 mb-1">Venue</label><input value={form.venue || ''} onChange={e => setForm({...form, venue: e.target.value})} className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" /></div>
@@ -12144,14 +11475,6 @@ function AdminPortal({ onClose, userEmail }) {
           >
             <MapPin className="w-4 h-4" />Geocode missing
           </button>
-          {/* Patch Q — Mobile-first Quick Add (admin) */}
-          <button
-            onClick={() => setShowQuickAdd(true)}
-            className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-lg hover:from-violet-600 hover:to-purple-700 transition text-sm font-semibold"
-            title="Mobile-first quick add"
-          >
-            <Zap className="w-4 h-4" />Quick Add
-          </button>
           <button onClick={() => setCurrentView('create-event')} className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-xl text-sm"><Plus className="w-4 h-4" />Create</button>
         </div>
       </div>
@@ -12222,64 +11545,6 @@ function AdminPortal({ onClose, userEmail }) {
       </div>
       {editingVenue && <EditVenueModal />}
       {editingEvent && <EditEventModal />}
-      {/* Patch Q — Quick Add modal (admin path; events go straight live) */}
-      {showQuickAdd && (
-        <QuickAddEventModal
-          establishments={establishments}
-          supabaseClient={supabaseClient}
-          showToast={showToastMsg}
-          defaultStatus="live"
-          onClose={() => setShowQuickAdd(false)}
-          onCreated={(rows) => {
-            // Prepend newly inserted rows so the admin sees them immediately.
-            if (Array.isArray(rows) && rows.length > 0) {
-              setEvents(prev => [...rows, ...prev]);
-            }
-          }}
-        />
-      )}
-      {/* Patch Q — Series-edit prompt. Shown when a user taps an event that's part of a
-          weekly recurring series, so they can choose "this occurrence" or "this + all future". */}
-      {seriesEditPrompt?.event && (
-        <div className="fixed inset-0 z-[70] bg-black/85 flex items-center justify-center p-4">
-          <div className="bg-zinc-900 rounded-2xl border border-zinc-800 w-full max-w-sm">
-            <div className="p-5 border-b border-zinc-800">
-              <h3 className="text-lg font-bold text-white">Edit recurring event</h3>
-              <p className="text-sm text-zinc-400 mt-1">"{seriesEditPrompt.event.name}" is part of a weekly series.</p>
-            </div>
-            <div className="p-3 space-y-2">
-              <button
-                onClick={() => {
-                  setEditingEvent({ ...seriesEditPrompt.event, _seriesScope: 'single' });
-                  setSeriesEditPrompt(null);
-                }}
-                className="w-full p-3 rounded-xl border border-zinc-700 hover:border-violet-500 text-left transition"
-              >
-                <p className="text-sm font-semibold text-white">Edit this occurrence only</p>
-                <p className="text-xs text-zinc-400 mt-0.5">Other weeks stay unchanged.</p>
-              </button>
-              <button
-                onClick={() => {
-                  setEditingEvent({ ...seriesEditPrompt.event, _seriesScope: 'future' });
-                  setSeriesEditPrompt(null);
-                }}
-                className="w-full p-3 rounded-xl border border-zinc-700 hover:border-violet-500 text-left transition"
-              >
-                <p className="text-sm font-semibold text-white">Edit this + all future occurrences</p>
-                <p className="text-xs text-zinc-400 mt-0.5">Past weeks stay unchanged.</p>
-              </button>
-            </div>
-            <div className="p-3 border-t border-zinc-800">
-              <button
-                onClick={() => setSeriesEditPrompt(null)}
-                className="w-full py-2.5 text-sm text-zinc-400 hover:text-white"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {/* Patch C2b — Bulk-paste modal */}
       {showBulkPaste && (
         <div className="fixed inset-0 bg-black bg-opacity-80 z-50 flex items-center justify-center p-4">
@@ -12530,10 +11795,6 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
   const [showStoryComposer, setShowStoryComposer] = useState(false);
   // Patch E.2 — Bespoke venue editor (own venue only)
   const [showEditMyVenue, setShowEditMyVenue] = useState(false);
-
-  // Patch Q — Mobile-first Quick Add modal + edit-series prompt
-  const [showQuickAdd, setShowQuickAdd] = useState(false);
-  const [seriesEditPrompt, setSeriesEditPrompt] = useState(null);
   
   // Detect mobile screen and auto-collapse sidebar
   useEffect(() => {
@@ -13232,33 +12493,13 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
               <div className="space-y-6">
                 <div className="flex items-center justify-between flex-wrap gap-3">
                   <div><h1 className="text-2xl font-bold text-white">Events</h1><p className="text-slate-400">{events.length} total</p></div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {/* Patch Q — Mobile-first Quick Add (business) */}
-                    <button
-                      onClick={() => setShowQuickAdd(true)}
-                      className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-lg hover:from-violet-600 hover:to-purple-700 transition text-sm font-semibold"
-                      title="Mobile-first quick add"
-                    >
-                      <Zap className="w-4 h-4" />Quick Add
-                    </button>
-                    <button onClick={() => setCurrentView('create-event')} className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"><Plus className="w-4 h-4" />Create</button>
-                  </div>
+                  <button onClick={() => setCurrentView('create-event')} className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition"><Plus className="w-4 h-4" />Create</button>
                 </div>
                 <div className="bg-slate-800 rounded-xl border border-slate-700">
                   {events.map(event => (
                     <button 
                       key={event.id} 
-                      onClick={() => {
-                        // Patch Q — Series detection: route through prompt if part of a weekly series.
-                        const isChild = !!event.recurrence_parent_id;
-                        const isParent = !event.recurrence_parent_id && events.some(o => o.recurrence_parent_id === event.id);
-                        if (isChild || isParent) {
-                          setSeriesEditPrompt({ event });
-                        } else {
-                          setEditingEvent(event);
-                          setCurrentView('edit-event');
-                        }
-                      }}
+                      onClick={() => { setEditingEvent(event); setCurrentView('edit-event'); }}
                       className="w-full p-4 border-b border-slate-700 last:border-0 flex items-center gap-4 hover:bg-slate-750 transition text-left"
                     >
                       <Calendar className="w-6 h-6 text-slate-400" />
@@ -13405,20 +12646,6 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
                   </div>
                 </div>
                 
-                {/* Patch Q — Series-scope banner (business). */}
-                {editingEvent._seriesScope === 'future' && (
-                  <div className="p-3 bg-violet-500/15 border border-violet-500/40 rounded-xl">
-                    <p className="text-xs font-semibold text-violet-200">Editing this + all future occurrences</p>
-                    <p className="text-[11px] text-violet-300/70 mt-0.5">Date changes only apply to this row. Other content fields fan out to later weeks.</p>
-                  </div>
-                )}
-                {editingEvent._seriesScope === 'single' && (
-                  <div className="p-3 bg-slate-700/40 border border-slate-600 rounded-xl">
-                    <p className="text-xs font-semibold text-slate-200">Editing this occurrence only</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">Other weeks in the series stay unchanged.</p>
-                  </div>
-                )}
-
                 <div className="flex gap-3">
                   <button 
                     onClick={() => { setEditingEvent(null); setCurrentView('events'); }} 
@@ -13429,94 +12656,23 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
                   <button 
                     onClick={async () => {
                       try {
-                        // Patch Q — Series scope. 'future' fans out content fields to later occurrences.
-                        const scope = editingEvent._seriesScope;
-                        const singleUpdate = {
-                          name: editingEvent.name,
-                          date: editingEvent.date,
-                          time: editingEvent.time,
-                          description: editingEvent.description,
-                          drink_specials: editingEvent.drink_specials,
-                          image_url: editingEvent.image_url,
-                        };
-
-                        if (scope === 'future') {
-                          // Update pivot row with everything.
-                          const { error: pivotErr } = await supabaseClient
-                            .from('events')
-                            .update(singleUpdate)
-                            .eq('id', editingEvent.id);
-                          if (pivotErr) throw pivotErr;
-
-                          // Fan out content-only (no date) to later children + parent.
-                          const bulkUpdate = { ...singleUpdate };
-                          delete bulkUpdate.date;
-
-                          const chainKey = editingEvent.recurrence_parent_id || editingEvent.id;
-                          const pivotDate = editingEvent.date || '';
-                          let totalUpdated = 1;
-
-                          if (pivotDate) {
-                            const { data: childRows, error: childErr } = await supabaseClient
-                              .from('events')
-                              .update(bulkUpdate)
-                              .eq('recurrence_parent_id', chainKey)
-                              .gt('date', pivotDate)
-                              .neq('id', editingEvent.id)
-                              .select();
-                            if (childErr) throw childErr;
-                            if (Array.isArray(childRows)) totalUpdated += childRows.length;
-
-                            // If editing a child whose parent is in the future, update the parent too.
-                            if (editingEvent.recurrence_parent_id) {
-                              const parentRow = events.find(ev => ev.id === chainKey);
-                              if (parentRow && (parentRow.date || '') > pivotDate) {
-                                const { error: parentErr } = await supabaseClient
-                                  .from('events')
-                                  .update(bulkUpdate)
-                                  .eq('id', chainKey);
-                                if (parentErr) throw parentErr;
-                                totalUpdated += 1;
-                              }
-                            }
-                          }
-
-                          // Refresh local state: apply pivot + bulk changes optimistically.
-                          setEvents(events.map(ev => {
-                            if (ev.id === editingEvent.id) return { ...ev, ...singleUpdate };
-                            if (
-                              ev.recurrence_parent_id === chainKey &&
-                              (ev.date || '') > pivotDate &&
-                              ev.id !== editingEvent.id
-                            ) {
-                              return { ...ev, ...bulkUpdate };
-                            }
-                            if (editingEvent.recurrence_parent_id && ev.id === chainKey && (ev.date || '') > pivotDate) {
-                              return { ...ev, ...bulkUpdate };
-                            }
-                            return ev;
-                          }));
-                          showToastMsg(`Series updated — ${totalUpdated} occurrence${totalUpdated === 1 ? '' : 's'}`);
-                          setEditingEvent(null);
-                          setCurrentView('events');
-                          return;
-                        }
-
-                        // Single-event path (default).
                         const { error } = await supabaseClient
                           .from('events')
-                          .update(singleUpdate)
+                          .update({
+                            name: editingEvent.name,
+                            date: editingEvent.date,
+                            time: editingEvent.time,
+                            description: editingEvent.description,
+                            drink_specials: editingEvent.drink_specials,
+                            image_url: editingEvent.image_url
+                          })
                           .eq('id', editingEvent.id);
                         if (error) throw error;
-                        // Strip UI-only marker before persisting in local state.
-                        const localCopy = { ...editingEvent };
-                        delete localCopy._seriesScope;
-                        setEvents(events.map(e => e.id === editingEvent.id ? localCopy : e));
+                        setEvents(events.map(e => e.id === editingEvent.id ? editingEvent : e));
                         showToastMsg('Event updated!');
                         setEditingEvent(null);
                         setCurrentView('events');
                       } catch (err) {
-                        console.error('BusinessPortal update failed:', err);
                         showToastMsg('Failed to update event', 'error');
                       }
                     }}
@@ -13758,67 +12914,6 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
           onSaved={(updated) => setVenue(updated)}
           showToast={(msg, type) => showToastMsg(msg, type)}
         />
-      )}
-
-      {/* Patch Q — Quick Add modal (business path; events default to pending for admin approval) */}
-      {showQuickAdd && venue && (
-        <QuickAddEventModal
-          establishments={[venue]}
-          supabaseClient={supabaseClient}
-          showToast={(msg, type) => showToastMsg(msg, type)}
-          defaultStatus="pending"
-          lockedVenue={venue}
-          onClose={() => setShowQuickAdd(false)}
-          onCreated={(rows) => {
-            if (Array.isArray(rows) && rows.length > 0) {
-              setEvents(prev => [...rows, ...prev]);
-            }
-          }}
-        />
-      )}
-
-      {/* Patch Q — Series-edit prompt (business). Routes to edit-event with `_seriesScope`. */}
-      {seriesEditPrompt?.event && (
-        <div className="fixed inset-0 z-[70] bg-black/85 flex items-center justify-center p-4">
-          <div className="bg-slate-900 rounded-2xl border border-slate-700 w-full max-w-sm">
-            <div className="p-5 border-b border-slate-700">
-              <h3 className="text-lg font-bold text-white">Edit recurring event</h3>
-              <p className="text-sm text-slate-400 mt-1">"{seriesEditPrompt.event.name}" is part of a weekly series.</p>
-            </div>
-            <div className="p-3 space-y-2">
-              <button
-                onClick={() => {
-                  setEditingEvent({ ...seriesEditPrompt.event, _seriesScope: 'single' });
-                  setCurrentView('edit-event');
-                  setSeriesEditPrompt(null);
-                }}
-                className="w-full p-3 rounded-xl border border-slate-700 hover:border-orange-500 text-left transition"
-              >
-                <p className="text-sm font-semibold text-white">Edit this occurrence only</p>
-                <p className="text-xs text-slate-400 mt-0.5">Other weeks stay unchanged.</p>
-              </button>
-              <button
-                onClick={() => {
-                  setEditingEvent({ ...seriesEditPrompt.event, _seriesScope: 'future' });
-                  setCurrentView('edit-event');
-                  setSeriesEditPrompt(null);
-                }}
-                className="w-full p-3 rounded-xl border border-slate-700 hover:border-orange-500 text-left transition"
-              >
-                <p className="text-sm font-semibold text-white">Edit this + all future occurrences</p>
-                <p className="text-xs text-slate-400 mt-0.5">Past weeks stay unchanged.</p>
-              </button>
-            </div>
-            <div className="p-3 border-t border-slate-700">
-              <button
-                onClick={() => setSeriesEditPrompt(null)}
-                className="w-full py-2.5 text-sm text-slate-400 hover:text-white"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
       )}
 
       {toast && <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg ${toast.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'} text-white max-w-sm`}>{toast.message}</div>}
@@ -14831,8 +13926,6 @@ export default function App() {
       .filter(e => {
         if (e.status && e.status !== 'live' && e.status !== 'approved') return false;
         if (!e.date || e.date < todayStr) return false;
-        // Patch Q — standing offers render in their own "Weekly deals" section, not here.
-        if (e.is_standing_offer) return false;
         // Match on establishment_id first, fall back to venue name
         if (venue.id && e.establishment_id) {
           return String(e.establishment_id) === String(venue.id);
@@ -14840,21 +13933,6 @@ export default function App() {
         return (e.venue || '').toLowerCase().trim() === (venue.name || '').toLowerCase().trim();
       })
       .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || ''));
-  };
-
-  // Patch Q — Standing-offer events for the venue page "Weekly deals" section.
-  // Returns the full set of standing-offer events for this venue; VenuePage dedupes
-  // by recurrence chain via groupStandingOffersByDay() before rendering.
-  const getWeeklyOffersForVenue = (venue) => {
-    if (!venue) return [];
-    return events.filter(e => {
-      if (!e.is_standing_offer) return false;
-      if (e.status && e.status !== 'live' && e.status !== 'approved') return false;
-      if (venue.id && e.establishment_id) {
-        return String(e.establishment_id) === String(venue.id);
-      }
-      return (e.venue || '').toLowerCase().trim() === (venue.name || '').toLowerCase().trim();
-    });
   };
 
   // Patch E — User's check-in count at a specific venue (for "you're a regular here" detection).
@@ -16220,13 +15298,6 @@ const loadCrews = async (userId) => {
     // Hard filters: status, date window, distance, age
     filtered = applyHardFilters(filtered);
 
-    // Patch Q — Standing offers are NOT real events from a user-discovery POV. They live on
-    // the venue page under "Weekly deals." We exclude them here, then conditionally re-append
-    // up to PATCH_Q_FEED_FILL_MAX at the END of the feed when the real-event pool is thin
-    // (see the append step at the bottom of this function).
-    const standingOfferPool = filtered.filter(e => e?.is_standing_offer);
-    filtered = filtered.filter(e => !e?.is_standing_offer);
-
     // Patch B.2 — Filter out events the user explicitly passed on (X button).
     // No more "_seen" filter — every other event stays in the feed across sessions.
     if (passedEventIds.size > 0) {
@@ -16292,22 +15363,6 @@ const loadCrews = async (userId) => {
       if (scoreDiff !== 0) return scoreDiff;
       return (a.date || '').localeCompare(b.date || '');
     });
-
-    // Patch Q — Low-feed fill. When the real-event pool is below the threshold, append
-    // up to PATCH_Q_FEED_FILL_MAX standing offers at the END so the user has something
-    // to swipe through. Respects passed/saved exclusions and tonight mode for consistency.
-    if (filtered.length < PATCH_Q_FEED_MIN_BEFORE_FILL && standingOfferPool.length > 0) {
-      let candidatePool = standingOfferPool.filter(e =>
-        !passedEventIds.has(e.id) && !savedEventIds.has(e.id)
-      );
-      if (tonightMode) {
-        candidatePool = getTonightEvents(candidatePool);
-      }
-      const fillers = pickFeedFillStandingOffers(candidatePool);
-      if (fillers.length > 0) {
-        filtered = [...filtered, ...fillers];
-      }
-    }
 
     // Patch B.2 — No more daily cap. Show every event that passes all filters.
     // Engagement is now the constraint (passed/RSVP'd events drop out), not an arbitrary count.
@@ -16969,7 +16024,6 @@ const loadCrews = async (userId) => {
           <VenuePage
             venue={selectedVenuePage}
             upcomingEvents={getUpcomingEventsForVenue(selectedVenuePage)}
-            weeklyOffers={getWeeklyOffersForVenue(selectedVenuePage)}
             userCheckinCount={getUserCheckinCountAtVenue(selectedVenuePage)}
             onClose={closeVenuePage}
             onEventClick={(ev) => {
