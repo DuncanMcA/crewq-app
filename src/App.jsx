@@ -6281,8 +6281,14 @@ function EventFeedCard({
         </button>
       </div>
 
-      {/* Bottom gradient + content overlay */}
-      <div className="absolute bottom-0 inset-x-0 pt-32 pb-6 px-5 bg-gradient-to-t from-black via-black/80 to-transparent">
+      {/* Bottom gradient + content overlay
+          Patch T.1 — Bottom padding uses --feed-card-bottom-safe-area so content
+          (title, venue, date row) doesn't get hidden by the fixed bottom nav ribbon
+          on mobile. Tunable globally from App's mount effect. */}
+      <div
+        className="absolute bottom-0 inset-x-0 pt-32 px-5 bg-gradient-to-t from-black via-black/80 to-transparent"
+        style={{ paddingBottom: 'var(--feed-card-bottom-safe-area, 96px)' }}
+      >
         <div className="space-y-2.5 max-w-[calc(100%-72px)]" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
           <h2 className="text-2xl sm:text-3xl font-bold leading-tight text-white">
             {event.name}
@@ -16638,6 +16644,18 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
 }
 
 export default function App() {
+  // Patch T.1 — CSS variable for the safe area at the bottom of full-viewport feed cards.
+  // The mobile bottom-nav ribbon (Discover/Events/Awards/Crew/Profile) is ~64px tall plus
+  // safe-area inset on iOS, so the bottom of feed-card content needs at least ~96px of
+  // padding to clear it. Set as a global CSS variable so any component can reference it via
+  // Tailwind arbitrary value syntax: pb-[var(--feed-card-bottom-safe-area)].
+  // Tunable in one place if the nav height ever changes.
+  useEffect(() => {
+    document.documentElement.style.setProperty('--feed-card-bottom-safe-area', '96px');
+    // Also expose a smaller "top safe area" reserved by the CrewQ BETA header (~56px).
+    document.documentElement.style.setProperty('--feed-card-top-safe-area', '64px');
+  }, []);
+
   const [currentTab, setCurrentTab] = useState('discover');
   const [mode, setMode] = useState('crew');
   const [currentIndex, setCurrentIndex] = useState(0);
