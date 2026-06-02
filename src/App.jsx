@@ -7214,11 +7214,14 @@ function GooglePlacesSearchBox({ onPlaceSelected, onError, biasLocation, darkMod
           'nationalPhoneNumber', 'internationalPhoneNumber', 'websiteURI',
           'regularOpeningHours', 'priceLevel', 'rating', 'userRatingCount',
           'types', 'photos',
-          // Attribute fields (nested objects in the new API). Most are top-level booleans.
+          // Attribute fields supported in JS Place class (March 2025+).
+          // The serves* booleans + accessibilityOptions are stable.
+          // Unsupported in JS as of now: outdoorSeating, liveMusic, dineIn, takeout,
+          // delivery, curbsidePickup, reservable, allowsDogs. These come from REST-only.
+          // If/when JS supports them, add back here.
           'accessibilityOptions', 'servesBeer', 'servesWine', 'servesCocktails',
           'servesBrunch', 'servesBreakfast', 'servesLunch', 'servesDinner',
-          'servesVegetarianFood', 'outdoorSeating', 'liveMusic', 'allowsDogs',
-          'dineIn', 'takeout', 'delivery', 'curbsidePickup', 'reservable',
+          'servesVegetarianFood',
         ],
       });
       // Rotate the session token — once a Details request fires, the session is "spent."
