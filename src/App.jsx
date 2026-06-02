@@ -704,6 +704,87 @@ const addWeeksToDateStr = (dateStr, weeks) => {
   }
 };
 
+// ========== Patch S — Monthly recurrence ==========
+// Catalog of "which occurrence within a month" for monthly_nth_weekday recurrence.
+// Stored as the integer in events.recurrence_nth (1..4, or -1 for last).
+const MONTHLY_NTH_OPTIONS = [
+  { id: 1,  label: 'First'  },
+  { id: 2,  label: 'Second' },
+  { id: 3,  label: 'Third'  },
+  { id: 4,  label: 'Fourth' },
+  { id: -1, label: 'Last'   },
+];
+const getMonthlyNthLabel = (n) => (MONTHLY_NTH_OPTIONS.find(o => o.id === n)?.label || '');
+
+// Given a year/month/weekday/nth, return the YYYY-MM-DD date string for that occurrence.
+// `weekday` is 0=Sun..6=Sat. `nth` is 1..4 for first..fourth, or -1 for last.
+// Returns null if the nth occurrence doesn't exist in that month (e.g. 5th Friday of Feb).
+const nthWeekdayOfMonth = (year, monthIdx, weekday, nth) => {
+  if (nth === -1) {
+    // Last weekday of the month — count from the end.
+    const lastDay = new Date(year, monthIdx + 1, 0); // day 0 of next month = last day of this
+    const lastWd = lastDay.getDay();
+    const daysBack = (lastWd - weekday + 7) % 7;
+    const targetDate = lastDay.getDate() - daysBack;
+    const d = new Date(year, monthIdx, targetDate);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  // Nth weekday from the start.
+  const first = new Date(year, monthIdx, 1);
+  const firstWd = first.getDay();
+  const daysToFirst = (weekday - firstWd + 7) % 7;
+  const targetDate = 1 + daysToFirst + (nth - 1) * 7;
+  // Check it's still in this month.
+  const testDate = new Date(year, monthIdx, targetDate);
+  if (testDate.getMonth() !== monthIdx) return null;
+  const yyyy = testDate.getFullYear();
+  const mm = String(testDate.getMonth() + 1).padStart(2, '0');
+  const dd = String(testDate.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+// Generate the next `count` monthly occurrences of (weekday × nth), starting from
+// the month containing `startDateStr`. The first generated date is the nth weekday of
+// startDateStr's month if that date is >= startDateStr, otherwise the next month.
+// Skips months where the nth occurrence doesn't exist (rare — 5th-of-month with nth=4 may collide).
+// Returns array of YYYY-MM-DD strings.
+const generateMonthlyOccurrences = (startDateStr, weekday, nth, count) => {
+  if (!startDateStr) return [];
+  const start = new Date(`${startDateStr}T00:00:00`);
+  if (isNaN(start.getTime())) return [];
+  const results = [];
+  let year = start.getFullYear();
+  let monthIdx = start.getMonth();
+  let attempts = 0;
+  while (results.length < count && attempts < count + 12) {
+    const candidate = nthWeekdayOfMonth(year, monthIdx, weekday, nth);
+    if (candidate && candidate >= startDateStr) {
+      results.push(candidate);
+    }
+    // Advance to next month
+    monthIdx++;
+    if (monthIdx > 11) { monthIdx = 0; year++; }
+    attempts++;
+  }
+  return results;
+};
+
+// Convenience: given a start date, infer the "nth weekday of month" pattern.
+// Used to populate the default UI selection when the admin toggles monthly recurrence.
+const inferNthWeekdayFromDate = (dateStr) => {
+  if (!dateStr) return { weekday: 5, nth: 1 }; // default: First Friday
+  const d = new Date(`${dateStr}T00:00:00`);
+  if (isNaN(d.getTime())) return { weekday: 5, nth: 1 };
+  const weekday = d.getDay();
+  const dom = d.getDate();
+  // Which occurrence of this weekday within the month is `dom`?
+  const nth = Math.ceil(dom / 7);
+  return { weekday, nth: nth > 4 ? -1 : nth };
+};
+
 // Format HH:MM (24h) into 12h display like "5:30 PM". Returns '' for invalid.
 const formatTime12h = (timeStr) => {
   if (!timeStr) return '';
@@ -5465,9 +5546,42 @@ function QuickAddEventModal({
   const [coverCharge, setCoverCharge] = useState('');
   const [description, setDescription] = useState('');
   const [isStandingOffer, setIsStandingOffer] = useState(false);
-  const [isRecurring, setIsRecurring] = useState(false);
+  // Patch S — Three-way recurrence mode: 'none' | 'weekly' | 'monthly'.
+  // Replaces the binary isRecurring toggle. Weekly = 12 weekly clones (3 months).
+  // Monthly = 3 monthly clones generated via nth-weekday-of-month logic (also ~3 months).
+  // Default rule reflects most common usage:
+  //   • Toggling to weekly → suggests standing offer (4+ per month = ongoing deal)
+  //   • Toggling to monthly → suggests real event (≤2 per month = scheduled happening)
+  // Admin can override by tapping the standing-offer toggle independently.
+  const [recurrenceMode, setRecurrenceMode] = useState('none');
+  const [monthlyNth, setMonthlyNth] = useState(1); // 1..4 or -1
+  const [monthlyWeekday, setMonthlyWeekday] = useState(5); // 0=Sun..6=Sat, default Fri
   const [submitting, setSubmitting] = useState(false);
   const [venueDropdownOpen, setVenueDropdownOpen] = useState(false);
+
+  // Patch S — Whenever the user picks a date, infer the monthly pattern from it.
+  // Example: pick Nov 7 (a Friday) → suggests "First Friday." User can override the picker.
+  useEffect(() => {
+    if (recurrenceMode === 'monthly' && date) {
+      const { weekday, nth } = inferNthWeekdayFromDate(date);
+      setMonthlyWeekday(weekday);
+      setMonthlyNth(nth);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recurrenceMode, date]);
+
+  // Patch S — Apply the inverted default rule when recurrence mode changes.
+  // Don't override if the admin has already explicitly set isStandingOffer (we can't tell
+  // explicit-set from default-set, so we only apply on mode change away from 'none').
+  // Trade-off: if admin sets standing offer manually then changes recurrence, the default
+  // re-applies. Acceptable — admin can re-toggle.
+  useEffect(() => {
+    if (recurrenceMode === 'weekly') {
+      setIsStandingOffer(true);  // 4+/month = standing offer default
+    } else if (recurrenceMode === 'monthly') {
+      setIsStandingOffer(false); // ≤2/month = event default
+    }
+  }, [recurrenceMode]);
 
   // Venue autocomplete: filter approved (or all) venues by case-insensitive substring on name.
   // Skip filter UI entirely when lockedVenue is set.
@@ -5544,14 +5658,35 @@ function QuickAddEventModal({
       image_url: venueImage,
       status: defaultStatus,
       is_standing_offer: !!isStandingOffer,
-      recurring: !!isRecurring,
-      recurrence_pattern: isRecurring ? 'weekly' : null,
+      // Patch S — recurring is true for both weekly + monthly; recurrence_pattern distinguishes.
+      // recurrence_nth + recurrence_weekday only set for monthly mode.
+      recurring: recurrenceMode !== 'none',
+      recurrence_pattern: recurrenceMode === 'none' ? null : recurrenceMode,
+      recurrence_nth: recurrenceMode === 'monthly' ? monthlyNth : null,
+      recurrence_weekday: recurrenceMode === 'monthly' ? monthlyWeekday : null,
       age_tag: '21+',
       age_restriction: '21+',
       views: 0,
       rsvps: 0,
       checkins: 0,
     };
+
+    // Patch S — Pre-compute child dates so we can also stamp recurrence_ends_at on the parent.
+    // Weekly: 12 occurrences (3 months, ~PATCH_Q_RECURRENCE_COUNT). Monthly: 3 occurrences.
+    let childDates = [];
+    if (recurrenceMode === 'weekly') {
+      for (let i = 1; i < PATCH_Q_RECURRENCE_COUNT; i++) {
+        childDates.push(addWeeksToDateStr(date, i));
+      }
+    } else if (recurrenceMode === 'monthly') {
+      // 3 monthly occurrences total (parent + 2 children) for "stick with 3 months" coverage.
+      const all = generateMonthlyOccurrences(date, monthlyWeekday, monthlyNth, 3);
+      // First entry is the parent date (or the one closest >= date). Children = rest.
+      childDates = all.slice(1);
+    }
+    // Final occurrence date (or parent date if no children) → recurrence_ends_at on parent.
+    const endsAt = childDates.length > 0 ? childDates[childDates.length - 1] : date;
+    baseRow.recurrence_ends_at = recurrenceMode === 'none' ? null : endsAt;
 
     try {
       const inserted = [];
@@ -5566,29 +5701,27 @@ function QuickAddEventModal({
       if (parentErr) throw parentErr;
       inserted.push(parent);
 
-      if (isRecurring && parent?.id) {
-        const childRows = [];
-        for (let i = 1; i < PATCH_Q_RECURRENCE_COUNT; i++) {
-          childRows.push({
-            ...baseRow,
-            date: addWeeksToDateStr(date, i),
-            recurrence_parent_id: parent.id,
-          });
-        }
-        if (childRows.length > 0) {
-          const { data: children, error: childErr } = await supabaseClient
-            .from('events')
-            .insert(childRows)
-            .select();
-          if (childErr) throw childErr;
-          if (Array.isArray(children)) inserted.push(...children);
-        }
+      if (childDates.length > 0 && parent?.id) {
+        const childRows = childDates.map(childDate => ({
+          ...baseRow,
+          date: childDate,
+          recurrence_parent_id: parent.id,
+        }));
+        const { data: children, error: childErr } = await supabaseClient
+          .from('events')
+          .insert(childRows)
+          .select();
+        if (childErr) throw childErr;
+        if (Array.isArray(children)) inserted.push(...children);
       }
 
       onCreated?.(inserted);
       const offerWord = isStandingOffer ? 'Standing offer' : 'Event';
-      if (isRecurring) {
+      if (recurrenceMode === 'weekly') {
         showToast?.(`✨ ${offerWord} added — ${inserted.length} weekly occurrences created`, 'success');
+      } else if (recurrenceMode === 'monthly') {
+        const patternLabel = `${getMonthlyNthLabel(monthlyNth)} ${WEEKDAY_NAMES[monthlyWeekday]}`;
+        showToast?.(`✨ ${offerWord} added — ${inserted.length} monthly occurrences (${patternLabel})`, 'success');
       } else {
         showToast?.(`✨ ${offerWord} added`, 'success');
       }
@@ -5736,25 +5869,66 @@ function QuickAddEventModal({
             )}
           </div>
 
-          {/* Weekly recurring */}
+          {/* Patch S — Three-way recurrence picker: None / Weekly / Monthly.
+              Weekly = ~3 months of weekly clones. Monthly = 3 monthly clones via nth-weekday rule.
+              Toggling weekly defaults isStandingOffer=true (it's a regular deal).
+              Toggling monthly defaults isStandingOffer=false (it's a scheduled event). */}
           <div>
-            <button
-              type="button"
-              onClick={() => setIsRecurring(v => !v)}
-              className={`w-full p-3 rounded-xl border-2 text-left flex items-center gap-3 transition ${isRecurring ? 'border-violet-500 bg-violet-500/15' : 'border-zinc-700 bg-zinc-800'}`}
-            >
-              <div className={`w-10 h-6 rounded-full relative transition ${isRecurring ? 'bg-violet-500' : 'bg-zinc-700'}`}>
-                <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition ${isRecurring ? 'left-[18px]' : 'left-0.5'}`} />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-white">Repeat weekly</p>
-                <p className="text-[11px] text-zinc-400">
-                  {isRecurring
-                    ? `Creates ${PATCH_Q_RECURRENCE_COUNT} occurrences (every ${dateWeekdayHint || 'week'})`
-                    : 'One-time only'}
+            <label className="block text-xs font-semibold text-zinc-400 mb-2 uppercase tracking-wide">Repeats</label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setRecurrenceMode('none')}
+                className={`p-3 rounded-xl border-2 text-center transition ${recurrenceMode === 'none' ? 'border-violet-500 bg-violet-500/15' : 'border-zinc-700 bg-zinc-800'}`}
+              >
+                <p className="text-sm font-semibold text-white">Once</p>
+                <p className="text-[11px] text-zinc-400 mt-0.5">One-time only</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRecurrenceMode('weekly')}
+                className={`p-3 rounded-xl border-2 text-center transition ${recurrenceMode === 'weekly' ? 'border-violet-500 bg-violet-500/15' : 'border-zinc-700 bg-zinc-800'}`}
+              >
+                <p className="text-sm font-semibold text-white">Weekly</p>
+                <p className="text-[11px] text-zinc-400 mt-0.5">{PATCH_Q_RECURRENCE_COUNT}× ({dateWeekdayHint || 'every wk'})</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRecurrenceMode('monthly')}
+                className={`p-3 rounded-xl border-2 text-center transition ${recurrenceMode === 'monthly' ? 'border-violet-500 bg-violet-500/15' : 'border-zinc-700 bg-zinc-800'}`}
+              >
+                <p className="text-sm font-semibold text-white">Monthly</p>
+                <p className="text-[11px] text-zinc-400 mt-0.5">3× (nth weekday)</p>
+              </button>
+            </div>
+            {recurrenceMode === 'monthly' && (
+              <div className="mt-2 p-3 rounded-xl bg-zinc-800 border border-violet-500/30 space-y-2">
+                <div className="flex items-center gap-2">
+                  <select
+                    value={monthlyNth}
+                    onChange={e => setMonthlyNth(parseInt(e.target.value, 10))}
+                    className="px-2 py-1.5 bg-zinc-900 border border-zinc-700 rounded text-white text-sm"
+                  >
+                    {MONTHLY_NTH_OPTIONS.map(o => (
+                      <option key={o.id} value={o.id}>{o.label}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={monthlyWeekday}
+                    onChange={e => setMonthlyWeekday(parseInt(e.target.value, 10))}
+                    className="px-2 py-1.5 bg-zinc-900 border border-zinc-700 rounded text-white text-sm"
+                  >
+                    {WEEKDAY_NAMES.map((wd, i) => (
+                      <option key={i} value={i}>{wd}</option>
+                    ))}
+                  </select>
+                  <span className="text-xs text-zinc-400">of every month</span>
+                </div>
+                <p className="text-[11px] text-violet-300/70">
+                  ↻ Series ends in 3 months. You'll get a reminder in the admin queue to extend it.
                 </p>
               </div>
-            </button>
+            )}
           </div>
 
           {/* Optional: cover charge + description (collapsed by default to keep screen short) */}
@@ -5804,9 +5978,11 @@ function QuickAddEventModal({
           >
             {submitting
               ? 'Adding...'
-              : isRecurring
+              : recurrenceMode === 'weekly'
                 ? `Add ${PATCH_Q_RECURRENCE_COUNT}× weekly`
-                : 'Add event'}
+                : recurrenceMode === 'monthly'
+                  ? `Add 3× monthly`
+                  : 'Add event'}
           </button>
         </div>
       </div>
@@ -12934,9 +13110,12 @@ function AdminPortal({ onClose, userEmail }) {
   // Patch R — Overhauled. Drops neighborhood + email from UI. Adds vibe tags, age gate,
   //           parent brand selector, and happy hour rows. Persists happy hours after venue insert.
   // Patch R.2 — Adds Google Places search at top. Picking a result prefills every supported field.
-  //             All Google data lands in the SAME state vars the manual form already uses, so
-  //             admin can edit/override anything before submitting.
-  const CreateVenueForm = () => {
+  // Patch S — Converted from `<CreateVenueForm />` component to inline render function.
+  //           As a component-inside-component, every parent re-render gave it a new identity →
+  //           React unmounted + remounted on every keystroke → focus loss + page snap-to-top.
+  //           Calling renderCreateVenueForm() returns the same JSX inlined into the parent's
+  //           render tree, so no remount happens. State already lives at AdminPortal scope (R.2-fix5).
+  const renderCreateVenueForm = () => {
     // Patch R.2-fix5 — State LIFTED to AdminPortal body (see top of AdminPortal).
     // Aliasing here keeps the rest of the JSX identical to pre-fix while using
     // the stable parent state. NOTE: state is intentionally NOT declared inside
@@ -13837,7 +14016,7 @@ function AdminPortal({ onClose, userEmail }) {
           : currentView === 'analytics-views' ? <AnalyticsViews />
           : currentView === 'analytics-engagement' ? <AnalyticsEngagement />
           : currentView === 'users' ? <UserAnalytics />
-          : currentView === 'create-venue' ? <CreateVenueForm />
+          : currentView === 'create-venue' ? renderCreateVenueForm()
           : currentView === 'create-event' ? <CreateEventForm />
           : currentView === 'venues' ? <VenuesList />
           : currentView === 'venue-detail' ? <VenueDetail />
