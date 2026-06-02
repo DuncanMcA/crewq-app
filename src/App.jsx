@@ -6690,6 +6690,27 @@ function VenuePage({
                           </span>
                         )}
                       </div>
+                      {/* Patch R.3 — Caption text (sits above image, below times). */}
+                      {row.caption && (
+                        <p className={`text-sm mb-2 ${darkMode ? 'text-zinc-300' : 'text-zinc-700'}`}>
+                          {row.caption}
+                        </p>
+                      )}
+                      {/* Patch R.3 — Menu image, when set. Tappable to open full-size in new tab. */}
+                      {row.menu_image_url && (
+                        <a
+                          href={row.menu_image_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block mb-2 rounded-lg overflow-hidden border border-orange-500/20 hover:border-orange-500/40 transition"
+                        >
+                          <img
+                            src={row.menu_image_url}
+                            alt={`${row.name || 'Happy hour'} menu`}
+                            className="w-full max-h-96 object-contain bg-black"
+                          />
+                        </a>
+                      )}
                       {deals.length > 0 ? (
                         <ul className="space-y-1">
                           {deals.map((deal, dIdx) => {
@@ -6702,11 +6723,11 @@ function VenuePage({
                             );
                           })}
                         </ul>
-                      ) : (
+                      ) : (!row.menu_image_url && !row.caption) ? (
                         <p className={`text-xs italic ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>
                           Specials available — ask your bartender.
                         </p>
-                      )}
+                      ) : null}
                     </div>
                   );
                 })}
@@ -7368,13 +7389,17 @@ function VenueAttributesEditor({
     onHappyHoursChange?.([
       ...happyHours,
       // Patch R.1 — New row shape: days_of_week is int[], deals is array of objects.
-      // Default to weekdays 4-7pm with no deals; user fills both.
+      // Patch R.3 — Adds menu_image_url + caption for image-first happy hours
+      // (e.g. Cafe Madrid's Spanish tapas HH menu). Both are optional — leave blank
+      // for deals-only HH; set image to skip deals entirely; use both for a mixed presentation.
       {
         name: '',
         days_of_week: [1, 2, 3, 4, 5],
         start_time: '16:00',
         end_time: '19:00',
         deals: [],
+        menu_image_url: '',
+        caption: '',
       },
     ]);
   };
@@ -7616,6 +7641,43 @@ function VenueAttributesEditor({
                         value={row.end_time || ''}
                         onChange={e => updateHappyHour(idx, { end_time: e.target.value })}
                         step="900"
+                        className={`w-full px-2 py-1.5 rounded text-sm ${T.input}`}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Patch R.3 — Menu image URL + caption.
+                      Use case: venues with a curated HH menu (named items + fixed prices) that
+                      doesn't fit the structured deals model (e.g. "Tortilla española $4").
+                      Image displays first on venue page; deals (if any) show below. */}
+                  <div className="mb-3 space-y-2">
+                    <div>
+                      <label className={`block text-[10px] uppercase tracking-wide mb-1 ${T.sub}`}>Menu image URL (optional)</label>
+                      <input
+                        type="url"
+                        value={row.menu_image_url || ''}
+                        onChange={e => updateHappyHour(idx, { menu_image_url: e.target.value })}
+                        placeholder="https://... (use this for HH menus that aren't simple discounts)"
+                        className={`w-full px-2 py-1.5 rounded text-sm ${T.input}`}
+                      />
+                      {row.menu_image_url && (
+                        <div className="mt-1.5">
+                          <img
+                            src={row.menu_image_url}
+                            alt="Happy hour menu preview"
+                            className="max-h-40 rounded border border-zinc-700 object-contain"
+                            onError={(e) => { e.target.style.display = 'none'; }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <label className={`block text-[10px] uppercase tracking-wide mb-1 ${T.sub}`}>Caption (optional)</label>
+                      <input
+                        type="text"
+                        value={row.caption || ''}
+                        onChange={e => updateHappyHour(idx, { caption: e.target.value })}
+                        placeholder="e.g. Stop by after work and join us — dine-in only"
                         className={`w-full px-2 py-1.5 rounded text-sm ${T.input}`}
                       />
                     </div>
@@ -7890,11 +7952,14 @@ function EditMyVenue({ venue, supabaseClient, onClose, onSaved, showToast }) {
           const hhPayload = localHappyHours.map(r => ({
             venue_id: venue.id,
             // Patch R.1 — multi-day window + structured deals
+            // Patch R.3 — menu_image_url + caption for image-first happy hours
             name: r.name || null,
             days_of_week: Array.isArray(r.days_of_week) ? r.days_of_week : [],
             start_time: r.start_time,
             end_time: r.end_time,
             deals: Array.isArray(r.deals) ? r.deals : [],
+            menu_image_url: r.menu_image_url || null,
+            caption: r.caption || null,
           }));
           const { error: hhErr } = await supabaseClient.from('venue_happy_hours').insert(hhPayload);
           if (hhErr) throw hhErr;
@@ -12717,11 +12782,14 @@ function AdminPortal({ onClose, userEmail }) {
             const payload = localHappyHours.map(r => ({
               venue_id: editingVenue.id,
               // Patch R.1 — multi-day window + structured deals
+              // Patch R.3 — menu_image_url + caption for image-first happy hours
               name: r.name || null,
               days_of_week: Array.isArray(r.days_of_week) ? r.days_of_week : [],
               start_time: r.start_time,
               end_time: r.end_time,
               deals: Array.isArray(r.deals) ? r.deals : [],
+              menu_image_url: r.menu_image_url || null,
+              caption: r.caption || null,
             }));
             const { error: hhErr } = await supabaseClient.from('venue_happy_hours').insert(payload);
             if (hhErr) {
@@ -12939,11 +13007,14 @@ function AdminPortal({ onClose, userEmail }) {
           const hhPayload = happyHoursLocal.map(r => ({
             venue_id: venueRow.id,
             // Patch R.1 — multi-day window + structured deals
+            // Patch R.3 — menu_image_url + caption for image-first happy hours
             name: r.name || null,
             days_of_week: Array.isArray(r.days_of_week) ? r.days_of_week : [],
             start_time: r.start_time,
             end_time: r.end_time,
             deals: Array.isArray(r.deals) ? r.deals : [],
+            menu_image_url: r.menu_image_url || null,
+            caption: r.caption || null,
           }));
           const { error: hhErr } = await supabaseClient
             .from('venue_happy_hours')
@@ -14448,11 +14519,14 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
         const hhPayload = onboardingHappyHours.map(r => ({
           venue_id: primaryVenue.id,
           // Patch R.1 — multi-day window + structured deals
+          // Patch R.3 — menu_image_url + caption for image-first happy hours
           name: r.name || null,
           days_of_week: Array.isArray(r.days_of_week) ? r.days_of_week : [],
           start_time: r.start_time,
           end_time: r.end_time,
           deals: Array.isArray(r.deals) ? r.deals : [],
+          menu_image_url: r.menu_image_url || null,
+          caption: r.caption || null,
         }));
         const { error: hhErr } = await supabaseClient.from('venue_happy_hours').insert(hhPayload);
         if (hhErr) {
