@@ -1039,7 +1039,7 @@ const loadGoogleMapsApi = () => {
       }
     };
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_PLACES_API_KEY)}&libraries=places&callback=${cb}&v=weekly`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_PLACES_API_KEY)}&libraries=places&callback=${cb}&v=weekly&loading=async`;
     script.async = true;
     script.defer = true;
     script.onerror = (e) => {
@@ -1085,6 +1085,10 @@ const formatGoogleTime = (hhmm) => {
   const h12 = h % 12 === 0 ? 12 : h % 12;
   return m === '00' ? `${h12}${ampm}` : `${h12}:${m}${ampm}`;
 };
+// Patch R.2-fix2 — Hours mapper for NEW Place class.
+// Legacy:  period.open.time = '0900' (HHMM string)
+// New:     period.open.hour = 9, period.open.minute = 0 (ints)
+// We handle both shapes for safety.
 const mapGoogleHoursToOurs = (openingHours) => {
   if (!openingHours?.periods || !Array.isArray(openingHours.periods)) return {};
   const result = {};
@@ -1092,11 +1096,19 @@ const mapGoogleHoursToOurs = (openingHours) => {
     const dayIdx = period.open?.day;
     if (dayIdx == null || dayIdx < 0 || dayIdx > 6) continue;
     const key = DAY_KEYS[dayIdx];
-    const openTime = formatGoogleTime(period.open?.time);
-    const closeTime = period.close ? formatGoogleTime(period.close.time) : '24hr';
+
+    // Build HHMM string from new (.hour/.minute) or use legacy .time as-is.
+    const openHHMM = period.open?.hour != null
+      ? `${String(period.open.hour).padStart(2, '0')}${String(period.open.minute || 0).padStart(2, '0')}`
+      : period.open?.time;
+    const closeHHMM = period.close?.hour != null
+      ? `${String(period.close.hour).padStart(2, '0')}${String(period.close.minute || 0).padStart(2, '0')}`
+      : period.close?.time;
+
+    const openTime = formatGoogleTime(openHHMM);
+    const closeTime = closeHHMM ? formatGoogleTime(closeHHMM) : '24hr';
     if (!openTime) continue;
-    const rangeStr = period.close ? `${openTime}-${closeTime}` : '24hr';
-    // If we already have a value for this day (rare — split hours), append.
+    const rangeStr = closeHHMM ? `${openTime}-${closeTime}` : '24hr';
     result[key] = result[key] ? `${result[key]}, ${rangeStr}` : rangeStr;
   }
   return result;
@@ -1131,30 +1143,87 @@ const buildServiceOptions = (place) => {
   return opts;
 };
 
-// Top-level mapper: takes a Google Place Details object and produces a partial
-// venue payload ready to merge into our form state. NEVER overwrites name/address
-// destructively — caller decides what to keep vs. replace.
+// Patch R.2-fix2 — Top-level mapper for the NEW google.maps.places.Place class.
+// Important field-name differences vs the legacy PlacesService:
+//   formatted_address → formattedAddress
+//   formatted_phone_number → nationalPhoneNumber
+//   international_phone_number → internationalPhoneNumber
+//   geometry.location.lat()/lng() → location.lat()/lng()
+//   opening_hours.periods → regularOpeningHours.periods (and weekdayDescriptions)
+//   user_ratings_total → userRatingCount
+//   place_id → id
+//   photos[i].getUrl() → photos[i].getURI()
+//   types → types (still an array of strings, mostly compatible)
+//   Many boolean attribute fields renamed (e.g. wheelchair_accessible_entrance →
+//   accessibilityOptions.wheelchairAccessibleEntrance), nested into objects.
 const mapGooglePlaceToVenue = (place) => {
   if (!place) return {};
-  const photoUrl = place.photos && place.photos[0] && typeof place.photos[0].getUrl === 'function'
-    ? place.photos[0].getUrl({ maxWidth: 1600 })
-    : null;
+  // Photo URL — new API uses getURI(); guard against undefined photos array.
+  let photoUrl = null;
+  try {
+    if (Array.isArray(place.photos) && place.photos[0] && typeof place.photos[0].getURI === 'function') {
+      photoUrl = place.photos[0].getURI({ maxWidth: 1600 });
+    }
+  } catch (e) {
+    console.warn('Photo URL extraction failed:', e);
+  }
+
+  // Location handling: new API exposes place.location as { lat, lng } accessor methods.
+  let lat = null, lng = null;
+  try {
+    if (place.location) {
+      lat = typeof place.location.lat === 'function' ? place.location.lat() : place.location.lat;
+      lng = typeof place.location.lng === 'function' ? place.location.lng() : place.location.lng;
+    }
+  } catch (e) {
+    console.warn('Location extraction failed:', e);
+  }
+
+  // Accessibility flag is nested in the new shape.
+  const accessibility = place.accessibilityOptions || {};
+  // Parking, dining, payment options also nested in the new shape — we mostly use dining flags.
+  const wheelchairAccessible = !!accessibility.wheelchairAccessibleEntrance;
+
+  // Synthesize a flat object the existing helpers (inferVibeTagsFromPlace, buildServiceOptions)
+  // can consume. Old helpers expect camelCase OR snake_case booleans at the top level —
+  // map both naming styles to top-level booleans here.
+  const flatForHelpers = {
+    wheelchair_accessible_entrance: wheelchairAccessible,
+    serves_beer: !!place.servesBeer,
+    serves_wine: !!place.servesWine,
+    serves_cocktails: !!place.servesCocktails,
+    serves_brunch: !!place.servesBrunch,
+    serves_breakfast: !!place.servesBreakfast,
+    serves_lunch: !!place.servesLunch,
+    serves_dinner: !!place.servesDinner,
+    serves_vegetarian_food: !!place.servesVegetarianFood,
+    outdoor_seating: !!place.outdoorSeating,
+    live_music: !!place.liveMusic,
+    allows_dogs: !!place.allowsDogs,
+    dine_in: place.dineIn ?? null,
+    takeout: place.takeout ?? null,
+    delivery: place.delivery ?? null,
+    curbside_pickup: place.curbsidePickup ?? null,
+    reservable: place.reservable ?? null,
+    price_level: place.priceLevel ?? null,
+  };
+
   return {
-    name: place.name || '',
-    address: place.formatted_address || place.vicinity || '',
-    phone: place.formatted_phone_number || place.international_phone_number || '',
-    website: place.website || '',
-    latitude: place.geometry?.location?.lat ? place.geometry.location.lat() : null,
-    longitude: place.geometry?.location?.lng ? place.geometry.location.lng() : null,
+    name: place.displayName || place.name || '',
+    address: place.formattedAddress || '',
+    phone: place.nationalPhoneNumber || place.internationalPhoneNumber || '',
+    website: place.websiteURI || place.websiteUri || '',
+    latitude: lat,
+    longitude: lng,
     venue_type: mapGoogleTypesToVenueType(place.types),
-    hours: mapGoogleHoursToOurs(place.opening_hours),
+    hours: mapGoogleHoursToOurs(place.regularOpeningHours),
     cover_image_url: photoUrl,
-    vibe_tags: inferVibeTagsFromPlace(place),
-    service_options: buildServiceOptions(place),
-    price_level: place.price_level ?? null,
+    vibe_tags: inferVibeTagsFromPlace(flatForHelpers),
+    service_options: buildServiceOptions(flatForHelpers),
+    price_level: place.priceLevel ?? null,
     google_rating: place.rating ?? null,
-    google_review_count: place.user_ratings_total ?? null,
-    google_place_id: place.place_id || null,
+    google_review_count: place.userRatingCount ?? null,
+    google_place_id: place.id || '',
     google_data_fetched_at: new Date().toISOString(),
   };
 };
@@ -7044,47 +7113,41 @@ function StoryComposer({ venue, supabaseClient, userProfile, onClose, onCreated,
 //               id is present for rows already in DB, absent for new local rows
 //   onHappyHoursChange(rows)
 //   darkMode (optional, defaults true) — for the business portal which uses slate theme
-// Patch R.2 — Google Places autocomplete search box.
-// Used in admin CreateVenueForm to find a venue on Google Maps and prefill the form
-// from Place Details. Loads the Google Maps JS API on demand (lazy, one-time).
+// Patch R.2-fix2 — Google Places autocomplete using the NEW Places API
+// (google.maps.places.AutocompleteSuggestion + Place class). The legacy
+// PlacesService is blocked for new Google Cloud projects as of March 2025.
+//
+// Migration notes:
+//   • google.maps.places.AutocompleteService → AutocompleteSuggestion.fetchAutocompleteSuggestions()
+//   • PlacesService.getDetails() → place.fetchFields({ fields: [...] })
+//   • Field names: camelCase (displayName, formattedAddress, etc.) instead of snake_case
+//   • Session tokens still exist and still reduce cost when paired (Autocomplete → fetchFields)
 //
 // Props:
 //   onPlaceSelected(venuePayload, rawPlace) — called when the user picks a result.
-//                                              venuePayload is the mapped/form-ready object;
-//                                              rawPlace is the unmodified Google Place for debugging.
-//   onError(message)                        — optional error reporter for missing key, load failure, etc.
-//   biasLocation (optional)                 — { lat, lng } to bias suggestions toward (defaults to Dallas).
-//   darkMode (default true)                 — match admin theme.
-//
-// Constraints:
-//   • Country/region restricted to US.
-//   • Searches "establishment" type only (filters out random addresses).
-//   • Includes the comprehensive Place Details fields list our mapper consumes.
+//   onError(message)                        — optional error reporter.
+//   biasLocation                            — { lat, lng } to bias suggestions; defaults to Dallas.
+//   darkMode (default true)                 — theme.
 function GooglePlacesSearchBox({ onPlaceSelected, onError, biasLocation, darkMode = true }) {
   const [query, setQuery] = useState('');
-  const [predictions, setPredictions] = useState([]);
+  const [predictions, setPredictions] = useState([]); // array of { placePrediction } from new API
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fetchingDetails, setFetchingDetails] = useState(false);
   const [apiReady, setApiReady] = useState(false);
   const [loadError, setLoadError] = useState('');
-  const autocompleteServiceRef = useRef(null);
-  const placesServiceRef = useRef(null);
   const sessionTokenRef = useRef(null);
-  const inputRef = useRef(null);
   const debounceRef = useRef(null);
 
-  // Lazy-init the Google Maps API and the AutocompleteService.
-  // A hidden div is required by PlacesService — we attach it once on mount.
+  // Lazy-load Google Maps. New API doesn't need a PlacesService instance — we use static methods.
   useEffect(() => {
     let cancelled = false;
     loadGoogleMapsApi()
       .then((google) => {
         if (cancelled) return;
-        autocompleteServiceRef.current = new google.maps.places.AutocompleteService();
-        // PlacesService needs an HTMLDivElement or a Map. A hidden div is fine.
-        const hiddenDiv = document.createElement('div');
-        placesServiceRef.current = new google.maps.places.PlacesService(hiddenDiv);
+        if (!google.maps.places?.AutocompleteSuggestion) {
+          throw new Error('Google Maps loaded but AutocompleteSuggestion class is unavailable');
+        }
         sessionTokenRef.current = new google.maps.places.AutocompleteSessionToken();
         setApiReady(true);
       })
@@ -7097,83 +7160,79 @@ function GooglePlacesSearchBox({ onPlaceSelected, onError, biasLocation, darkMod
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Debounced query: hit Autocomplete service ~250ms after the user stops typing.
+  // Debounced autocomplete: hit the new AutocompleteSuggestion endpoint ~250ms after the user stops typing.
+  // Returns array of { placePrediction } objects (each has .placeId, .text, .structuredFormat).
   useEffect(() => {
-    if (!apiReady || !autocompleteServiceRef.current) return;
+    if (!apiReady) return;
     if (!query || query.trim().length < 2) {
       setPredictions([]);
       return;
     }
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
+    debounceRef.current = setTimeout(async () => {
       setLoading(true);
-      const bias = biasLocation || { lat: 32.7767, lng: -96.7970 }; // Dallas downtown
-      autocompleteServiceRef.current.getPlacePredictions(
-        {
+      try {
+        const bias = biasLocation || { lat: 32.7767, lng: -96.7970 }; // Dallas downtown
+        const request = {
           input: query,
-          types: ['establishment'],
-          componentRestrictions: { country: 'us' },
-          location: new window.google.maps.LatLng(bias.lat, bias.lng),
-          radius: 50000, // 50km — covers DFW metroplex
+          includedPrimaryTypes: ['establishment'],
+          includedRegionCodes: ['us'],
           sessionToken: sessionTokenRef.current,
-        },
-        (results, status) => {
-          setLoading(false);
-          if (status === window.google.maps.places.PlacesServiceStatus.OK && Array.isArray(results)) {
-            setPredictions(results);
-            setOpen(true);
-          } else if (status === window.google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
-            setPredictions([]);
-            setOpen(true);
-          } else {
-            setPredictions([]);
-            setOpen(false);
-            console.warn('Places autocomplete error:', status);
-          }
-        }
-      );
+          // Bias toward Dallas with a 50km circle.
+          locationBias: {
+            center: { lat: bias.lat, lng: bias.lng },
+            radius: 50000,
+          },
+        };
+        const { suggestions } = await window.google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions(request);
+        setPredictions(Array.isArray(suggestions) ? suggestions : []);
+        setOpen(true);
+      } catch (err) {
+        console.warn('Autocomplete error:', err);
+        setPredictions([]);
+        setOpen(false);
+      } finally {
+        setLoading(false);
+      }
     }, 250);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query, apiReady, biasLocation]);
 
-  // On result pick: fetch Place Details (with the full field list our mapper consumes),
-  // then call onPlaceSelected. Sessions tie Autocomplete + Details billing together at lower cost.
-  const handlePick = (prediction) => {
-    if (!placesServiceRef.current) return;
+  // On pick: convert the suggestion to a Place instance, fetchFields() to load full details,
+  // then map and emit. The session token rotates after a Details fetch (session is "spent").
+  const handlePick = async (suggestion) => {
+    const placePrediction = suggestion?.placePrediction;
+    if (!placePrediction) return;
     setFetchingDetails(true);
     setOpen(false);
-    setQuery(prediction.description); // show what they picked
-    placesServiceRef.current.getDetails(
-      {
-        placeId: prediction.place_id,
-        sessionToken: sessionTokenRef.current,
+    setQuery(placePrediction.text?.toString() || '');
+    try {
+      const place = placePrediction.toPlace();
+      await place.fetchFields({
         fields: [
-          'place_id', 'name', 'formatted_address', 'vicinity', 'geometry',
-          'formatted_phone_number', 'international_phone_number', 'website',
-          'opening_hours', 'price_level', 'rating', 'user_ratings_total',
+          'id', 'displayName', 'formattedAddress', 'location',
+          'nationalPhoneNumber', 'internationalPhoneNumber', 'websiteURI',
+          'regularOpeningHours', 'priceLevel', 'rating', 'userRatingCount',
           'types', 'photos',
-          // Boolean attribute fields — not all venues have all of these
-          'wheelchair_accessible_entrance', 'serves_beer', 'serves_wine',
-          'serves_cocktails', 'serves_brunch', 'serves_breakfast', 'serves_lunch',
-          'serves_dinner', 'outdoor_seating', 'live_music', 'allows_dogs',
-          'dine_in', 'takeout', 'delivery', 'curbside_pickup', 'reservable',
+          // Attribute fields (nested objects in the new API). Most are top-level booleans.
+          'accessibilityOptions', 'servesBeer', 'servesWine', 'servesCocktails',
+          'servesBrunch', 'servesBreakfast', 'servesLunch', 'servesDinner',
+          'servesVegetarianFood', 'outdoorSeating', 'liveMusic', 'allowsDogs',
+          'dineIn', 'takeout', 'delivery', 'curbsidePickup', 'reservable',
         ],
-      },
-      (place, status) => {
-        setFetchingDetails(false);
-        if (status === window.google.maps.places.PlacesServiceStatus.OK && place) {
-          // Rotate the session token — once a Details request fires, the session is "spent."
-          if (window.google?.maps?.places) {
-            sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
-          }
-          const venuePayload = mapGooglePlaceToVenue(place);
-          onPlaceSelected?.(venuePayload, place);
-        } else {
-          console.warn('Place Details error:', status);
-          onError?.('Failed to fetch venue details from Google');
-        }
+      });
+      // Rotate the session token — once a Details request fires, the session is "spent."
+      if (window.google?.maps?.places?.AutocompleteSessionToken) {
+        sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
       }
-    );
+      const venuePayload = mapGooglePlaceToVenue(place);
+      onPlaceSelected?.(venuePayload, place);
+    } catch (err) {
+      console.warn('Place fetchFields error:', err);
+      onError?.(`Failed to fetch venue details from Google: ${err?.message || 'unknown error'}`);
+    } finally {
+      setFetchingDetails(false);
+    }
   };
 
   const T = darkMode
@@ -7200,7 +7259,6 @@ function GooglePlacesSearchBox({ onPlaceSelected, onError, biasLocation, darkMod
       <div className="relative">
         <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${T.muted} pointer-events-none`} />
         <input
-          ref={inputRef}
           type="text"
           value={query}
           onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
@@ -7216,21 +7274,24 @@ function GooglePlacesSearchBox({ onPlaceSelected, onError, biasLocation, darkMod
         )}
         {open && predictions.length > 0 && (
           <div className={`absolute z-30 mt-1 w-full border rounded-xl shadow-2xl max-h-72 overflow-y-auto ${T.drop}`}>
-            {predictions.map((p) => (
-              <button
-                key={p.place_id}
-                type="button"
-                onClick={() => handlePick(p)}
-                className={`w-full px-3 py-2 text-left border-b last:border-0 ${T.item}`}
-              >
-                <p className={`text-sm font-medium truncate ${T.text}`}>
-                  {p.structured_formatting?.main_text || p.description}
-                </p>
-                <p className={`text-xs truncate ${T.muted}`}>
-                  {p.structured_formatting?.secondary_text || ''}
-                </p>
-              </button>
-            ))}
+            {predictions.map((suggestion, idx) => {
+              const pp = suggestion.placePrediction;
+              if (!pp) return null;
+              // structuredFormat has .mainText and .secondaryText, each with .toString()
+              const mainText = pp.structuredFormat?.mainText?.toString() || pp.text?.toString() || '';
+              const secondaryText = pp.structuredFormat?.secondaryText?.toString() || '';
+              return (
+                <button
+                  key={pp.placeId || idx}
+                  type="button"
+                  onClick={() => handlePick(suggestion)}
+                  className={`w-full px-3 py-2 text-left border-b last:border-0 ${T.item}`}
+                >
+                  <p className={`text-sm font-medium truncate ${T.text}`}>{mainText}</p>
+                  <p className={`text-xs truncate ${T.muted}`}>{secondaryText}</p>
+                </button>
+              );
+            })}
           </div>
         )}
         {open && !loading && query.trim().length >= 2 && predictions.length === 0 && (
