@@ -1208,11 +1208,28 @@ const mapGooglePlaceToVenue = (place) => {
     price_level: place.priceLevel ?? null,
   };
 
-  return {
-    name: place.displayName || place.name || '',
-    address: place.formattedAddress || '',
-    phone: place.nationalPhoneNumber || place.internationalPhoneNumber || '',
-    website: place.websiteURI || place.websiteUri || '',
+  // Patch R.2-fix4 — defensive field extraction. The new Place class returns some fields
+  // as objects (e.g. displayName can be { text, languageCode } depending on Maps version).
+  // Use this helper to coerce to a plain string regardless of shape.
+  const asString = (v) => {
+    if (v == null) return '';
+    if (typeof v === 'string') return v;
+    if (typeof v === 'number') return String(v);
+    if (typeof v === 'object') {
+      if (typeof v.text === 'string') return v.text;
+      if (typeof v.toString === 'function') {
+        const s = v.toString();
+        return s === '[object Object]' ? '' : s;
+      }
+    }
+    return '';
+  };
+
+  const result = {
+    name: asString(place.displayName) || asString(place.name) || '',
+    address: asString(place.formattedAddress) || '',
+    phone: asString(place.nationalPhoneNumber) || asString(place.internationalPhoneNumber) || '',
+    website: asString(place.websiteURI) || asString(place.websiteUri) || '',
     latitude: lat,
     longitude: lng,
     venue_type: mapGoogleTypesToVenueType(place.types),
@@ -1220,12 +1237,29 @@ const mapGooglePlaceToVenue = (place) => {
     cover_image_url: photoUrl,
     vibe_tags: inferVibeTagsFromPlace(flatForHelpers),
     service_options: buildServiceOptions(flatForHelpers),
-    price_level: place.priceLevel ?? null,
-    google_rating: place.rating ?? null,
-    google_review_count: place.userRatingCount ?? null,
-    google_place_id: place.id || '',
+    // priceLevel in new API is a string enum (e.g. 'PRICE_LEVEL_MODERATE') — coerce to int 1-4.
+    price_level: (() => {
+      const pl = place.priceLevel;
+      if (typeof pl === 'number') return pl;
+      if (typeof pl === 'string') {
+        const map = { PRICE_LEVEL_FREE: 0, PRICE_LEVEL_INEXPENSIVE: 1, PRICE_LEVEL_MODERATE: 2, PRICE_LEVEL_EXPENSIVE: 3, PRICE_LEVEL_VERY_EXPENSIVE: 4 };
+        return map[pl] ?? null;
+      }
+      return null;
+    })(),
+    google_rating: typeof place.rating === 'number' ? place.rating : null,
+    google_review_count: typeof place.userRatingCount === 'number' ? place.userRatingCount : null,
+    google_place_id: asString(place.id) || '',
     google_data_fetched_at: new Date().toISOString(),
   };
+
+  // Diagnostic — visible in browser console. Remove after Patch R.2 is confirmed working.
+  // eslint-disable-next-line no-console
+  console.log('[CrewQ Patch R.2] Raw place:', place);
+  // eslint-disable-next-line no-console
+  console.log('[CrewQ Patch R.2] Mapped venue payload:', result);
+
+  return result;
 };
 
 
