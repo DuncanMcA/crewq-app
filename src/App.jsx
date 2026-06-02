@@ -1749,7 +1749,52 @@ const VIBE_OPTIONS = [
   { id: 'games', label: '🎮 Games', icon: '🎮' },
   { id: 'concerts', label: '🎵 Concerts', icon: '🎵' },
   { id: 'comedy', label: '😂 Comedy', icon: '😂' },
-  { id: 'sunsets', label: '🌇 Sunsets', icon: '🌇' }
+  { id: 'sunsets', label: '🌇 Sunsets', icon: '🌇' },
+  // Patch T — Expanded vibe catalog. Adds more granular signal for event matching.
+  // Silent rollout: existing users won't see a prompt, just discover these in profile edit.
+  { id: 'dj',              label: '🎧 DJ',              icon: '🎧' },
+  { id: 'dance-floor',     label: '💃 Dance Floor',     icon: '💃' },
+  { id: 'open-mic',        label: '🎙️ Open Mic',        icon: '🎙️' },
+  { id: 'tasting',         label: '🍷 Tasting',         icon: '🍷' },
+  { id: 'themed-night',    label: '🎭 Themed Night',    icon: '🎭' },
+  { id: 'late-night',      label: '🌙 Late Night',      icon: '🌙' },
+  { id: 'industry-night',  label: '🍸 Industry Night',  icon: '🍸' },
+  { id: 'ladies-night',    label: '👯 Ladies Night',    icon: '👯' },
+  { id: 'singles-night',   label: '💋 Singles Night',   icon: '💋' },
+  { id: 'craft-cocktails', label: '🍹 Craft Cocktails', icon: '🍹' },
+  { id: 'craft-beer',      label: '🍺 Craft Beer',      icon: '🍺' },
+  { id: 'wine',            label: '🍷 Wine',            icon: '🍷' },
+  { id: 'brunch',          label: '🥞 Brunch',          icon: '🥞' },
+  { id: 'patio',           label: '🌳 Patio',           icon: '🌳' },
+  { id: 'dog-friendly',    label: '🐕 Dog-friendly',    icon: '🐕' },
+  { id: 'dive-bar',        label: '🍻 Dive Bar',        icon: '🍻' },
+  { id: 'upscale',         label: '✨ Upscale',         icon: '✨' },
+  { id: 'quiet',           label: '🤫 Quiet',           icon: '🤫' }
+];
+
+// Patch T — Curated stock-image catalog used by the Create Event page.
+// Categorized so admin can quickly find vibe-appropriate visuals when a venue
+// doesn't have its own photo. Each image is a Unsplash-style hosted URL with
+// a short label shown beneath the thumbnail.
+const STOCK_IMAGES = [
+  { url: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=800', label: 'Live band' },
+  { url: 'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=800', label: 'Concert crowd' },
+  { url: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800', label: 'Jazz club' },
+  { url: 'https://images.unsplash.com/photo-1520523839897-bd0b52f945a0?w=800', label: 'Piano bar' },
+  { url: 'https://images.unsplash.com/photo-1571266028243-d220bc5b4ca6?w=800', label: 'DJ set' },
+  { url: 'https://images.unsplash.com/photo-1572116469696-31de0f17cc34?w=800', label: 'Cocktails' },
+  { url: 'https://images.unsplash.com/photo-1543007630-9710e4a00a20?w=800', label: 'Craft cocktail' },
+  { url: 'https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=800', label: 'Wine glasses' },
+  { url: 'https://images.unsplash.com/photo-1535958636474-b021ee887b13?w=800', label: 'Beer tap' },
+  { url: 'https://images.unsplash.com/photo-1574391884720-bbc3740c59d1?w=800', label: 'Brewery patio' },
+  { url: 'https://images.unsplash.com/photo-1559339352-11d035aa65de?w=800', label: 'Tapas spread' },
+  { url: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800', label: 'Dinner table' },
+  { url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800', label: 'Brunch' },
+  { url: 'https://images.unsplash.com/photo-1517457373958-b7bdd4587205?w=800', label: 'Dance floor' },
+  { url: 'https://images.unsplash.com/photo-1485872299712-65b886d4b2c4?w=800', label: 'Trivia night' },
+  { url: 'https://images.unsplash.com/photo-1527224538127-2104bb71c51b?w=800', label: 'Comedy mic' },
+  { url: 'https://images.unsplash.com/photo-1505236858219-8359eb29e329?w=800', label: 'Rooftop' },
+  { url: 'https://images.unsplash.com/photo-1521017432531-fbd92d768814?w=800', label: 'Patio' },
 ];
 
 // Ambience options for events
@@ -5528,6 +5573,82 @@ function EventSuggestionModal({ onClose, userProfile, supabaseClient, userBadges
 //   showToast(msg, type)         — toast helper
 //   defaultStatus                — 'live' (admin) | 'pending' (business). Status applied to all inserted rows.
 //   lockedVenue                  — optional. If present, venue search is hidden and this venue is used.
+// Patch T — EventCardPreview: a self-contained, lightweight "what the user will see" card
+// used in the admin's Create Event page. Mirrors the visual style of EventFeedCard but is
+// safe to render with partial data (no DB writes, no event handlers). Pure presentational.
+function EventCardPreview({ event }) {
+  if (!event) return null;
+  const dateLabel = (() => {
+    if (!event.date) return '';
+    try {
+      const d = new Date(`${event.date}T00:00:00`);
+      return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    } catch { return event.date; }
+  })();
+  const timeLabel = event.time ? formatTime12h(event.time) : '';
+  const endTimeLabel = event.end_time ? formatTime12h(event.end_time) : '';
+  const isFree = !event.cover_charge || parseFloat(event.cover_charge) === 0;
+  const tagsToShow = Array.isArray(event.tags) ? event.tags.slice(0, 3) : [];
+  return (
+    <div className="rounded-2xl overflow-hidden border border-zinc-700 bg-zinc-900 shadow-2xl">
+      {/* Image */}
+      <div className="relative aspect-[4/5] bg-zinc-800">
+        {event.image_url ? (
+          <img src={event.image_url} alt={event.name} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-zinc-600 text-sm italic">
+            No image yet
+          </div>
+        )}
+        {/* Bottom gradient overlay with text */}
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-4">
+          {/* Badges row */}
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {event.is_standing_offer && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-500/30 text-orange-200 border border-orange-400/50">
+                🍻 Weekly
+              </span>
+            )}
+            {event.age_tag && event.age_tag !== 'all-ages' && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-zinc-800/80 text-zinc-200 border border-zinc-600">
+                {event.age_tag}
+              </span>
+            )}
+            {!isFree && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/30 text-emerald-200 border border-emerald-400/50">
+                ${event.cover_charge}
+              </span>
+            )}
+            {isFree && event.cover_charge !== undefined && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/30 text-emerald-200 border border-emerald-400/50">
+                Free
+              </span>
+            )}
+          </div>
+          <h3 className="text-white text-xl font-bold leading-tight mb-1 line-clamp-2">{event.name}</h3>
+          <p className="text-zinc-300 text-sm">{event.venue}{event.neighborhood ? ` · ${event.neighborhood}` : ''}</p>
+          <p className="text-zinc-400 text-xs mt-1">
+            {dateLabel}{timeLabel ? ` · ${timeLabel}` : ''}{endTimeLabel ? `–${endTimeLabel}` : ''}
+          </p>
+          {tagsToShow.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {tagsToShow.map(tagId => {
+                const meta = VIBE_OPTIONS.find(v => v.id === tagId);
+                if (!meta) return null;
+                return (
+                  <span key={tagId} className="text-[10px] text-violet-200 bg-violet-500/20 border border-violet-500/40 px-1.5 py-0.5 rounded">
+                    {meta.label}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function QuickAddEventModal({
   onClose,
   onCreated,
@@ -11891,6 +12012,81 @@ function AdminPortal({ onClose, userEmail }) {
       setCvHappyHours([]); setCvGooglePrefill(null); setCvPrefilledFromGoogle(false);
     }
   }, [currentView]);
+
+  // Patch T — CreateEventPage state lifted to AdminPortal for the same reason as CreateVenueForm.
+  // Component-inside-component would remount on every keystroke, causing focus loss and
+  // wiping async-fetched data (e.g. Google photo prefills).
+  const [ceVenue, setCeVenue] = useState(null);         // selected venue object
+  const [ceVenueSearch, setCeVenueSearch] = useState('');
+  const [ceName, setCeName] = useState('');
+  const [ceDate, setCeDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [ceTime, setCeTime] = useState('19:00');
+  const [ceDurationMin, setCeDurationMin] = useState(120);
+  const [ceRecurrenceMode, setCeRecurrenceMode] = useState('none'); // 'none' | 'weekly' | 'monthly'
+  const [ceMonthlyNth, setCeMonthlyNth] = useState(1);
+  const [ceMonthlyWeekday, setCeMonthlyWeekday] = useState(5);
+  const [ceImageSource, setCeImageSource] = useState('venue'); // 'venue' | 'stock' | 'url'
+  const [ceImageUrl, setCeImageUrl] = useState('');             // resolved final image URL
+  const [ceCustomUrl, setCeCustomUrl] = useState('');           // raw paste in URL tab
+  const [ceTags, setCeTags] = useState([]);                     // event-level vibe tags (VIBE_OPTIONS ids)
+  const [ceAmbience, setCeAmbience] = useState([]);             // AMBIENCE_OPTIONS ids
+  const [ceCategory, setCeCategory] = useState('');             // inferred from venue + name; overridable
+  const [ceAgeTag, setCeAgeTag] = useState('21+');
+  const [ceCoverCharge, setCeCoverCharge] = useState('');
+  const [ceTicketUrl, setCeTicketUrl] = useState('');
+  const [ceDescription, setCeDescription] = useState('');
+  const [ceIsStandingOffer, setCeIsStandingOffer] = useState(false);
+  const [ceSubmitting, setCeSubmitting] = useState(false);
+  const [ceAddAnother, setCeAddAnother] = useState(false);      // post-submit: keep venue, reset everything else
+
+  // Reset create-event state whenever leaving the page. Mirrors CreateVenueForm reset.
+  useEffect(() => {
+    if (currentView !== 'create-event') {
+      setCeVenue(null); setCeVenueSearch(''); setCeName('');
+      setCeDate(new Date().toISOString().slice(0, 10));
+      setCeTime('19:00'); setCeDurationMin(120);
+      setCeRecurrenceMode('none'); setCeMonthlyNth(1); setCeMonthlyWeekday(5);
+      setCeImageSource('venue'); setCeImageUrl(''); setCeCustomUrl('');
+      setCeTags([]); setCeAmbience([]); setCeCategory(''); setCeAgeTag('21+');
+      setCeCoverCharge(''); setCeTicketUrl(''); setCeDescription('');
+      setCeIsStandingOffer(false); setCeAddAnother(false);
+    }
+  }, [currentView]);
+
+  // Inverted-default rule from Patch S — weekly→standing offer, monthly→event.
+  useEffect(() => {
+    if (ceRecurrenceMode === 'weekly') setCeIsStandingOffer(true);
+    else if (ceRecurrenceMode === 'monthly') setCeIsStandingOffer(false);
+  }, [ceRecurrenceMode]);
+
+  // Infer nth-weekday pattern from selected date.
+  useEffect(() => {
+    if (ceRecurrenceMode === 'monthly' && ceDate) {
+      const { weekday, nth } = inferNthWeekdayFromDate(ceDate);
+      setCeMonthlyWeekday(weekday);
+      setCeMonthlyNth(nth);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ceRecurrenceMode, ceDate]);
+
+  // Resolve the final image URL based on source tab.
+  useEffect(() => {
+    if (ceImageSource === 'venue') {
+      // Use venue cover_image_url as the active image.
+      setCeImageUrl(ceVenue?.cover_image_url || '');
+    } else if (ceImageSource === 'url') {
+      setCeImageUrl(ceCustomUrl || '');
+    }
+    // 'stock' tab sets ceImageUrl directly on click — no derivation needed
+  }, [ceImageSource, ceVenue?.cover_image_url, ceCustomUrl]);
+
+  // Category inference: when venue changes and ceCategory is empty, seed from venue default.
+  useEffect(() => {
+    if (ceVenue?.default_event_category && !ceCategory) {
+      setCeCategory(ceVenue.default_event_category);
+    }
+  }, [ceVenue?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Patch C2b — Bulk-paste tool
   const [showBulkPaste, setShowBulkPaste] = useState(false);
   const [bulkPasteText, setBulkPasteText] = useState('');
@@ -13324,7 +13520,581 @@ function AdminPortal({ onClose, userEmail }) {
     );
   };
 
-  // ========== CREATE EVENT ==========
+  // ========== Patch T — CREATE EVENT (new full-page flow) ==========
+  // Replaces the legacy CreateEventForm + Quick Add modal entirely.
+  // Two-column desktop layout: inputs left, sticky live-preview right.
+  // Single-column mobile with preview at the top.
+  // State lives at AdminPortal scope (see "ce*" hooks) — never define this as a component.
+  const renderCreateEventPage = () => {
+    // CrewQ venue search (substring match on existing approved venues).
+    const approvedVenues = establishments.filter(v => !v.status || v.status === 'approved');
+    const venueMatches = !ceVenueSearch.trim()
+      ? []
+      : approvedVenues
+          .filter(v => (v.name || '').toLowerCase().includes(ceVenueSearch.toLowerCase()))
+          .slice(0, 6);
+
+    const pickVenue = (v) => {
+      setCeVenue(v);
+      setCeVenueSearch('');
+      // Seed category if venue has a default and category isn't already set.
+      if (v.default_event_category && !ceCategory) setCeCategory(v.default_event_category);
+    };
+
+    const clearVenue = () => { setCeVenue(null); setCeCategory(''); setCeImageUrl(''); };
+
+    // Venue's Google photos — stored as photo URLs on the venue row when Patch R.2 prefilled.
+    // Today we only store the first one as cover_image_url. Future: store .photos[] array.
+    // For now we surface cover_image_url as the single "From venue" option.
+    const venuePhotoOptions = ceVenue?.cover_image_url ? [ceVenue.cover_image_url] : [];
+
+    // Build a live-preview event object that mirrors what would be inserted.
+    const previewEvent = {
+      id: 'preview',
+      name: ceName || 'Event name preview',
+      venue: ceVenue?.name || 'Pick a venue',
+      neighborhood: ceVenue?.neighborhood || '',
+      date: ceDate,
+      time: ceTime,
+      end_time: addMinutesToTimeStr(ceTime, ceDurationMin),
+      image_url: ceImageUrl || ceVenue?.cover_image_url || '',
+      category: ceCategory || ceVenue?.venue_type || 'event',
+      tags: ceTags,
+      ambience: ceAmbience,
+      age_tag: ceAgeTag,
+      cover_charge: ceCoverCharge ? parseFloat(ceCoverCharge) : 0,
+      description: ceDescription,
+      is_standing_offer: ceIsStandingOffer,
+    };
+
+    const handleSubmit = async () => {
+      if (ceSubmitting) return;
+      if (!ceVenue?.id) { showToastMsg('Pick a venue first', 'error'); return; }
+      if (!ceName.trim()) { showToastMsg('Event name required', 'error'); return; }
+      if (!ceDate || !ceTime) { showToastMsg('Date and time required', 'error'); return; }
+
+      setCeSubmitting(true);
+      try {
+        const baseRow = {
+          name: ceName.trim(),
+          venue: ceVenue.name,
+          establishment_id: ceVenue.id,
+          neighborhood: ceVenue.neighborhood || null,
+          address: ceVenue.address || null,
+          latitude: ceVenue.latitude ?? null,
+          longitude: ceVenue.longitude ?? null,
+          category: ceCategory || ceVenue.venue_type || 'event',
+          type: 'Event',
+          time: ceTime,
+          end_time: addMinutesToTimeStr(ceTime, ceDurationMin),
+          description: ceDescription.trim() || null,
+          cover_charge: ceCoverCharge ? parseFloat(ceCoverCharge) : 0,
+          ticket_url: ceTicketUrl.trim() || null,
+          image_url: ceImageUrl || ceVenue.cover_image_url || null,
+          status: 'approved',
+          is_standing_offer: !!ceIsStandingOffer,
+          recurring: ceRecurrenceMode !== 'none',
+          recurrence_pattern: ceRecurrenceMode === 'none' ? null : ceRecurrenceMode,
+          recurrence_nth: ceRecurrenceMode === 'monthly' ? ceMonthlyNth : null,
+          recurrence_weekday: ceRecurrenceMode === 'monthly' ? ceMonthlyWeekday : null,
+          age_tag: ceAgeTag,
+          age_restriction: ceAgeTag,
+          tags: ceTags,
+          ambience: ceAmbience,
+          views: 0, rsvps: 0, checkins: 0,
+        };
+
+        // Pre-compute child dates same as Patch S Quick Add.
+        let childDates = [];
+        if (ceRecurrenceMode === 'weekly') {
+          for (let i = 1; i < PATCH_Q_RECURRENCE_COUNT; i++) {
+            childDates.push(addWeeksToDateStr(ceDate, i));
+          }
+        } else if (ceRecurrenceMode === 'monthly') {
+          const all = generateMonthlyOccurrences(ceDate, ceMonthlyWeekday, ceMonthlyNth, 3);
+          childDates = all.slice(1);
+        }
+        const endsAt = childDates.length > 0 ? childDates[childDates.length - 1] : ceDate;
+        baseRow.recurrence_ends_at = ceRecurrenceMode === 'none' ? null : endsAt;
+
+        const parentPayload = { ...baseRow, date: ceDate, recurrence_parent_id: null };
+        const { data: parent, error: parentErr } = await supabaseClient
+          .from('events')
+          .insert([parentPayload])
+          .select()
+          .single();
+        if (parentErr) throw parentErr;
+        const inserted = [parent];
+
+        if (childDates.length > 0 && parent?.id) {
+          const childRows = childDates.map(d => ({
+            ...baseRow,
+            date: d,
+            recurrence_parent_id: parent.id,
+          }));
+          const { data: children, error: childErr } = await supabaseClient
+            .from('events')
+            .insert(childRows)
+            .select();
+          if (childErr) throw childErr;
+          if (Array.isArray(children)) inserted.push(...children);
+        }
+
+        setEvents(prev => [...inserted, ...prev]);
+
+        const offerWord = ceIsStandingOffer ? 'Standing offer' : 'Event';
+        if (ceRecurrenceMode === 'weekly') {
+          showToastMsg(`✨ ${offerWord} added — ${inserted.length} weekly occurrences`, 'success');
+        } else if (ceRecurrenceMode === 'monthly') {
+          showToastMsg(`✨ ${offerWord} added — 3 monthly occurrences`, 'success');
+        } else {
+          showToastMsg(`✨ ${offerWord} added`, 'success');
+        }
+
+        // Patch T — "Add another" workflow: keep the venue selected, reset everything else.
+        if (ceAddAnother) {
+          setCeName('');
+          setCeDate(new Date().toISOString().slice(0, 10));
+          setCeTime('19:00');
+          setCeDurationMin(120);
+          setCeRecurrenceMode('none');
+          setCeTags([]); setCeAmbience([]);
+          setCeCategory(ceVenue.default_event_category || '');
+          setCeAgeTag('21+');
+          setCeCoverCharge(''); setCeTicketUrl(''); setCeDescription('');
+          setCeIsStandingOffer(false);
+          // Leave ceVenue + ceImageSource as-is (user keeps adding for same venue)
+        } else {
+          setCurrentView('events');
+        }
+      } catch (err) {
+        console.error('Create event failed:', err);
+        showToastMsg(`Create failed: ${err?.message || 'unknown'}`, 'error');
+      } finally {
+        setCeSubmitting(false);
+      }
+    };
+
+    return (
+      <div className="space-y-4 pb-24">
+        {/* Header */}
+        <div className="flex items-center gap-4">
+          <button onClick={() => setCurrentView('events')} className="p-2 hover:bg-gray-800 rounded-lg">
+            <ChevronLeft className="w-5 h-5 text-gray-400" />
+          </button>
+          <div>
+            <h1 className="text-xl font-bold text-white">Add Event</h1>
+            {ceVenue && <p className="text-xs text-gray-400">for {ceVenue.name}</p>}
+          </div>
+        </div>
+
+        {/* Two-column layout. Desktop: inputs left, sticky preview right. Mobile: preview top, inputs below. */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6">
+
+          {/* MOBILE preview (only renders on small screens, above the form) */}
+          <div className="lg:hidden">
+            <p className="text-xs uppercase tracking-wide text-gray-500 mb-2">Live preview</p>
+            <EventCardPreview event={previewEvent} />
+          </div>
+
+          {/* LEFT — inputs */}
+          <div className="space-y-5">
+
+            {/* 1. Venue picker */}
+            <section className="bg-gray-800 rounded-xl border border-gray-700 p-4">
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Venue *</label>
+              {ceVenue ? (
+                <div className="flex items-center gap-3 p-3 bg-violet-500/10 border border-violet-500/40 rounded-lg">
+                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center flex-shrink-0">
+                    <Building2 className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-semibold truncate">{ceVenue.name}</p>
+                    <p className="text-gray-400 text-xs truncate">{ceVenue.address || '—'}</p>
+                  </div>
+                  <button onClick={clearVenue} className="p-1 hover:bg-gray-700 rounded" aria-label="Change venue">
+                    <X className="w-4 h-4 text-gray-400" />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                    <input
+                      type="text"
+                      value={ceVenueSearch}
+                      onChange={e => setCeVenueSearch(e.target.value)}
+                      placeholder="Search existing CrewQ venues..."
+                      className="w-full pl-10 pr-3 py-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm"
+                    />
+                  </div>
+                  {venueMatches.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {venueMatches.map(v => (
+                        <button
+                          key={v.id}
+                          onClick={() => pickVenue(v)}
+                          className="w-full px-3 py-2 text-left bg-gray-700 hover:bg-gray-600 rounded-lg"
+                        >
+                          <p className="text-white text-sm font-medium truncate">{v.name}</p>
+                          <p className="text-gray-400 text-xs truncate">{v.neighborhood || v.address || ''}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {ceVenueSearch.trim() && venueMatches.length === 0 && (
+                    <p className="mt-2 text-xs text-gray-500">
+                      No CrewQ venues match. <button
+                        onClick={() => setCurrentView('create-venue')}
+                        className="text-violet-400 hover:underline"
+                      >+ Add this venue first</button>
+                    </p>
+                  )}
+                </>
+              )}
+            </section>
+
+            {/* 2. Event name */}
+            <section className="bg-gray-800 rounded-xl border border-gray-700 p-4">
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Event name *</label>
+              <input
+                type="text"
+                value={ceName}
+                onChange={e => setCeName(e.target.value)}
+                placeholder={ceIsStandingOffer ? 'e.g. Tequila Tuesday' : 'e.g. Live Music Night'}
+                className="w-full px-3 py-2.5 bg-gray-700 border border-gray-600 rounded-lg text-white"
+              />
+            </section>
+
+            {/* 3. Date + Time + Duration — 3-col on desktop, stacked on mobile w/ gap */}
+            <section className="bg-gray-800 rounded-xl border border-gray-700 p-4">
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">When *</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[10px] text-gray-500 mb-1 uppercase tracking-wider">Date</label>
+                  <input
+                    type="date"
+                    value={ceDate}
+                    onChange={e => setCeDate(e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-gray-500 mb-1 uppercase tracking-wider">Start</label>
+                  <input
+                    type="time"
+                    value={ceTime}
+                    onChange={e => setCeTime(e.target.value)}
+                    step="1800"
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-gray-500 mb-1 uppercase tracking-wider">Duration</label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      value={ceDurationMin}
+                      onChange={e => setCeDurationMin(parseInt(e.target.value, 10) || 0)}
+                      step="30"
+                      min="15"
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm"
+                    />
+                    <span className="text-xs text-gray-500">min</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* 4. Recurrence */}
+            <section className="bg-gray-800 rounded-xl border border-gray-700 p-4">
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Repeats</label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: 'none', label: 'Once', hint: 'One-time' },
+                  { id: 'weekly', label: 'Weekly', hint: `${PATCH_Q_RECURRENCE_COUNT}×` },
+                  { id: 'monthly', label: 'Monthly', hint: '3×' },
+                ].map(m => (
+                  <button
+                    key={m.id}
+                    onClick={() => setCeRecurrenceMode(m.id)}
+                    className={`p-2 rounded-lg border-2 text-center transition ${ceRecurrenceMode === m.id ? 'border-violet-500 bg-violet-500/15' : 'border-gray-600 bg-gray-700/40'}`}
+                  >
+                    <p className="text-sm font-semibold text-white">{m.label}</p>
+                    <p className="text-[10px] text-gray-400">{m.hint}</p>
+                  </button>
+                ))}
+              </div>
+              {ceRecurrenceMode === 'monthly' && (
+                <div className="mt-2 p-3 rounded-lg bg-gray-700/50 border border-violet-500/30 flex items-center gap-2 flex-wrap">
+                  <select
+                    value={ceMonthlyNth}
+                    onChange={e => setCeMonthlyNth(parseInt(e.target.value, 10))}
+                    className="px-2 py-1.5 bg-gray-800 border border-gray-600 rounded text-white text-sm"
+                  >
+                    {MONTHLY_NTH_OPTIONS.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+                  </select>
+                  <select
+                    value={ceMonthlyWeekday}
+                    onChange={e => setCeMonthlyWeekday(parseInt(e.target.value, 10))}
+                    className="px-2 py-1.5 bg-gray-800 border border-gray-600 rounded text-white text-sm"
+                  >
+                    {WEEKDAY_NAMES.map((wd, i) => <option key={i} value={i}>{wd}</option>)}
+                  </select>
+                  <span className="text-xs text-gray-400">of every month</span>
+                </div>
+              )}
+            </section>
+
+            {/* 5. Image — tabbed picker */}
+            <section className="bg-gray-800 rounded-xl border border-gray-700 p-4">
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Event image</label>
+              <div className="flex gap-2 mb-3 border-b border-gray-700">
+                {[
+                  { id: 'venue', label: 'From venue', disabled: !ceVenue },
+                  { id: 'stock', label: 'Stock' },
+                  { id: 'url', label: 'Paste URL' },
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    disabled={tab.disabled}
+                    onClick={() => setCeImageSource(tab.id)}
+                    className={`px-3 py-1.5 text-xs font-semibold transition border-b-2 ${
+                      ceImageSource === tab.id
+                        ? 'border-violet-500 text-white'
+                        : 'border-transparent text-gray-400 hover:text-gray-200'
+                    } disabled:opacity-40`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {ceImageSource === 'venue' && (
+                ceVenue ? (
+                  venuePhotoOptions.length > 0 ? (
+                    <div className="grid grid-cols-3 gap-2">
+                      {venuePhotoOptions.map((url, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => setCeImageUrl(url)}
+                          className={`relative aspect-video rounded-lg overflow-hidden border-2 ${ceImageUrl === url ? 'border-violet-500' : 'border-gray-600'}`}
+                        >
+                          <img src={url} alt={`Venue photo ${idx + 1}`} className="w-full h-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-500 italic">This venue has no Google photos. Pick another tab.</p>
+                  )
+                ) : (
+                  <p className="text-xs text-gray-500 italic">Pick a venue first to see its photos.</p>
+                )
+              )}
+
+              {ceImageSource === 'stock' && (
+                <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto">
+                  {STOCK_IMAGES.slice(0, 18).map((img, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setCeImageUrl(img.url)}
+                      className={`relative aspect-video rounded-lg overflow-hidden border-2 ${ceImageUrl === img.url ? 'border-violet-500' : 'border-gray-600'}`}
+                    >
+                      <img src={img.url} alt={img.label || ''} className="w-full h-full object-cover" />
+                      {img.label && (
+                        <span className="absolute bottom-0 left-0 right-0 text-[10px] text-white bg-black/60 px-1 py-0.5 text-center truncate">{img.label}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {ceImageSource === 'url' && (
+                <div className="space-y-2">
+                  <input
+                    type="url"
+                    value={ceCustomUrl}
+                    onChange={e => setCeCustomUrl(e.target.value)}
+                    placeholder="https://..."
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm"
+                  />
+                  {ceCustomUrl && (
+                    <img src={ceCustomUrl} alt="Preview" className="w-full max-h-40 rounded object-contain bg-black" onError={(e) => { e.target.style.display = 'none'; }} />
+                  )}
+                </div>
+              )}
+            </section>
+
+            {/* 6. Vibe tags — prominent, drives matching */}
+            <section className="bg-gray-800 rounded-xl border border-gray-700 p-4">
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Vibe tags</label>
+              <p className="text-xs text-gray-500 mb-3">Pick all that fit. These power Discover matching against user preferences.</p>
+              <div className="flex flex-wrap gap-2">
+                {VIBE_OPTIONS.map(tag => {
+                  const active = ceTags.includes(tag.id);
+                  return (
+                    <button
+                      key={tag.id}
+                      onClick={() => setCeTags(prev => active ? prev.filter(t => t !== tag.id) : [...prev, tag.id])}
+                      className={`px-3 py-1.5 rounded-full text-xs font-semibold border-2 transition ${active ? 'border-violet-500 bg-violet-500/20 text-violet-200' : 'border-gray-600 bg-gray-700/40 text-gray-300'}`}
+                    >
+                      {tag.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* 7. Ambience — separate from tags */}
+            <section className="bg-gray-800 rounded-xl border border-gray-700 p-4">
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Ambience</label>
+              <p className="text-xs text-gray-500 mb-3">The "feel" of this event — separate from what you do there.</p>
+              <div className="flex flex-wrap gap-2">
+                {AMBIENCE_OPTIONS.map(a => {
+                  const active = ceAmbience.includes(a.id);
+                  return (
+                    <button
+                      key={a.id}
+                      onClick={() => setCeAmbience(prev => active ? prev.filter(t => t !== a.id) : [...prev, a.id])}
+                      className={`px-3 py-1.5 rounded-full text-xs font-semibold border-2 transition ${active ? 'border-orange-500 bg-orange-500/20 text-orange-200' : 'border-gray-600 bg-gray-700/40 text-gray-300'}`}
+                    >
+                      <span className="mr-1">{a.icon}</span>{a.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* 8. Age — single-row chips, compact */}
+            <section className="bg-gray-800 rounded-xl border border-gray-700 p-4">
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Age</label>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { id: 'all-ages', label: 'All Ages' },
+                  { id: 'kid-friendly', label: 'Kid-friendly' },
+                  { id: '18+', label: '18+' },
+                  { id: '21+', label: '21+' },
+                  { id: 'date-night', label: 'Date Night' },
+                ].map(o => (
+                  <button
+                    key={o.id}
+                    onClick={() => setCeAgeTag(o.id)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-semibold border-2 transition ${ceAgeTag === o.id ? 'border-violet-500 bg-violet-500/20 text-violet-200' : 'border-gray-600 bg-gray-700/40 text-gray-300'}`}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            {/* 9. Cover charge + ticket URL */}
+            <section className="bg-gray-800 rounded-xl border border-gray-700 p-4">
+              <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Cost</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] text-gray-500 mb-1 uppercase tracking-wider">Cover charge</label>
+                  <div className="flex items-center gap-1">
+                    <span className="text-gray-500 text-sm">$</span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      value={ceCoverCharge}
+                      onChange={e => setCeCoverCharge(e.target.value)}
+                      placeholder="0 = free"
+                      className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] text-gray-500 mb-1 uppercase tracking-wider">Ticket URL (optional)</label>
+                  <input
+                    type="url"
+                    value={ceTicketUrl}
+                    onChange={e => setCeTicketUrl(e.target.value)}
+                    placeholder="https://..."
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm"
+                  />
+                </div>
+              </div>
+            </section>
+
+            {/* 10. Description — collapsed by default */}
+            <details className="bg-gray-800 rounded-xl border border-gray-700">
+              <summary className="px-4 py-3 text-sm text-gray-300 cursor-pointer select-none">Add description (optional)</summary>
+              <div className="px-4 pb-4">
+                <textarea
+                  value={ceDescription}
+                  onChange={e => setCeDescription(e.target.value)}
+                  rows={3}
+                  placeholder="What should people know?"
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm resize-none"
+                />
+              </div>
+            </details>
+
+            {/* 11. Standing offer toggle — small + bottom */}
+            <section className="bg-gray-800 rounded-xl border border-gray-700 p-3 flex items-center gap-3">
+              <button
+                onClick={() => setCeIsStandingOffer(v => !v)}
+                className={`relative w-12 h-7 rounded-full transition ${ceIsStandingOffer ? 'bg-orange-500' : 'bg-gray-600'}`}
+                aria-label="Toggle standing offer"
+              >
+                <div className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow transition-all ${ceIsStandingOffer ? 'left-6' : 'left-1'}`} />
+              </button>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-white">Standing offer</p>
+                <p className="text-[11px] text-gray-400">Weekly recurring deals (happy hour). Stays off Discover by default, shown on venue page.</p>
+              </div>
+            </section>
+
+          </div>
+
+          {/* RIGHT — sticky live preview (desktop only) */}
+          <div className="hidden lg:block">
+            <div className="sticky top-4">
+              <p className="text-xs uppercase tracking-wide text-gray-500 mb-2">Live preview</p>
+              <EventCardPreview event={previewEvent} />
+              <p className="text-xs text-gray-500 mt-2 italic">This is how users will see it in Discover.</p>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Sticky footer */}
+        <div className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-700 px-4 py-3 flex items-center gap-3 z-10">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={ceAddAnother}
+              onChange={e => setCeAddAnother(e.target.checked)}
+              className="w-4 h-4 accent-violet-500"
+            />
+            <span className="text-xs text-gray-300">Add another for this venue</span>
+          </label>
+          <div className="flex-1" />
+          <button onClick={() => setCurrentView('events')} disabled={ceSubmitting} className="px-4 py-2 border border-gray-600 text-gray-300 rounded-lg text-sm disabled:opacity-50">
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={ceSubmitting || !ceVenue || !ceName.trim() || !ceDate || !ceTime}
+            className="px-4 py-2 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-lg font-semibold text-sm disabled:opacity-40"
+          >
+            {ceSubmitting
+              ? 'Adding...'
+              : ceRecurrenceMode === 'weekly'
+                ? `Add ${PATCH_Q_RECURRENCE_COUNT}× weekly`
+                : ceRecurrenceMode === 'monthly'
+                  ? 'Add 3× monthly'
+                  : 'Add event'}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // ========== CREATE EVENT (LEGACY — Patch T replaced; kept temporarily for reference) ==========
   const CreateEventForm = () => {
     const [mode, setMode] = useState('quick'); // 'quick' or 'full'
     const [cat, setCat] = useState('');
@@ -13943,15 +14713,7 @@ function AdminPortal({ onClose, userEmail }) {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-4"><button onClick={() => setCurrentView('dashboard')} className="p-2 hover:bg-gray-800 rounded-lg"><ChevronLeft className="w-5 h-5 text-gray-400" /></button><div><h1 className="text-xl font-bold text-white">Events</h1><p className="text-gray-400 text-sm">{events.length} total · {events.filter(e => e.latitude == null || e.longitude == null).length} missing coords</p></div></div>
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Patch C2b — Bulk-paste tool (admin-only) */}
-          <button
-            onClick={() => { setShowBulkPaste(true); setBulkPasteText(''); setBulkParsedEvents([]); }}
-            className="flex items-center gap-2 px-3 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition text-sm"
-            title="Paste many events at once"
-          >
-            <Plus className="w-4 h-4" />Bulk paste
-          </button>
-          {/* Patch A — Geocode backfill (admin-only) */}
+          {/* Patch A — Geocode backfill (admin-only). Kept — utility for data hygiene. */}
           <button
             onClick={handleBackfillGeocoding}
             className="flex items-center gap-2 px-3 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition text-sm"
@@ -13959,15 +14721,13 @@ function AdminPortal({ onClose, userEmail }) {
           >
             <MapPin className="w-4 h-4" />Geocode missing
           </button>
-          {/* Patch Q — Mobile-first Quick Add (admin) */}
+          {/* Patch T — Single entry point. "Quick Add" + "Bulk Paste" killed. */}
           <button
-            onClick={() => setShowQuickAdd(true)}
-            className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-lg hover:from-violet-600 hover:to-purple-700 transition text-sm font-semibold"
-            title="Mobile-first quick add"
+            onClick={() => setCurrentView('create-event')}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-xl text-sm font-semibold hover:from-violet-600 hover:to-purple-700 transition"
           >
-            <Zap className="w-4 h-4" />Quick Add
+            <Plus className="w-4 h-4" />Add Event
           </button>
-          <button onClick={() => setCurrentView('create-event')} className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-xl text-sm"><Plus className="w-4 h-4" />Create</button>
         </div>
       </div>
       <div className="space-y-3">
@@ -14017,7 +14777,7 @@ function AdminPortal({ onClose, userEmail }) {
           : currentView === 'analytics-engagement' ? <AnalyticsEngagement />
           : currentView === 'users' ? <UserAnalytics />
           : currentView === 'create-venue' ? renderCreateVenueForm()
-          : currentView === 'create-event' ? <CreateEventForm />
+          : currentView === 'create-event' ? renderCreateEventPage()
           : currentView === 'venues' ? <VenuesList />
           : currentView === 'venue-detail' ? <VenueDetail />
           : currentView === 'events' ? <EventsList />
