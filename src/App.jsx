@@ -1008,12 +1008,10 @@ const isVenue21PlusAfterNow = (venue, now = new Date()) => {
 
 // ========== Patch R.2 — Google Places integration ==========
 // Lazy-loads the Google Maps JS API exactly once. Subsequent calls return the same Promise.
-// Reads the API key from VITE_GOOGLE_PLACES_API_KEY at build time. If the key is missing,
-// the loader rejects with a clear message instead of failing silently.
+// Reads the API key from the module-level GOOGLE_PLACES_API_KEY constant (declared at top of file
+// alongside other API keys). If the key is missing, the loader rejects with a clear message
+// instead of failing silently.
 let googleMapsLoaderPromise = null;
-const GOOGLE_PLACES_API_KEY = (typeof import.meta !== 'undefined' && import.meta.env)
-  ? import.meta.env.VITE_GOOGLE_PLACES_API_KEY
-  : null;
 
 const loadGoogleMapsApi = () => {
   if (googleMapsLoaderPromise) return googleMapsLoaderPromise;
