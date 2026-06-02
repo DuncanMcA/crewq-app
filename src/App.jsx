@@ -858,27 +858,85 @@ const VIBE_TAGS_CATALOG = [
 
 const getVibeTagMeta = (id) => VIBE_TAGS_CATALOG.find(t => t.id === id) || null;
 
-// Patch R — Is a venue currently in happy hour? Reads venue_happy_hours rows.
-// `hhRows` is the array of rows for this venue (caller filters by venue_id).
-// Returns the matching row if any, else null. Used by:
-//   • VenuePage "Now" badge
-//   • Discover feed "Now" toggle (Patch S — happy hours layer)
+// ========== Patch R.1 — Multi-day happy hours with structured deals ==========
+// Catalog of deal categories (each happy hour can have many deals across categories).
+const DEAL_CATEGORIES = [
+  { id: 'alcohol',    label: 'All alcohol',  icon: '🍹' },
+  { id: 'beer',       label: 'Beer',         icon: '🍺' },
+  { id: 'wine',       label: 'Wine',         icon: '🍷' },
+  { id: 'cocktails',  label: 'Cocktails',    icon: '🍸' },
+  { id: 'food',       label: 'Food',         icon: '🍽️' },
+  { id: 'appetizers', label: 'Appetizers',   icon: '🥨' },
+  { id: 'other',      label: 'Other',        icon: '✨' },
+];
+const getDealCategoryMeta = (id) => DEAL_CATEGORIES.find(c => c.id === id) || null;
+
+// Discount types — how to interpret a deal's `amount` field.
+// `description_only` means the deal is text-only with no math (e.g. "free chips and salsa").
+const DISCOUNT_TYPES = [
+  { id: 'flat',             label: '$ off',         hint: 'Flat dollar amount off (e.g. $4 off any beer)' },
+  { id: 'percent',          label: '% off',         hint: 'Percentage off (e.g. 50% off wine)' },
+  { id: 'fixed_price',      label: 'Fixed price',   hint: 'Set price (e.g. $5 well drinks)' },
+  { id: 'bogo',             label: 'Buy 1 get 1',   hint: 'Buy-one-get-one (free or discounted)' },
+  { id: 'description_only', label: 'Just text',     hint: 'Free-text deal with no specific math' },
+];
+const getDiscountTypeMeta = (id) => DISCOUNT_TYPES.find(d => d.id === id) || null;
+
+// Render a single deal as short display text. Used on venue page + cards.
+//   ({category:'beer', discount_type:'flat', amount:2, description:'any draft'})
+//     → "$2 off any draft beer"
+const formatDealText = (deal) => {
+  if (!deal) return '';
+  const catMeta = getDealCategoryMeta(deal.category);
+  const catLabel = (catMeta?.label || deal.category || '').toLowerCase();
+  const desc = (deal.description || '').trim();
+  const amt = deal.amount;
+  switch (deal.discount_type) {
+    case 'flat':
+      return `$${amt} off ${desc || catLabel}`;
+    case 'percent':
+      return `${amt}% off ${desc || catLabel}`;
+    case 'fixed_price':
+      return `$${amt} ${desc || catLabel}`;
+    case 'bogo':
+      return desc ? `Buy 1 get 1 — ${desc}` : `Buy 1 get 1 ${catLabel}`;
+    case 'description_only':
+    default:
+      return desc || catLabel || '';
+  }
+};
+
+// Sum of deals for a quick chip label (e.g. "3 deals"). Used in feed cards.
+const dealsSummary = (deals) => {
+  if (!Array.isArray(deals) || deals.length === 0) return '';
+  if (deals.length === 1) return formatDealText(deals[0]);
+  return `${deals.length} deals`;
+};
+
+// Day-of-week presets used by the editor's quick-pick shortcuts.
+// Each is the int[] of day_of_week values (0=Sun..6=Sat).
+const HAPPY_HOUR_DAY_PRESETS = [
+  { id: 'weekdays', label: 'Weekdays',   days: [1, 2, 3, 4, 5] },
+  { id: 'weekend',  label: 'Weekend',    days: [0, 6] },
+  { id: 'all',      label: 'Every day',  days: [0, 1, 2, 3, 4, 5, 6] },
+];
+
+// Patch R.1 — Is a venue currently in happy hour? Reads venue_happy_hours rows.
+// New shape: row has `days_of_week int[]` (array of weekday ints) and `deals jsonb` (deal objects).
+// Returns the matching row if any, else null.
 const isVenueInHappyHourNow = (hhRows, now = new Date()) => {
   if (!Array.isArray(hhRows) || hhRows.length === 0) return null;
-  const wd = now.getDay(); // 0=Sun..6=Sat — matches venue_happy_hours.day_of_week
+  const wd = now.getDay();
   const minutesNow = now.getHours() * 60 + now.getMinutes();
   for (const r of hhRows) {
-    if (r.day_of_week !== wd) continue;
-    const startMin = (() => {
-      const m = /^(\d{1,2}):(\d{2})/.exec(r.start_time || '');
-      return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : null;
-    })();
-    const endMin = (() => {
-      const m = /^(\d{1,2}):(\d{2})/.exec(r.end_time || '');
-      return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : null;
-    })();
-    if (startMin == null || endMin == null) continue;
-    // Handle late-night happy hours that wrap past midnight (end < start).
+    const days = Array.isArray(r.days_of_week) ? r.days_of_week : [];
+    if (!days.includes(wd)) continue;
+    const m1 = /^(\d{1,2}):(\d{2})/.exec(r.start_time || '');
+    const m2 = /^(\d{1,2}):(\d{2})/.exec(r.end_time || '');
+    if (!m1 || !m2) continue;
+    const startMin = parseInt(m1[1], 10) * 60 + parseInt(m1[2], 10);
+    const endMin = parseInt(m2[1], 10) * 60 + parseInt(m2[2], 10);
+    // Handle wrap past midnight (end < start).
     if (endMin < startMin) {
       if (minutesNow >= startMin || minutesNow < endMin) return r;
     } else {
@@ -888,16 +946,19 @@ const isVenueInHappyHourNow = (hhRows, now = new Date()) => {
   return null;
 };
 
-// Patch R — Group happy hour rows by weekday for venue page display.
-// Returns array of { weekday, weekdayLabel, items } sorted Sun→Sat starting from today.
+// Patch R.1 — Group happy hour rows by weekday for venue page display.
+// A single row covering Mon-Fri will appear in 5 buckets (Mon, Tue, Wed, Thu, Fri),
+// each containing a reference to the same row. Order starts at today.
 const groupHappyHoursByDay = (hhRows) => {
   if (!Array.isArray(hhRows) || hhRows.length === 0) return [];
   const buckets = new Map();
   for (const r of hhRows) {
-    const wd = r.day_of_week;
-    if (wd == null || wd < 0 || wd > 6) continue;
-    if (!buckets.has(wd)) buckets.set(wd, []);
-    buckets.get(wd).push(r);
+    const days = Array.isArray(r.days_of_week) ? r.days_of_week : [];
+    for (const wd of days) {
+      if (wd == null || wd < 0 || wd > 6) continue;
+      if (!buckets.has(wd)) buckets.set(wd, []);
+      buckets.get(wd).push(r);
+    }
   }
   const today = new Date().getDay();
   const order = [];
@@ -912,6 +973,27 @@ const groupHappyHoursByDay = (hhRows) => {
   return result;
 };
 
+// Patch R.1 — Compact label for which days a happy hour covers, e.g.
+//   [1,2,3,4,5] → "Mon–Fri"
+//   [0,6]       → "Sat & Sun"
+//   [2]         → "Tuesday"
+//   [1,3,5]     → "Mon, Wed, Fri"
+const formatDaysOfWeek = (days) => {
+  if (!Array.isArray(days) || days.length === 0) return '';
+  const sorted = [...days].filter(d => d >= 0 && d <= 6).sort((a, b) => a - b);
+  if (sorted.length === 7) return 'Every day';
+  // Detect contiguous run (e.g. [1,2,3,4,5] → Mon–Fri).
+  let contiguous = true;
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] !== sorted[i-1] + 1) { contiguous = false; break; }
+  }
+  if (contiguous && sorted.length >= 3) {
+    return `${WEEKDAY_NAMES_SHORT[sorted[0]]}–${WEEKDAY_NAMES_SHORT[sorted[sorted.length-1]]}`;
+  }
+  if (sorted.length === 1) return WEEKDAY_NAMES[sorted[0]];
+  return sorted.map(d => WEEKDAY_NAMES_SHORT[d]).join(', ');
+};
+
 // Patch R — Is a venue 21+ after a given time? Reads establishments.age_gate_after_time.
 // Returns boolean. Used to surface "🔞 21+ after 10pm" badge on venue pages/cards.
 const isVenue21PlusAfterNow = (venue, now = new Date()) => {
@@ -921,6 +1003,162 @@ const isVenue21PlusAfterNow = (venue, now = new Date()) => {
   const gateMin = parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
   const nowMin = now.getHours() * 60 + now.getMinutes();
   return nowMin >= gateMin;
+};
+
+
+// ========== Patch R.2 — Google Places integration ==========
+// Lazy-loads the Google Maps JS API exactly once. Subsequent calls return the same Promise.
+// Reads the API key from VITE_GOOGLE_PLACES_API_KEY at build time. If the key is missing,
+// the loader rejects with a clear message instead of failing silently.
+let googleMapsLoaderPromise = null;
+const GOOGLE_PLACES_API_KEY = (typeof import.meta !== 'undefined' && import.meta.env)
+  ? import.meta.env.VITE_GOOGLE_PLACES_API_KEY
+  : null;
+
+const loadGoogleMapsApi = () => {
+  if (googleMapsLoaderPromise) return googleMapsLoaderPromise;
+  if (typeof window === 'undefined') {
+    return Promise.reject(new Error('Google Maps requires a browser environment'));
+  }
+  // Already loaded? (Maps JS sets window.google.maps when ready.)
+  if (window.google && window.google.maps && window.google.maps.places) {
+    googleMapsLoaderPromise = Promise.resolve(window.google);
+    return googleMapsLoaderPromise;
+  }
+  if (!GOOGLE_PLACES_API_KEY) {
+    return Promise.reject(new Error(
+      'Missing VITE_GOOGLE_PLACES_API_KEY. Add it in Vercel env vars and restart your dev server.'
+    ));
+  }
+  googleMapsLoaderPromise = new Promise((resolve, reject) => {
+    const cb = `__crewqGmapsCb_${Date.now()}`;
+    window[cb] = () => {
+      delete window[cb];
+      if (window.google?.maps?.places) {
+        resolve(window.google);
+      } else {
+        reject(new Error('Google Maps loaded but Places library is missing'));
+      }
+    };
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(GOOGLE_PLACES_API_KEY)}&libraries=places&callback=${cb}&v=weekly`;
+    script.async = true;
+    script.defer = true;
+    script.onerror = (e) => {
+      delete window[cb];
+      googleMapsLoaderPromise = null; // allow retry
+      reject(new Error('Failed to load Google Maps script — check key restrictions and network'));
+    };
+    document.head.appendChild(script);
+  });
+  return googleMapsLoaderPromise;
+};
+
+// Mapping: Google Places `types` array → our `venue_type` id.
+// Google returns multiple types per place (e.g. ['bar', 'restaurant', 'food', 'point_of_interest']).
+// We pick the most specific match using a priority list — first match wins.
+const GOOGLE_TYPE_TO_VENUE_TYPE = [
+  ['night_club',            'club'],
+  ['bar',                   'bar'],
+  ['cafe',                  'cafe'],
+  ['coffee_shop',           'coffee_shop'],
+  ['restaurant',            'restaurant'],
+  ['food',                  'restaurant'],
+  ['meal_takeaway',         'restaurant'],
+];
+const mapGoogleTypesToVenueType = (types) => {
+  if (!Array.isArray(types) || types.length === 0) return 'other';
+  for (const [googleType, ourType] of GOOGLE_TYPE_TO_VENUE_TYPE) {
+    if (types.includes(googleType)) return ourType;
+  }
+  return 'other';
+};
+
+// Map Google Places opening_hours periods to our hours jsonb shape.
+// Google returns periods as { open: {day, time}, close: {day, time} } where day is 0=Sun..6=Sat
+// and time is 'HHMM' string. Our shape is { mon: '11am-10pm', tue: ..., ... }.
+const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+const formatGoogleTime = (hhmm) => {
+  if (!hhmm || hhmm.length !== 4) return '';
+  const h = parseInt(hhmm.slice(0, 2), 10);
+  const m = hhmm.slice(2, 4);
+  if (isNaN(h)) return '';
+  const ampm = h >= 12 ? 'pm' : 'am';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return m === '00' ? `${h12}${ampm}` : `${h12}:${m}${ampm}`;
+};
+const mapGoogleHoursToOurs = (openingHours) => {
+  if (!openingHours?.periods || !Array.isArray(openingHours.periods)) return {};
+  const result = {};
+  for (const period of openingHours.periods) {
+    const dayIdx = period.open?.day;
+    if (dayIdx == null || dayIdx < 0 || dayIdx > 6) continue;
+    const key = DAY_KEYS[dayIdx];
+    const openTime = formatGoogleTime(period.open?.time);
+    const closeTime = period.close ? formatGoogleTime(period.close.time) : '24hr';
+    if (!openTime) continue;
+    const rangeStr = period.close ? `${openTime}-${closeTime}` : '24hr';
+    // If we already have a value for this day (rare — split hours), append.
+    result[key] = result[key] ? `${result[key]}, ${rangeStr}` : rangeStr;
+  }
+  return result;
+};
+
+// Infer vibe tags from Google Place attribute fields. Conservative — only set
+// what Google explicitly tells us. User can add more.
+const inferVibeTagsFromPlace = (place) => {
+  const tags = new Set();
+  if (place.wheelchair_accessible_entrance) tags.add('wheelchair-accessible');
+  if (place.serves_beer) tags.add('cheap-drinks'); // weak signal; user can remove
+  if (place.serves_wine && !place.serves_beer) tags.add('upscale');
+  if (place.outdoor_seating === true) tags.add('outdoor-seating');
+  if (place.live_music) tags.add('live-music');
+  if (place.serves_brunch) tags.add('brunch');
+  if (place.allows_dogs) tags.add('dog-friendly');
+  if (place.serves_cocktails && place.price_level >= 3) tags.add('craft-cocktails');
+  return Array.from(tags);
+};
+
+// Build a service_options jsonb from Google Place boolean attribute fields.
+const buildServiceOptions = (place) => {
+  const opts = {};
+  if (place.dine_in != null) opts.dine_in = !!place.dine_in;
+  if (place.takeout != null) opts.takeout = !!place.takeout;
+  if (place.delivery != null) opts.delivery = !!place.delivery;
+  if (place.curbside_pickup != null) opts.curbside_pickup = !!place.curbside_pickup;
+  if (place.reservable != null) opts.reservable = !!place.reservable;
+  if (place.serves_breakfast != null) opts.serves_breakfast = !!place.serves_breakfast;
+  if (place.serves_lunch != null) opts.serves_lunch = !!place.serves_lunch;
+  if (place.serves_dinner != null) opts.serves_dinner = !!place.serves_dinner;
+  return opts;
+};
+
+// Top-level mapper: takes a Google Place Details object and produces a partial
+// venue payload ready to merge into our form state. NEVER overwrites name/address
+// destructively — caller decides what to keep vs. replace.
+const mapGooglePlaceToVenue = (place) => {
+  if (!place) return {};
+  const photoUrl = place.photos && place.photos[0] && typeof place.photos[0].getUrl === 'function'
+    ? place.photos[0].getUrl({ maxWidth: 1600 })
+    : null;
+  return {
+    name: place.name || '',
+    address: place.formatted_address || place.vicinity || '',
+    phone: place.formatted_phone_number || place.international_phone_number || '',
+    website: place.website || '',
+    latitude: place.geometry?.location?.lat ? place.geometry.location.lat() : null,
+    longitude: place.geometry?.location?.lng ? place.geometry.location.lng() : null,
+    venue_type: mapGoogleTypesToVenueType(place.types),
+    hours: mapGoogleHoursToOurs(place.opening_hours),
+    cover_image_url: photoUrl,
+    vibe_tags: inferVibeTagsFromPlace(place),
+    service_options: buildServiceOptions(place),
+    price_level: place.price_level ?? null,
+    google_rating: place.rating ?? null,
+    google_review_count: place.user_ratings_total ?? null,
+    google_place_id: place.place_id || null,
+    google_data_fetched_at: new Date().toISOString(),
+  };
 };
 
 
@@ -6297,11 +6535,19 @@ function VenuePage({
           </div>
         )}
 
-        {/* Patch R — Happy hours, grouped by weekday starting today. */}
+        {/* Patch R.1 — Happy hours displayed as windows (one row per DB record),
+            each showing the day range it covers (e.g. "Mon–Fri 2–6pm") and its full deals list. */}
         {(() => {
-          const happyGrouped = groupHappyHoursByDay(happyHoursForVenue);
-          if (happyGrouped.length === 0) return null;
+          if (!Array.isArray(happyHoursForVenue) || happyHoursForVenue.length === 0) return null;
           const activeNow = isVenueInHappyHourNow(happyHoursForVenue);
+          // Sort: today's first if it's in the days_of_week, then by start_time.
+          const today = new Date().getDay();
+          const sorted = [...happyHoursForVenue].sort((a, b) => {
+            const aHasToday = Array.isArray(a.days_of_week) && a.days_of_week.includes(today) ? 0 : 1;
+            const bHasToday = Array.isArray(b.days_of_week) && b.days_of_week.includes(today) ? 0 : 1;
+            if (aHasToday !== bHasToday) return aHasToday - bHasToday;
+            return (a.start_time || '').localeCompare(b.start_time || '');
+          });
           return (
             <div className="mb-6">
               <h2 className={`text-lg font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
@@ -6313,39 +6559,56 @@ function VenuePage({
                 )}
               </h2>
               <div className="space-y-3">
-                {happyGrouped.map(({ weekday, weekdayLabel, items }) => (
-                  <div key={weekday}>
-                    <p className={`text-xs font-bold uppercase tracking-wider mb-1.5 ${darkMode ? 'text-orange-300/80' : 'text-orange-700/80'}`}>
-                      {weekdayLabel}s
-                    </p>
-                    <div className="space-y-2">
-                      {items.map(row => (
-                        <div
-                          key={row.id || `${weekday}-${row.start_time}`}
-                          className={`p-3 rounded-xl ${darkMode ? 'bg-zinc-900 border border-orange-500/20' : 'bg-white border border-orange-200'}`}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="flex-1 min-w-0">
-                              <p className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
-                                {formatTime12h(row.start_time)} – {formatTime12h(row.end_time)}
-                                {row.discount_summary && (
-                                  <span className={`ml-2 text-xs font-bold ${darkMode ? 'text-orange-300' : 'text-orange-700'}`}>
-                                    {row.discount_summary}
-                                  </span>
-                                )}
-                              </p>
-                              {row.description && (
-                                <p className={`text-xs mt-0.5 ${darkMode ? 'text-zinc-400' : 'text-zinc-600'}`}>
-                                  {row.description}
-                                </p>
-                              )}
-                            </div>
-                          </div>
+                {sorted.map((row, idx) => {
+                  const dayLabel = formatDaysOfWeek(row.days_of_week);
+                  const deals = Array.isArray(row.deals) ? row.deals : [];
+                  const isActiveRow = activeNow && activeNow.id === row.id;
+                  return (
+                    <div
+                      key={row.id || `hh-${idx}`}
+                      className={`p-4 rounded-xl border ${
+                        isActiveRow
+                          ? (darkMode ? 'bg-emerald-500/10 border-emerald-500/50' : 'bg-emerald-50 border-emerald-300')
+                          : (darkMode ? 'bg-zinc-900 border-orange-500/20' : 'bg-white border-orange-200')
+                      }`}
+                    >
+                      <div className="flex items-baseline justify-between gap-3 mb-2">
+                        <div className="flex-1 min-w-0">
+                          {row.name && (
+                            <p className={`text-xs font-bold uppercase tracking-wider mb-1 ${darkMode ? 'text-orange-300/80' : 'text-orange-700/80'}`}>
+                              {row.name}
+                            </p>
+                          )}
+                          <p className={`text-base font-semibold ${darkMode ? 'text-white' : 'text-zinc-900'}`}>
+                            {dayLabel} · {formatTime12h(row.start_time)}–{formatTime12h(row.end_time)}
+                          </p>
                         </div>
-                      ))}
+                        {isActiveRow && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500 text-white flex-shrink-0">
+                            NOW
+                          </span>
+                        )}
+                      </div>
+                      {deals.length > 0 ? (
+                        <ul className="space-y-1">
+                          {deals.map((deal, dIdx) => {
+                            const catMeta = getDealCategoryMeta(deal.category);
+                            return (
+                              <li key={dIdx} className={`text-sm flex items-center gap-2 ${darkMode ? 'text-zinc-300' : 'text-zinc-700'}`}>
+                                <span className="text-base">{catMeta?.icon || '✨'}</span>
+                                <span>{formatDealText(deal)}</span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      ) : (
+                        <p className={`text-xs italic ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>
+                          Specials available — ask your bartender.
+                        </p>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           );
@@ -6779,10 +7042,209 @@ function StoryComposer({ venue, supabaseClient, userProfile, onClose, onCreated,
 //   parentBrandId: string | null
 //   onParentBrandChange(value: string | null)
 //   brandOptions: array of { id, name } — venues that can serve as the parent brand
-//   happyHours: array of { id?, day_of_week, start_time, end_time, description, discount_summary }
+//   happyHours: array of { id?, name?, days_of_week: int[], start_time, end_time, deals: [...] }
 //               id is present for rows already in DB, absent for new local rows
 //   onHappyHoursChange(rows)
 //   darkMode (optional, defaults true) — for the business portal which uses slate theme
+// Patch R.2 — Google Places autocomplete search box.
+// Used in admin CreateVenueForm to find a venue on Google Maps and prefill the form
+// from Place Details. Loads the Google Maps JS API on demand (lazy, one-time).
+//
+// Props:
+//   onPlaceSelected(venuePayload, rawPlace) — called when the user picks a result.
+//                                              venuePayload is the mapped/form-ready object;
+//                                              rawPlace is the unmodified Google Place for debugging.
+//   onError(message)                        — optional error reporter for missing key, load failure, etc.
+//   biasLocation (optional)                 — { lat, lng } to bias suggestions toward (defaults to Dallas).
+//   darkMode (default true)                 — match admin theme.
+//
+// Constraints:
+//   • Country/region restricted to US.
+//   • Searches "establishment" type only (filters out random addresses).
+//   • Includes the comprehensive Place Details fields list our mapper consumes.
+function GooglePlacesSearchBox({ onPlaceSelected, onError, biasLocation, darkMode = true }) {
+  const [query, setQuery] = useState('');
+  const [predictions, setPredictions] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [fetchingDetails, setFetchingDetails] = useState(false);
+  const [apiReady, setApiReady] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const autocompleteServiceRef = useRef(null);
+  const placesServiceRef = useRef(null);
+  const sessionTokenRef = useRef(null);
+  const inputRef = useRef(null);
+  const debounceRef = useRef(null);
+
+  // Lazy-init the Google Maps API and the AutocompleteService.
+  // A hidden div is required by PlacesService — we attach it once on mount.
+  useEffect(() => {
+    let cancelled = false;
+    loadGoogleMapsApi()
+      .then((google) => {
+        if (cancelled) return;
+        autocompleteServiceRef.current = new google.maps.places.AutocompleteService();
+        // PlacesService needs an HTMLDivElement or a Map. A hidden div is fine.
+        const hiddenDiv = document.createElement('div');
+        placesServiceRef.current = new google.maps.places.PlacesService(hiddenDiv);
+        sessionTokenRef.current = new google.maps.places.AutocompleteSessionToken();
+        setApiReady(true);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setLoadError(err?.message || 'Failed to load Google Maps');
+        onError?.(err?.message || 'Failed to load Google Maps');
+      });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Debounced query: hit Autocomplete service ~250ms after the user stops typing.
+  useEffect(() => {
+    if (!apiReady || !autocompleteServiceRef.current) return;
+    if (!query || query.trim().length < 2) {
+      setPredictions([]);
+      return;
+    }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setLoading(true);
+      const bias = biasLocation || { lat: 32.7767, lng: -96.7970 }; // Dallas downtown
+      autocompleteServiceRef.current.getPlacePredictions(
+        {
+          input: query,
+          types: ['establishment'],
+          componentRestrictions: { country: 'us' },
+          location: new window.google.maps.LatLng(bias.lat, bias.lng),
+          radius: 50000, // 50km — covers DFW metroplex
+          sessionToken: sessionTokenRef.current,
+        },
+        (results, status) => {
+          setLoading(false);
+          if (status === window.google.maps.places.PlacesServiceStatus.OK && Array.isArray(results)) {
+            setPredictions(results);
+            setOpen(true);
+          } else if (status === window.google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
+            setPredictions([]);
+            setOpen(true);
+          } else {
+            setPredictions([]);
+            setOpen(false);
+            console.warn('Places autocomplete error:', status);
+          }
+        }
+      );
+    }, 250);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [query, apiReady, biasLocation]);
+
+  // On result pick: fetch Place Details (with the full field list our mapper consumes),
+  // then call onPlaceSelected. Sessions tie Autocomplete + Details billing together at lower cost.
+  const handlePick = (prediction) => {
+    if (!placesServiceRef.current) return;
+    setFetchingDetails(true);
+    setOpen(false);
+    setQuery(prediction.description); // show what they picked
+    placesServiceRef.current.getDetails(
+      {
+        placeId: prediction.place_id,
+        sessionToken: sessionTokenRef.current,
+        fields: [
+          'place_id', 'name', 'formatted_address', 'vicinity', 'geometry',
+          'formatted_phone_number', 'international_phone_number', 'website',
+          'opening_hours', 'price_level', 'rating', 'user_ratings_total',
+          'types', 'photos',
+          // Boolean attribute fields — not all venues have all of these
+          'wheelchair_accessible_entrance', 'serves_beer', 'serves_wine',
+          'serves_cocktails', 'serves_brunch', 'serves_breakfast', 'serves_lunch',
+          'serves_dinner', 'outdoor_seating', 'live_music', 'allows_dogs',
+          'dine_in', 'takeout', 'delivery', 'curbside_pickup', 'reservable',
+        ],
+      },
+      (place, status) => {
+        setFetchingDetails(false);
+        if (status === window.google.maps.places.PlacesServiceStatus.OK && place) {
+          // Rotate the session token — once a Details request fires, the session is "spent."
+          if (window.google?.maps?.places) {
+            sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
+          }
+          const venuePayload = mapGooglePlaceToVenue(place);
+          onPlaceSelected?.(venuePayload, place);
+        } else {
+          console.warn('Place Details error:', status);
+          onError?.('Failed to fetch venue details from Google');
+        }
+      }
+    );
+  };
+
+  const T = darkMode
+    ? { wrap: 'bg-zinc-800 border-zinc-700', input: 'bg-zinc-900 border-zinc-700 text-white', drop: 'bg-zinc-800 border-zinc-700', item: 'hover:bg-zinc-700 border-zinc-700/40', text: 'text-white', sub: 'text-zinc-400', muted: 'text-zinc-500', err: 'text-red-400 bg-red-500/10 border-red-500/30' }
+    : { wrap: 'bg-slate-800 border-slate-700', input: 'bg-slate-700 border-slate-600 text-white', drop: 'bg-slate-700 border-slate-600', item: 'hover:bg-slate-600 border-slate-600/40', text: 'text-white', sub: 'text-slate-300', muted: 'text-slate-400', err: 'text-red-400 bg-red-500/10 border-red-500/30' };
+
+  if (loadError) {
+    return (
+      <div className={`p-3 rounded-xl border text-sm ${T.err}`}>
+        Google Places unavailable: {loadError}
+        <p className={`text-xs mt-1 ${T.muted}`}>Fall back to manual entry below.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`p-4 rounded-xl border ${T.wrap}`}>
+      <label className={`block text-sm font-semibold mb-2 ${T.sub}`}>
+        ✨ Search Google Maps to prefill
+      </label>
+      <p className={`text-xs mb-3 ${T.muted}`}>
+        Find the venue on Google → we'll fill in address, phone, hours, photos, and detectable amenities. Override anything below after.
+      </p>
+      <div className="relative">
+        <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${T.muted} pointer-events-none`} />
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => predictions.length > 0 && setOpen(true)}
+          placeholder={apiReady ? "Type a venue name..." : "Loading Google Maps..."}
+          disabled={!apiReady || fetchingDetails}
+          className={`w-full pl-10 pr-10 py-3 rounded-lg border text-base outline-none ${T.input} disabled:opacity-50`}
+        />
+        {(loading || fetchingDetails) && (
+          <div className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs ${T.muted}`}>
+            {fetchingDetails ? 'Loading...' : 'Searching...'}
+          </div>
+        )}
+        {open && predictions.length > 0 && (
+          <div className={`absolute z-30 mt-1 w-full border rounded-xl shadow-2xl max-h-72 overflow-y-auto ${T.drop}`}>
+            {predictions.map((p) => (
+              <button
+                key={p.place_id}
+                type="button"
+                onClick={() => handlePick(p)}
+                className={`w-full px-3 py-2 text-left border-b last:border-0 ${T.item}`}
+              >
+                <p className={`text-sm font-medium truncate ${T.text}`}>
+                  {p.structured_formatting?.main_text || p.description}
+                </p>
+                <p className={`text-xs truncate ${T.muted}`}>
+                  {p.structured_formatting?.secondary_text || ''}
+                </p>
+              </button>
+            ))}
+          </div>
+        )}
+        {open && !loading && query.trim().length >= 2 && predictions.length === 0 && (
+          <div className={`absolute z-30 mt-1 w-full border rounded-xl p-3 ${T.drop}`}>
+            <p className={`text-sm ${T.sub}`}>No matches. Try a different search or use manual entry below.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function VenueAttributesEditor({
   vibeTags = [],
   onVibeTagsChange,
@@ -6809,13 +7271,56 @@ function VenueAttributesEditor({
   const addHappyHour = () => {
     onHappyHoursChange?.([
       ...happyHours,
-      // New rows get no `id` — caller inserts them on save.
-      { day_of_week: 5, start_time: '16:00', end_time: '19:00', description: '', discount_summary: '' },
+      // Patch R.1 — New row shape: days_of_week is int[], deals is array of objects.
+      // Default to weekdays 4-7pm with no deals; user fills both.
+      {
+        name: '',
+        days_of_week: [1, 2, 3, 4, 5],
+        start_time: '16:00',
+        end_time: '19:00',
+        deals: [],
+      },
     ]);
   };
 
   const removeHappyHour = (idx) => {
     onHappyHoursChange?.(happyHours.filter((_, i) => i !== idx));
+  };
+
+  // Patch R.1 — Day chip toggle inside a happy-hour row.
+  const toggleDayInRow = (idx, day) => {
+    const row = happyHours[idx];
+    const current = Array.isArray(row.days_of_week) ? row.days_of_week : [];
+    const set = new Set(current);
+    if (set.has(day)) set.delete(day); else set.add(day);
+    updateHappyHour(idx, { days_of_week: Array.from(set).sort((a, b) => a - b) });
+  };
+
+  // Patch R.1 — Preset shortcut (Weekdays / Weekend / Every day).
+  const applyDayPreset = (idx, presetDays) => {
+    updateHappyHour(idx, { days_of_week: [...presetDays] });
+  };
+
+  // Patch R.1 — Deal manipulation inside a happy-hour row.
+  const addDealToRow = (rowIdx) => {
+    const row = happyHours[rowIdx];
+    const deals = Array.isArray(row.deals) ? row.deals : [];
+    updateHappyHour(rowIdx, {
+      deals: [...deals, { category: 'beer', discount_type: 'flat', amount: '', description: '' }],
+    });
+  };
+
+  const updateDealInRow = (rowIdx, dealIdx, patch) => {
+    const row = happyHours[rowIdx];
+    const deals = Array.isArray(row.deals) ? row.deals : [];
+    const nextDeals = deals.map((d, i) => i === dealIdx ? { ...d, ...patch } : d);
+    updateHappyHour(rowIdx, { deals: nextDeals });
+  };
+
+  const removeDealFromRow = (rowIdx, dealIdx) => {
+    const row = happyHours[rowIdx];
+    const deals = Array.isArray(row.deals) ? row.deals : [];
+    updateHappyHour(rowIdx, { deals: deals.filter((_, i) => i !== dealIdx) });
   };
 
   // Theme classes — dark = admin (zinc/gray), light = business (slate).
@@ -6831,6 +7336,8 @@ function VenueAttributesEditor({
         button: 'border border-zinc-600 text-zinc-300 hover:bg-zinc-700',
         buttonPrimary: 'bg-violet-500 text-white hover:bg-violet-600',
         danger: 'text-red-400 hover:bg-red-500/10',
+        rowBg: 'bg-zinc-900/60 border-zinc-700',
+        dealBg: 'bg-zinc-800/60 border-zinc-700',
       }
     : {
         section: 'bg-slate-800 border border-slate-700',
@@ -6842,6 +7349,8 @@ function VenueAttributesEditor({
         button: 'border border-slate-600 text-slate-300 hover:bg-slate-700',
         buttonPrimary: 'bg-orange-500 text-white hover:bg-orange-600',
         danger: 'text-red-400 hover:bg-red-500/10',
+        rowBg: 'bg-slate-900/60 border-slate-700',
+        dealBg: 'bg-slate-800/60 border-slate-700',
       };
 
   return (
@@ -6915,7 +7424,7 @@ function VenueAttributesEditor({
         </div>
       </div>
 
-      {/* Happy hours */}
+      {/* Patch R.1 — Happy hours: multi-day window + structured deals */}
       <div className={`p-4 rounded-xl ${T.section}`}>
         <div className="flex items-center justify-between mb-2">
           <label className={`block text-sm font-semibold ${T.label}`}>Happy hours</label>
@@ -6928,80 +7437,197 @@ function VenueAttributesEditor({
           </button>
         </div>
         <p className={`text-xs ${T.sub} mb-3`}>
-          One row per weekday window. A venue can have multiple per day (e.g. lunch + evening). Drives the "Now" view in Discover.
+          One window can cover multiple days (e.g. Mon–Fri 2–6pm) and contain multiple deals (e.g. $4 off cocktails, $2 off beer).
         </p>
+
         {happyHours.length === 0 ? (
           <p className={`text-xs ${T.sub} italic`}>No happy hours set.</p>
         ) : (
-          <div className="space-y-3">
-            {happyHours.map((row, idx) => (
-              <div key={row.id || `new-${idx}`} className={`p-3 rounded-lg ${T.input}`}>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
-                  <div>
-                    <label className={`block text-[10px] uppercase tracking-wide mb-1 ${T.sub}`}>Day</label>
-                    <select
-                      value={row.day_of_week}
-                      onChange={e => updateHappyHour(idx, { day_of_week: parseInt(e.target.value, 10) })}
-                      className={`w-full px-2 py-1.5 rounded text-sm ${T.input}`}
+          <div className="space-y-4">
+            {happyHours.map((row, idx) => {
+              const rowDays = Array.isArray(row.days_of_week) ? row.days_of_week : [];
+              const rowDeals = Array.isArray(row.deals) ? row.deals : [];
+              return (
+                <div key={row.id || `new-${idx}`} className={`p-3 rounded-lg border ${T.rowBg}`}>
+                  {/* Header: optional name + remove */}
+                  <div className="flex items-center gap-2 mb-3">
+                    <input
+                      type="text"
+                      value={row.name || ''}
+                      onChange={e => updateHappyHour(idx, { name: e.target.value })}
+                      placeholder="Window name (optional, e.g. Weekday HH)"
+                      className={`flex-1 px-2 py-1.5 rounded text-sm ${T.input}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeHappyHour(idx)}
+                      className={`px-2 py-1.5 rounded text-xs ${T.danger}`}
+                      aria-label="Remove happy hour window"
                     >
-                      {WEEKDAY_NAMES.map((name, i) => (
-                        <option key={i} value={i}>{name}</option>
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Days of week — chip multi-select + presets */}
+                  <div className="mb-3">
+                    <label className={`block text-[10px] uppercase tracking-wide mb-1 ${T.sub}`}>Days</label>
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {WEEKDAY_NAMES_SHORT.map((shortName, i) => {
+                        const active = rowDays.includes(i);
+                        return (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => toggleDayInRow(idx, i)}
+                            className={`w-9 h-9 rounded-full text-xs font-semibold border-2 transition ${active ? T.chipActive : T.chip}`}
+                            aria-label={`Toggle ${WEEKDAY_NAMES[i]}`}
+                          >
+                            {shortName.slice(0, 1)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {HAPPY_HOUR_DAY_PRESETS.map(p => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => applyDayPreset(idx, p.days)}
+                          className={`px-2 py-1 rounded text-[11px] font-semibold ${T.button}`}
+                        >
+                          {p.label}
+                        </button>
                       ))}
-                    </select>
+                    </div>
                   </div>
-                  <div>
-                    <label className={`block text-[10px] uppercase tracking-wide mb-1 ${T.sub}`}>Start</label>
-                    <input
-                      type="time"
-                      value={row.start_time || ''}
-                      onChange={e => updateHappyHour(idx, { start_time: e.target.value })}
-                      step="900"
-                      className={`w-full px-2 py-1.5 rounded text-sm ${T.input}`}
-                    />
+
+                  {/* Start + End time */}
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    <div>
+                      <label className={`block text-[10px] uppercase tracking-wide mb-1 ${T.sub}`}>Start</label>
+                      <input
+                        type="time"
+                        value={row.start_time || ''}
+                        onChange={e => updateHappyHour(idx, { start_time: e.target.value })}
+                        step="900"
+                        className={`w-full px-2 py-1.5 rounded text-sm ${T.input}`}
+                      />
+                    </div>
+                    <div>
+                      <label className={`block text-[10px] uppercase tracking-wide mb-1 ${T.sub}`}>End</label>
+                      <input
+                        type="time"
+                        value={row.end_time || ''}
+                        onChange={e => updateHappyHour(idx, { end_time: e.target.value })}
+                        step="900"
+                        className={`w-full px-2 py-1.5 rounded text-sm ${T.input}`}
+                      />
+                    </div>
                   </div>
+
+                  {/* Deals — structured sub-editor */}
                   <div>
-                    <label className={`block text-[10px] uppercase tracking-wide mb-1 ${T.sub}`}>End</label>
-                    <input
-                      type="time"
-                      value={row.end_time || ''}
-                      onChange={e => updateHappyHour(idx, { end_time: e.target.value })}
-                      step="900"
-                      className={`w-full px-2 py-1.5 rounded text-sm ${T.input}`}
-                    />
-                  </div>
-                  <div>
-                    <label className={`block text-[10px] uppercase tracking-wide mb-1 ${T.sub}`}>Discount</label>
-                    <input
-                      type="text"
-                      value={row.discount_summary || ''}
-                      onChange={e => updateHappyHour(idx, { discount_summary: e.target.value })}
-                      placeholder="50% off"
-                      className={`w-full px-2 py-1.5 rounded text-sm ${T.input}`}
-                    />
+                    <div className="flex items-center justify-between mb-2">
+                      <label className={`block text-[10px] uppercase tracking-wide ${T.sub}`}>Deals</label>
+                      <button
+                        type="button"
+                        onClick={() => addDealToRow(idx)}
+                        className={`px-2 py-1 rounded text-[11px] font-semibold ${T.buttonPrimary}`}
+                      >
+                        + Add deal
+                      </button>
+                    </div>
+                    {rowDeals.length === 0 ? (
+                      <p className={`text-[11px] italic ${T.sub}`}>No deals added yet. At least one is recommended.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {rowDeals.map((deal, dIdx) => {
+                          const dt = deal.discount_type || 'flat';
+                          const showAmount = dt !== 'description_only' && dt !== 'bogo';
+                          return (
+                            <div key={dIdx} className={`p-2 rounded border ${T.dealBg}`}>
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2">
+                                <div>
+                                  <label className={`block text-[9px] uppercase tracking-wide mb-1 ${T.sub}`}>Category</label>
+                                  <select
+                                    value={deal.category || 'beer'}
+                                    onChange={e => updateDealInRow(idx, dIdx, { category: e.target.value })}
+                                    className={`w-full px-2 py-1 rounded text-xs ${T.input}`}
+                                  >
+                                    {DEAL_CATEGORIES.map(c => (
+                                      <option key={c.id} value={c.id}>{c.icon} {c.label}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className={`block text-[9px] uppercase tracking-wide mb-1 ${T.sub}`}>Discount type</label>
+                                  <select
+                                    value={dt}
+                                    onChange={e => updateDealInRow(idx, dIdx, { discount_type: e.target.value })}
+                                    className={`w-full px-2 py-1 rounded text-xs ${T.input}`}
+                                  >
+                                    {DISCOUNT_TYPES.map(d => (
+                                      <option key={d.id} value={d.id}>{d.label}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                {showAmount && (
+                                  <div>
+                                    <label className={`block text-[9px] uppercase tracking-wide mb-1 ${T.sub}`}>
+                                      {dt === 'percent' ? 'Percent' : 'Amount ($)'}
+                                    </label>
+                                    <input
+                                      type="number"
+                                      inputMode="decimal"
+                                      value={deal.amount ?? ''}
+                                      onChange={e => updateDealInRow(idx, dIdx, { amount: e.target.value === '' ? '' : parseFloat(e.target.value) })}
+                                      placeholder={dt === 'percent' ? '50' : '4'}
+                                      className={`w-full px-2 py-1 rounded text-xs ${T.input}`}
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex items-end gap-2">
+                                <div className="flex-1">
+                                  <label className={`block text-[9px] uppercase tracking-wide mb-1 ${T.sub}`}>
+                                    {dt === 'description_only' ? 'Description *' : 'Description (optional)'}
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={deal.description || ''}
+                                    onChange={e => updateDealInRow(idx, dIdx, { description: e.target.value })}
+                                    placeholder={
+                                      dt === 'flat'             ? 'any draft beer' :
+                                      dt === 'percent'          ? 'wine by the glass' :
+                                      dt === 'fixed_price'      ? 'well drinks' :
+                                      dt === 'bogo'             ? 'select cocktails' :
+                                      'Free chips and salsa'
+                                    }
+                                    className={`w-full px-2 py-1 rounded text-xs ${T.input}`}
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => removeDealFromRow(idx, dIdx)}
+                                  className={`px-2 py-1 rounded text-xs ${T.danger}`}
+                                  aria-label="Remove deal"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                              {/* Preview */}
+                              <p className={`text-[10px] mt-1.5 italic ${T.sub}`}>
+                                Preview: <span className={darkMode ? 'text-violet-300' : 'text-orange-300'}>{formatDealText(deal) || '—'}</span>
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 </div>
-                <div className="flex items-end gap-2">
-                  <div className="flex-1">
-                    <label className={`block text-[10px] uppercase tracking-wide mb-1 ${T.sub}`}>Description</label>
-                    <input
-                      type="text"
-                      value={row.description || ''}
-                      onChange={e => updateHappyHour(idx, { description: e.target.value })}
-                      placeholder="Half-off all drafts and well drinks"
-                      className={`w-full px-2 py-1.5 rounded text-sm ${T.input}`}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeHappyHour(idx)}
-                    className={`px-2 py-1.5 rounded text-xs ${T.danger}`}
-                    aria-label="Remove happy hour"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -7045,7 +7671,7 @@ function EditMyVenue({ venue, supabaseClient, onClose, onSaved, showToast }) {
           .from('venue_happy_hours')
           .select('*')
           .eq('venue_id', venue.id)
-          .order('day_of_week', { ascending: true });
+          .order('start_time', { ascending: true });
         if (error) throw error;
         setLocalHappyHours(data || []);
       } catch (err) {
@@ -7167,11 +7793,12 @@ function EditMyVenue({ venue, supabaseClient, onClose, onSaved, showToast }) {
         if (localHappyHours.length > 0) {
           const hhPayload = localHappyHours.map(r => ({
             venue_id: venue.id,
-            day_of_week: r.day_of_week,
+            // Patch R.1 — multi-day window + structured deals
+            name: r.name || null,
+            days_of_week: Array.isArray(r.days_of_week) ? r.days_of_week : [],
             start_time: r.start_time,
             end_time: r.end_time,
-            description: r.description || null,
-            discount_summary: r.discount_summary || null,
+            deals: Array.isArray(r.deals) ? r.deals : [],
           }));
           const { error: hhErr } = await supabaseClient.from('venue_happy_hours').insert(hhPayload);
           if (hhErr) throw hhErr;
@@ -11926,7 +12553,7 @@ function AdminPortal({ onClose, userEmail }) {
             .from('venue_happy_hours')
             .select('*')
             .eq('venue_id', editingVenue.id)
-            .order('day_of_week', { ascending: true });
+            .order('start_time', { ascending: true });
           if (error) throw error;
           setLocalHappyHours(data || []);
         } catch (err) {
@@ -11966,11 +12593,12 @@ function AdminPortal({ onClose, userEmail }) {
           if (localHappyHours.length > 0) {
             const payload = localHappyHours.map(r => ({
               venue_id: editingVenue.id,
-              day_of_week: r.day_of_week,
+              // Patch R.1 — multi-day window + structured deals
+              name: r.name || null,
+              days_of_week: Array.isArray(r.days_of_week) ? r.days_of_week : [],
               start_time: r.start_time,
               end_time: r.end_time,
-              description: r.description || null,
-              discount_summary: r.discount_summary || null,
+              deals: Array.isArray(r.deals) ? r.deals : [],
             }));
             const { error: hhErr } = await supabaseClient.from('venue_happy_hours').insert(payload);
             if (hhErr) {
@@ -12113,7 +12741,10 @@ function AdminPortal({ onClose, userEmail }) {
 
   // ========== CREATE VENUE ==========
   // Patch R — Overhauled. Drops neighborhood + email from UI. Adds vibe tags, age gate,
-  // parent brand selector, and happy hour rows. Persists happy hours after venue insert.
+  //           parent brand selector, and happy hour rows. Persists happy hours after venue insert.
+  // Patch R.2 — Adds Google Places search at top. Picking a result prefills every supported field.
+  //             All Google data lands in the SAME state vars the manual form already uses, so
+  //             admin can edit/override anything before submitting.
   const CreateVenueForm = () => {
     const [venueType, setVenueType] = useState('');
     const [name, setName] = useState('');
@@ -12124,11 +12755,33 @@ function AdminPortal({ onClose, userEmail }) {
     const [parentBrandLocal, setParentBrandLocal] = useState(null);
     const [happyHoursLocal, setHappyHoursLocal] = useState([]);
     const [submitting, setSubmitting] = useState(false);
+    // Patch R.2 — Extra fields populated only by Google Places (not editable manually in this minimal form).
+    // We hold them in state so they get sent through on submit. AdminPortal's EditVenueModal can override later.
+    const [googlePrefill, setGooglePrefill] = useState(null);
+    const [prefilledFromGoogle, setPrefilledFromGoogle] = useState(false);
 
     // Brand options: any existing venue can serve as a parent. Sorted by name.
     const brandOptions = [...establishments]
       .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
       .map(v => ({ id: v.id, name: v.name }));
+
+    // Patch R.2 — Handler fired when admin picks a Google Maps result.
+    // Merges Google's mapped payload into the form state. Doesn't clobber typed values.
+    const applyGooglePrefill = (payload) => {
+      if (!payload) return;
+      setName(payload.name || '');
+      setAddress(payload.address || '');
+      setPhone(payload.phone || '');
+      if (payload.venue_type) setVenueType(payload.venue_type);
+      if (Array.isArray(payload.vibe_tags) && payload.vibe_tags.length > 0) {
+        // Merge with anything already selected manually.
+        setVibeTagsLocal(prev => Array.from(new Set([...(prev || []), ...payload.vibe_tags])));
+      }
+      // Stash the rest (hours, photos, lat/lng, google_place_id, etc.) for submit.
+      setGooglePrefill(payload);
+      setPrefilledFromGoogle(true);
+      showToastMsg(`✨ Prefilled "${payload.name || 'venue'}" from Google`, 'success');
+    };
 
     const handleSubmit = async () => {
       if (submitting) return;
@@ -12136,7 +12789,10 @@ function AdminPortal({ onClose, userEmail }) {
       setSubmitting(true);
       try {
         // 1) Insert the establishment.
+        // Patch R.2 — Spread googlePrefill FIRST so manually-typed fields override Google's values
+        //             (e.g. if admin changed the name after picking).
         const venuePayload = {
+          ...(googlePrefill || {}),
           name,
           venue_type: venueType,
           address,
@@ -12157,11 +12813,12 @@ function AdminPortal({ onClose, userEmail }) {
         if (happyHoursLocal.length > 0 && venueRow?.id) {
           const hhPayload = happyHoursLocal.map(r => ({
             venue_id: venueRow.id,
-            day_of_week: r.day_of_week,
+            // Patch R.1 — multi-day window + structured deals
+            name: r.name || null,
+            days_of_week: Array.isArray(r.days_of_week) ? r.days_of_week : [],
             start_time: r.start_time,
             end_time: r.end_time,
-            description: r.description || null,
-            discount_summary: r.discount_summary || null,
+            deals: Array.isArray(r.deals) ? r.deals : [],
           }));
           const { error: hhErr } = await supabaseClient
             .from('venue_happy_hours')
@@ -12193,6 +12850,19 @@ function AdminPortal({ onClose, userEmail }) {
           </button>
           <div><h1 className="text-xl font-bold text-white">Add Venue</h1></div>
         </div>
+
+        {/* Patch R.2 — Google Places prefill. Admin pastes a venue name, picks the match,
+            the form below auto-fills. Manual override always works after. */}
+        <GooglePlacesSearchBox
+          onPlaceSelected={applyGooglePrefill}
+          onError={(msg) => showToastMsg(msg, 'error')}
+          darkMode={true}
+        />
+        {prefilledFromGoogle && (
+          <div className="px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs">
+            ✓ Prefilled from Google. Edit anything below before submitting.
+          </div>
+        )}
 
         <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 space-y-4">
           <div>
@@ -13652,11 +14322,12 @@ function BusinessPortal({ onClose, darkMode, supabaseClient, DALLAS_NEIGHBORHOOD
       if (onboardingHappyHours.length > 0 && primaryVenue?.id) {
         const hhPayload = onboardingHappyHours.map(r => ({
           venue_id: primaryVenue.id,
-          day_of_week: r.day_of_week,
+          // Patch R.1 — multi-day window + structured deals
+          name: r.name || null,
+          days_of_week: Array.isArray(r.days_of_week) ? r.days_of_week : [],
           start_time: r.start_time,
           end_time: r.end_time,
-          description: r.description || null,
-          discount_summary: r.discount_summary || null,
+          deals: Array.isArray(r.deals) ? r.deals : [],
         }));
         const { error: hhErr } = await supabaseClient.from('venue_happy_hours').insert(hhPayload);
         if (hhErr) {
@@ -15890,7 +16561,7 @@ export default function App() {
         .from('venue_happy_hours')
         .select('*')
         .eq('venue_id', venueId)
-        .order('day_of_week', { ascending: true })
+        .order('start_time', { ascending: true })
         .order('start_time', { ascending: true });
       if (error) throw error;
       const rows = data || [];
