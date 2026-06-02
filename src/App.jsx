@@ -11623,6 +11623,33 @@ function AdminPortal({ onClose, userEmail }) {
   const [selectedVenue, setSelectedVenue] = useState(null);
   const [editingVenue, setEditingVenue] = useState(null);
   const [editingEvent, setEditingEvent] = useState(null);
+  // Patch R.2-fix5 — CreateVenueForm state lifted to AdminPortal.
+  // Previously these were declared inside `CreateVenueForm = () => {...}`. Because
+  // CreateVenueForm was defined inside AdminPortal's body, every AdminPortal re-render
+  // produced a new component identity, causing React to unmount and remount the form
+  // and wipe all state. The Google Places async fetch would resolve after the remount,
+  // so setName/setAddress targeted a unmounted component → silent no-op. Hoisting these
+  // up makes them stable across re-renders.
+  const [cvName, setCvName] = useState('');
+  const [cvVenueType, setCvVenueType] = useState('');
+  const [cvAddress, setCvAddress] = useState('');
+  const [cvPhone, setCvPhone] = useState('');
+  const [cvVibeTags, setCvVibeTags] = useState([]);
+  const [cvAgeGate, setCvAgeGate] = useState(null);
+  const [cvParentBrand, setCvParentBrand] = useState(null);
+  const [cvHappyHours, setCvHappyHours] = useState([]);
+  const [cvSubmitting, setCvSubmitting] = useState(false);
+  const [cvGooglePrefill, setCvGooglePrefill] = useState(null);
+  const [cvPrefilledFromGoogle, setCvPrefilledFromGoogle] = useState(false);
+  // Reset all create-venue state whenever the user navigates away from the form.
+  // Without this, the form would remember the last attempt next time the user opens it.
+  useEffect(() => {
+    if (currentView !== 'create-venue') {
+      setCvName(''); setCvVenueType(''); setCvAddress(''); setCvPhone('');
+      setCvVibeTags([]); setCvAgeGate(null); setCvParentBrand(null);
+      setCvHappyHours([]); setCvGooglePrefill(null); setCvPrefilledFromGoogle(false);
+    }
+  }, [currentView]);
   // Patch C2b — Bulk-paste tool
   const [showBulkPaste, setShowBulkPaste] = useState(false);
   const [bulkPasteText, setBulkPasteText] = useState('');
@@ -12842,19 +12869,21 @@ function AdminPortal({ onClose, userEmail }) {
   //             All Google data lands in the SAME state vars the manual form already uses, so
   //             admin can edit/override anything before submitting.
   const CreateVenueForm = () => {
-    const [venueType, setVenueType] = useState('');
-    const [name, setName] = useState('');
-    const [address, setAddress] = useState('');
-    const [phone, setPhone] = useState('');
-    const [vibeTagsLocal, setVibeTagsLocal] = useState([]);
-    const [ageGateLocal, setAgeGateLocal] = useState(null);
-    const [parentBrandLocal, setParentBrandLocal] = useState(null);
-    const [happyHoursLocal, setHappyHoursLocal] = useState([]);
-    const [submitting, setSubmitting] = useState(false);
-    // Patch R.2 — Extra fields populated only by Google Places (not editable manually in this minimal form).
-    // We hold them in state so they get sent through on submit. AdminPortal's EditVenueModal can override later.
-    const [googlePrefill, setGooglePrefill] = useState(null);
-    const [prefilledFromGoogle, setPrefilledFromGoogle] = useState(false);
+    // Patch R.2-fix5 — State LIFTED to AdminPortal body (see top of AdminPortal).
+    // Aliasing here keeps the rest of the JSX identical to pre-fix while using
+    // the stable parent state. NOTE: state is intentionally NOT declared inside
+    // this function — that's what was causing the remount-wipes-state bug.
+    const venueType = cvVenueType, setVenueType = setCvVenueType;
+    const name = cvName, setName = setCvName;
+    const address = cvAddress, setAddress = setCvAddress;
+    const phone = cvPhone, setPhone = setCvPhone;
+    const vibeTagsLocal = cvVibeTags, setVibeTagsLocal = setCvVibeTags;
+    const ageGateLocal = cvAgeGate, setAgeGateLocal = setCvAgeGate;
+    const parentBrandLocal = cvParentBrand, setParentBrandLocal = setCvParentBrand;
+    const happyHoursLocal = cvHappyHours, setHappyHoursLocal = setCvHappyHours;
+    const submitting = cvSubmitting, setSubmitting = setCvSubmitting;
+    const googlePrefill = cvGooglePrefill, setGooglePrefill = setCvGooglePrefill;
+    const prefilledFromGoogle = cvPrefilledFromGoogle, setPrefilledFromGoogle = setCvPrefilledFromGoogle;
 
     // Brand options: any existing venue can serve as a parent. Sorted by name.
     const brandOptions = [...establishments]
